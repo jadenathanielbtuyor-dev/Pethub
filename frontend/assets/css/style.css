@@ -3624,6 +3624,313 @@ body.dark-mode.admin-dashboard-page .admin-status-neutral {
   }
 }
 
+/* Admin dark mode visual overrides */
+
+body.dark-mode.admin-dashboard-page,
+body.dark-mode.admin-dashboard-page .admin-dashboard-shell,
+body.dark-mode.admin-dashboard-page .admin-dashboard-content,
+body.dark-mode.admin-dashboard-page .admin-dashboard-main,
+body.dark-mode #adminSidebarRoot ~ main {
+  background: #0f172a !important;
+  color: #e2e8f0;
+}
+
+body.dark-mode .admin-sidebar {
+  border-right-color: #334155;
+  background: rgba(15, 23, 42, 0.98);
+  color: #e2e8f0;
+}
+
+body.dark-mode .admin-sidebar-brand-icon {
+  background: rgba(249, 115, 22, 0.16);
+  color: #fdba74;
+}
+
+body.dark-mode .admin-sidebar :where([class~="text-slate-500"], [class~="text-gray-500"]) {
+  color: #cbd5e1 !important;
+}
+
+body.dark-mode .admin-sidebar-close {
+  color: #cbd5e1;
+}
+
+body.dark-mode .admin-sidebar-close:hover {
+  background: #1e293b;
+  color: #fdba74;
+}
+
+body.dark-mode .admin-nav-link {
+  color: #cbd5e1;
+}
+
+body.dark-mode .admin-nav-link:hover,
+body.dark-mode .admin-nav-link.is-active {
+  background: #f97316;
+  color: #fff;
+  box-shadow: 0 10px 22px rgba(249, 115, 22, 0.22);
+}
+
+body.dark-mode .admin-sidebar-label {
+  color: #94a3b8;
+}
+
+body.dark-mode .admin-sidebar-stats {
+  border-color: rgba(249, 115, 22, 0.34);
+  background: rgba(30, 41, 59, 0.94);
+}
+
+body.dark-mode .admin-sidebar-stat {
+  border-bottom-color: rgba(251, 146, 60, 0.22);
+  color: #cbd5e1;
+}
+
+body.dark-mode .admin-sidebar-stat-value {
+  color: #fdba74;
+}
+
+body.dark-mode.admin-dashboard-page :where(section, #systemLogs, [class~="bg-white"]),
+body.dark-mode #adminSidebarRoot ~ main :where([class~="bg-white"]),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="bg-white"]),
+body.dark-mode #adminMedicalRecordModal :where([class~="bg-white"]) {
+  border-color: #334155 !important;
+  background: #1e293b !important;
+  color: #e2e8f0 !important;
+}
+
+body.dark-mode.admin-dashboard-page :where([class~="bg-slate-50"], [class~="bg-slate-100"], [class~="bg-gray-50"], [class~="bg-gray-100"]),
+body.dark-mode #adminSidebarRoot ~ main :where([class~="bg-slate-50"], [class~="bg-slate-100"], [class~="bg-gray-50"], [class~="bg-gray-100"]),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="bg-slate-50"], [class~="bg-slate-100"], [class~="bg-gray-50"], [class~="bg-gray-100"]),
+body.dark-mode #adminMedicalRecordModal :where([class~="bg-slate-50"], [class~="bg-slate-100"], [class~="bg-gray-50"], [class~="bg-gray-100"]) {
+  background: #0f172a !important;
+}
+
+body.dark-mode.admin-dashboard-page :where([class~="border-gray-200"], [class~="border-gray-100"], [class~="border-slate-200"], [class~="border-slate-100"]),
+body.dark-mode #adminSidebarRoot ~ main :where([class~="border-gray-200"], [class~="border-gray-100"], [class~="border-slate-200"], [class~="border-slate-100"]),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="border-gray-200"], [class~="border-gray-100"], [class~="border-slate-200"], [class~="border-slate-100"]),
+body.dark-mode #adminMedicalRecordModal :where([class~="border-gray-200"], [class~="border-gray-100"], [class~="border-slate-200"], [class~="border-slate-100"]) {
+  border-color: #334155 !important;
+}
+
+body.dark-mode.admin-dashboard-page :where(h1, h2, h3, [class~="text-slate-900"], [class~="text-slate-800"], [class~="text-gray-900"]),
+body.dark-mode #adminSidebarRoot ~ main :where(h1, h2, h3, [class~="text-slate-900"], [class~="text-slate-800"], [class~="text-gray-900"]),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(h1, h2, h3, [class~="text-slate-900"], [class~="text-slate-800"], [class~="text-gray-900"]),
+body.dark-mode #adminMedicalRecordModal :where(h1, h2, h3, [class~="text-slate-900"], [class~="text-slate-800"], [class~="text-gray-900"]) {
+  color: #f8fafc !important;
+}
+
+body.dark-mode.admin-dashboard-page :where([class~="text-slate-700"], [class~="text-slate-600"], [class~="text-gray-700"], [class~="text-gray-600"]),
+body.dark-mode #adminSidebarRoot ~ main :where([class~="text-slate-700"], [class~="text-slate-600"], [class~="text-gray-700"], [class~="text-gray-600"]),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="text-slate-700"], [class~="text-slate-600"], [class~="text-gray-700"], [class~="text-gray-600"]),
+body.dark-mode #adminMedicalRecordModal :where([class~="text-slate-700"], [class~="text-slate-600"], [class~="text-gray-700"], [class~="text-gray-600"]) {
+  color: #cbd5e1 !important;
+}
+
+body.dark-mode.admin-dashboard-page :where([class~="text-slate-500"], [class~="text-slate-400"], [class~="text-gray-500"], [class~="text-gray-400"]),
+body.dark-mode #adminSidebarRoot ~ main :where([class~="text-slate-500"], [class~="text-slate-400"], [class~="text-gray-500"], [class~="text-gray-400"]),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="text-slate-500"], [class~="text-slate-400"], [class~="text-gray-500"], [class~="text-gray-400"]),
+body.dark-mode #adminMedicalRecordModal :where([class~="text-slate-500"], [class~="text-slate-400"], [class~="text-gray-500"], [class~="text-gray-400"]) {
+  color: #94a3b8 !important;
+}
+
+body.dark-mode.admin-dashboard-page :where(input, select, textarea, .dark-safe-input, .dark-safe-select),
+body.dark-mode #adminSidebarRoot ~ main :where(input, select, textarea, .dark-safe-input, .dark-safe-select),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(input, select, textarea, .dark-safe-input, .dark-safe-select),
+body.dark-mode #adminMedicalRecordModal :where(input, select, textarea, .dark-safe-input, .dark-safe-select) {
+  border-color: #475569 !important;
+  background: #0f172a !important;
+  color: #f8fafc !important;
+}
+
+body.dark-mode.admin-dashboard-page :where(input, textarea)::placeholder,
+body.dark-mode #adminSidebarRoot ~ main :where(input, textarea)::placeholder,
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(input, textarea)::placeholder,
+body.dark-mode #adminMedicalRecordModal :where(input, textarea)::placeholder {
+  color: #94a3b8 !important;
+}
+
+body.dark-mode.admin-dashboard-page :where(input, select, textarea):focus,
+body.dark-mode #adminSidebarRoot ~ main :where(input, select, textarea):focus,
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(input, select, textarea):focus,
+body.dark-mode #adminMedicalRecordModal :where(input, select, textarea):focus {
+  border-color: #fb923c !important;
+  box-shadow: 0 0 0 3px rgba(251, 146, 60, 0.22);
+}
+
+body.dark-mode.admin-dashboard-page :where(option),
+body.dark-mode #adminSidebarRoot ~ main :where(option),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(option),
+body.dark-mode #adminMedicalRecordModal :where(option) {
+  background: #0f172a;
+  color: #f8fafc;
+}
+
+body.dark-mode.admin-dashboard-page :where(table),
+body.dark-mode #adminSidebarRoot ~ main :where(table),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(table) {
+  background: #1e293b !important;
+  color: #e2e8f0;
+}
+
+body.dark-mode.admin-dashboard-page :where(thead, table th),
+body.dark-mode #adminSidebarRoot ~ main :where(thead, table th),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(thead, table th) {
+  border-color: #334155 !important;
+  background: #0f172a !important;
+  color: #f8fafc !important;
+}
+
+body.dark-mode.admin-dashboard-page :where(table tr, table td),
+body.dark-mode #adminSidebarRoot ~ main :where(table tr, table td),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(table tr, table td) {
+  border-color: #334155 !important;
+}
+
+body.dark-mode.admin-dashboard-page :where(table td),
+body.dark-mode #adminSidebarRoot ~ main :where(table td),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(table td) {
+  color: #cbd5e1 !important;
+}
+
+body.dark-mode.admin-dashboard-page :where(table tr:hover, [class~="hover:bg-gray-50"]:hover, [class~="hover:bg-slate-50"]:hover),
+body.dark-mode #adminSidebarRoot ~ main :where(table tr:hover, [class~="hover:bg-gray-50"]:hover, [class~="hover:bg-slate-50"]:hover),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(table tr:hover, [class~="hover:bg-gray-50"]:hover, [class~="hover:bg-slate-50"]:hover) {
+  background: #263449 !important;
+}
+
+body.dark-mode.admin-dashboard-page :where([class~="bg-orange-50"]),
+body.dark-mode #adminSidebarRoot ~ main :where([class~="bg-orange-50"]),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="bg-orange-50"]) {
+  border-color: rgba(251, 146, 60, 0.34) !important;
+  background: rgba(154, 52, 18, 0.36) !important;
+}
+
+body.dark-mode.admin-dashboard-page :where([class~="bg-blue-50"], [class~="bg-blue-100"]),
+body.dark-mode #adminSidebarRoot ~ main :where([class~="bg-blue-50"], [class~="bg-blue-100"]),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="bg-blue-50"], [class~="bg-blue-100"]) {
+  border-color: rgba(96, 165, 250, 0.34) !important;
+  background: rgba(30, 64, 175, 0.3) !important;
+}
+
+body.dark-mode.admin-dashboard-page :where([class~="bg-yellow-50"], [class~="bg-yellow-100"]),
+body.dark-mode #adminSidebarRoot ~ main :where([class~="bg-yellow-50"], [class~="bg-yellow-100"]),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="bg-yellow-50"], [class~="bg-yellow-100"]) {
+  border-color: rgba(250, 204, 21, 0.34) !important;
+  background: rgba(113, 63, 18, 0.34) !important;
+}
+
+body.dark-mode.admin-dashboard-page :where([class~="bg-green-50"], [class~="bg-green-100"], [class~="bg-emerald-50"], [class~="bg-emerald-100"]),
+body.dark-mode #adminSidebarRoot ~ main :where([class~="bg-green-50"], [class~="bg-green-100"], [class~="bg-emerald-50"], [class~="bg-emerald-100"]),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="bg-green-50"], [class~="bg-green-100"], [class~="bg-emerald-50"], [class~="bg-emerald-100"]) {
+  border-color: rgba(52, 211, 153, 0.34) !important;
+  background: rgba(6, 78, 59, 0.34) !important;
+}
+
+body.dark-mode.admin-dashboard-page :where([class~="bg-red-50"], [class~="bg-red-100"]),
+body.dark-mode #adminSidebarRoot ~ main :where([class~="bg-red-50"], [class~="bg-red-100"]),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="bg-red-50"], [class~="bg-red-100"]),
+body.dark-mode #adminMedicalRecordModal :where([class~="bg-red-50"], [class~="bg-red-100"]) {
+  border-color: rgba(248, 113, 113, 0.34) !important;
+  background: rgba(127, 29, 29, 0.34) !important;
+}
+
+body.dark-mode.admin-dashboard-page :where([class~="bg-purple-100"]),
+body.dark-mode #adminSidebarRoot ~ main :where([class~="bg-purple-100"]),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="bg-purple-100"]) {
+  border-color: rgba(192, 132, 252, 0.34) !important;
+  background: rgba(88, 28, 135, 0.34) !important;
+}
+
+body.dark-mode.admin-dashboard-page :where([class~="text-orange-600"], [class~="text-orange-700"]),
+body.dark-mode #adminSidebarRoot ~ main :where([class~="text-orange-600"], [class~="text-orange-700"]),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="text-orange-600"], [class~="text-orange-700"]) {
+  color: #fdba74 !important;
+}
+
+body.dark-mode.admin-dashboard-page :where([class~="text-blue-600"], [class~="text-blue-700"]),
+body.dark-mode #adminSidebarRoot ~ main :where([class~="text-blue-600"], [class~="text-blue-700"]),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="text-blue-600"], [class~="text-blue-700"]) {
+  color: #93c5fd !important;
+}
+
+body.dark-mode.admin-dashboard-page :where([class~="text-yellow-600"], [class~="text-yellow-700"]),
+body.dark-mode #adminSidebarRoot ~ main :where([class~="text-yellow-600"], [class~="text-yellow-700"]),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="text-yellow-600"], [class~="text-yellow-700"]) {
+  color: #fde68a !important;
+}
+
+body.dark-mode.admin-dashboard-page :where([class~="text-green-600"], [class~="text-green-700"], [class~="text-emerald-600"], [class~="text-emerald-700"]),
+body.dark-mode #adminSidebarRoot ~ main :where([class~="text-green-600"], [class~="text-green-700"], [class~="text-emerald-600"], [class~="text-emerald-700"]),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="text-green-600"], [class~="text-green-700"], [class~="text-emerald-600"], [class~="text-emerald-700"]) {
+  color: #86efac !important;
+}
+
+body.dark-mode.admin-dashboard-page :where([class~="text-red-500"], [class~="text-red-600"], [class~="text-red-700"]),
+body.dark-mode #adminSidebarRoot ~ main :where([class~="text-red-500"], [class~="text-red-600"], [class~="text-red-700"]),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="text-red-500"], [class~="text-red-600"], [class~="text-red-700"]),
+body.dark-mode #adminMedicalRecordModal :where([class~="text-red-500"], [class~="text-red-600"], [class~="text-red-700"]) {
+  color: #fca5a5 !important;
+}
+
+body.dark-mode.admin-dashboard-page :where([class~="text-purple-700"]),
+body.dark-mode #adminSidebarRoot ~ main :where([class~="text-purple-700"]),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="text-purple-700"]) {
+  color: #d8b4fe !important;
+}
+
+body.dark-mode.admin-dashboard-page :where(.btn-logout, [class~="bg-slate-100"][class~="text-slate-700"], [class~="bg-red-50"][class~="text-red-700"], [class~="bg-green-50"][class~="text-green-700"]),
+body.dark-mode #adminSidebarRoot ~ main :where(.btn-logout, [class~="bg-slate-100"][class~="text-slate-700"], [class~="bg-red-50"][class~="text-red-700"], [class~="bg-green-50"][class~="text-green-700"]),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(.btn-logout, [class~="bg-slate-100"][class~="text-slate-700"], [class~="bg-red-50"][class~="text-red-700"], [class~="bg-green-50"][class~="text-green-700"]) {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+body.dark-mode.admin-dashboard-page :where(.dashboard-loading-state),
+body.dark-mode #adminSidebarRoot ~ main :where(.dashboard-loading-state),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(.dashboard-loading-state) {
+  border-color: #334155;
+  background: rgba(15, 23, 42, 0.82);
+  color: #cbd5e1;
+}
+
+body.dark-mode.admin-dashboard-page :where(.dashboard-loading-title),
+body.dark-mode #adminSidebarRoot ~ main :where(.dashboard-loading-title),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(.dashboard-loading-title) {
+  color: #f8fafc;
+}
+
+body.dark-mode.admin-dashboard-page :where(.dashboard-loading-copy),
+body.dark-mode #adminSidebarRoot ~ main :where(.dashboard-loading-copy),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(.dashboard-loading-copy) {
+  color: #94a3b8;
+}
+
+body.dark-mode.admin-dashboard-page :where(.dashboard-skeleton-row),
+body.dark-mode #adminSidebarRoot ~ main :where(.dashboard-skeleton-row),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(.dashboard-skeleton-row) {
+  background: #111827;
+}
+
+body.dark-mode.admin-dashboard-page :where(.dashboard-skeleton-icon, .dashboard-skeleton-line),
+body.dark-mode #adminSidebarRoot ~ main :where(.dashboard-skeleton-icon, .dashboard-skeleton-line),
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(.dashboard-skeleton-icon, .dashboard-skeleton-line) {
+  background: linear-gradient(90deg, #334155 25%, #475569 50%, #334155 75%);
+  background-size: 200% 100%;
+}
+
+body.dark-mode.admin-dashboard-page #adminDashboardStatus:not(.hidden),
+body.dark-mode.admin-dashboard-page :where([id*="Error"], [class~="text-red-500"]) {
+  border-color: rgba(248, 113, 113, 0.44) !important;
+}
+
+body.dark-mode #adminMedicalRecordModal {
+  background: rgba(2, 6, 23, 0.72);
+}
+
+body.dark-mode #adminMedicalRecordModal > div {
+  border: 1px solid #334155;
+  background: #1e293b !important;
+  color: #e2e8f0;
+}
+
 /* Page Header */
 
 .page-header {

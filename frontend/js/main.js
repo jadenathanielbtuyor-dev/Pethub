@@ -5,12 +5,12 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function initializeApp() {
-  const isAdminDashboard = document.body.classList.contains('admin-dashboard-page');
   initializeDarkMode();
   
   updateNavigationState();
   setupLogoutHandlers();
 
+  const isAdminDashboard = document.body.classList.contains('admin-dashboard-page');
   if (!isAdminDashboard) {
     highlightSidebarLinks();
     setupDashboardSectionLinks();
