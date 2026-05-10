@@ -42,12 +42,14 @@ function toggleDarkMode() {
 
 function applyDarkMode() {
   document.body.classList.add('dark-mode');
+  document.documentElement.classList.add('dark');
   setDarkMode(true);
   updateDarkModeIcon();
 }
 
 function removeDarkMode() {
   document.body.classList.remove('dark-mode');
+  document.documentElement.classList.remove('dark');
   setDarkMode(false);
   updateDarkModeIcon();
 }
