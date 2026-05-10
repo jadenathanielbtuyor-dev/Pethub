@@ -9,7 +9,7 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production'
-    ? ['https://yourdomain.com'] // Update with your production domain
+    ? ['https://pethub-beige.vercel.app'] // Update with your production domain
     : true, // Allow all development origins so local files and different dev ports work
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-User-ID'],
