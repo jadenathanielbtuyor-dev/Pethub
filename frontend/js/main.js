@@ -20,7 +20,7 @@ function initializeApp() {
 
 // Dark Mode
 function initializeDarkMode() {
-  const darkModeToggle = document.getElementById('darkModeToggle');
+  const darkModeToggle = getDarkModeToggle();
   
   // Apply saved preference
   if (isDarkMode()) {
@@ -30,6 +30,35 @@ function initializeDarkMode() {
   if (darkModeToggle) {
     darkModeToggle.addEventListener('click', toggleDarkMode);
   }
+}
+
+function getDarkModeToggle() {
+  const toggles = Array.from(document.querySelectorAll('#darkModeToggle'));
+  if (!toggles.length) return null;
+
+  const isAdminPage = document.body.classList.contains('admin-dashboard-page') || document.getElementById('adminSidebarRoot');
+  if (!isAdminPage) return toggles[0];
+
+  const isOldHiddenToggle = (toggle) => (
+    toggle.classList.contains('hidden') ||
+    toggle.getAttribute('aria-hidden') === 'true' ||
+    toggle.getAttribute('tabindex') === '-1'
+  );
+  const validToggle = toggles.find(toggle => !isOldHiddenToggle(toggle)) || toggles[0];
+
+  toggles.forEach(toggle => {
+    if (toggle !== validToggle) {
+      toggle.remove();
+    }
+  });
+
+  validToggle.type = 'button';
+  validToggle.className = 'dark-mode-toggle';
+  validToggle.title = 'Toggle Dark Mode';
+  validToggle.removeAttribute('aria-hidden');
+  validToggle.removeAttribute('tabindex');
+
+  return validToggle;
 }
 
 function toggleDarkMode() {
@@ -55,7 +84,7 @@ function removeDarkMode() {
 }
 
 function updateDarkModeIcon() {
-  const btn = document.getElementById('darkModeToggle');
+  const btn = getDarkModeToggle();
   if (btn) {
     btn.innerHTML = isDarkMode() 
       ? '<i class="ri-sun-line"></i>' 
