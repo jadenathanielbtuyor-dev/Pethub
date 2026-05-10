@@ -3931,6 +3931,48 @@ body.dark-mode #adminMedicalRecordModal > div {
   color: #e2e8f0;
 }
 
+body.dark-mode .admin-dashboard-page,
+body.dark-mode .admin-dashboard-shell,
+body.dark-mode .admin-dashboard-content,
+body.dark-mode .admin-dashboard-main {
+  background: #0f172a !important;
+  color: #e2e8f0;
+}
+
+body.dark-mode.admin-dashboard-page .bg-white,
+body.dark-mode .admin-dashboard-page .bg-white,
+body.dark-mode #adminSidebarRoot ~ main .bg-white,
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content .bg-white {
+  border-color: #334155 !important;
+  background: #1e293b !important;
+  color: #e2e8f0 !important;
+}
+
+body.dark-mode.admin-dashboard-page .bg-slate-50,
+body.dark-mode .admin-dashboard-page .bg-slate-50,
+body.dark-mode #adminSidebarRoot ~ main .bg-slate-50,
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content .bg-slate-50 {
+  background: #0f172a !important;
+}
+
+body.dark-mode.admin-dashboard-page .text-gray-900,
+body.dark-mode.admin-dashboard-page .text-slate-800,
+body.dark-mode .admin-dashboard-page .text-gray-900,
+body.dark-mode .admin-dashboard-page .text-slate-800,
+body.dark-mode #adminSidebarRoot ~ main .text-gray-900,
+body.dark-mode #adminSidebarRoot ~ main .text-slate-800,
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content .text-gray-900,
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content .text-slate-800 {
+  color: #f8fafc !important;
+}
+
+body.dark-mode.admin-dashboard-page .border-gray-200,
+body.dark-mode .admin-dashboard-page .border-gray-200,
+body.dark-mode #adminSidebarRoot ~ main .border-gray-200,
+body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content .border-gray-200 {
+  border-color: #334155 !important;
+}
+
 /* Page Header */
 
 .page-header {
