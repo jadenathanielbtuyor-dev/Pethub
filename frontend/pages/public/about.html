@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PetHub | About</title>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="../../assets/css/style.css">
+
+  <!-- Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet">
+</head>
+<body class="flex flex-col min-h-screen">
+
+  <!-- ================= NAVIGATION ================= -->
+  <nav class="nav">
+    <div class="nav-container">
+
+      <!-- Logo -->
+      <a href="../../index.html" class="logo">
+        <img src="../../assets/images/paw.png" alt="PetHub">
+        <h1>PetHub</h1>
+      </a>
+
+      <!-- Links -->
+      <ul class="nav-links">
+        <li><a href="../../index.html">Home</a></li>
+        <li><a href="about.html" class="active">About</a></li>
+        <li><a href="services.html">Services</a></li>
+        <li><a href="contact.html">Contact</a></li>
+        <li><a href="../auth/login.html" class="btn-login">Login</a></li>
+      </ul>
+
+    </div>
+  </nav>
+
+  <!-- ================= MAIN CONTENT ================= -->
+  <main class="flex-grow">
+
+  <!-- ================= PAGE HEADER ================= -->
+  <header class="bg-gradient-to-br from-orange-50 via-white to-blue-50 py-24 px-4">
+    <div class="max-w-6xl mx-auto text-center space-y-4">
+      <h1 class="text-6xl md:text-7xl font-bold text-gray-900 mb-6">
+        About PetHub
+      </h1>
+      <p class="text-2xl text-orange-600 font-semibold max-w-2xl mx-auto">
+        PetHub is a practical pet care system built around real features, not empty promises.
+      </p>
+    </div>
+  </header>
+
+  <!-- ================= ABOUT CONTENT ================= -->
+  <section class="bg-white py-24 px-4">
+    <div class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
+
+      <div class="space-y-8">
+        <h2 class="text-5xl font-bold text-gray-900 leading-tight">
+          A real platform for pet care management
+        </h2>
+        <div class="space-y-6">
+          <p class="text-lg text-gray-600 leading-relaxed">
+            PetHub was developed to help pet owners and administrators manage animals, appointments, and health records in one place.
+          </p>
+          <p class="text-lg text-gray-600 leading-relaxed">
+            The system uses Supabase for authentication, database storage, and secure record retrieval, while Node and Express power the API behind the dashboard.
+          </p>
+          <p class="text-lg text-gray-600 leading-relaxed">
+            Users can register, verify their email, manage pets, book appointments, and review care records without leaving the platform.
+          </p>
+        </div>
+      </div>
+
+      <div class="flex justify-center transform hover:scale-105 transition-transform duration-300">
+        <img src="../../assets/images/logo.jpg" alt="About PetHub" class="w-full max-w-xs md:max-w-sm lg:max-w-md h-auto rounded-3xl object-cover shadow-2xl">
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ================= FEATURES SECTION ================= -->
+  <section class="bg-gradient-to-r from-orange-50 to-blue-50 py-24 px-4">
+    <div class="max-w-6xl mx-auto">
+      <h2 class="text-5xl font-bold text-center text-gray-900 mb-16">
+        What PetHub includes
+      </h2>
+      
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div class="bg-white p-8 rounded-2xl shadow-lg text-center hover:shadow-xl transition-shadow">
+          <div class="w-12 h-12 bg-orange-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <i class="ri-paw-line text-2xl text-orange-600"></i>
+          </div>
+          <h3 class="text-xl font-bold text-gray-900 mb-2">Pet records</h3>
+          <p class="text-gray-600">Complete pet profiles with medical notes, weight, vaccine details, and care instructions.</p>
+        </div>
+        <div class="bg-white p-8 rounded-2xl shadow-lg text-center hover:shadow-xl transition-shadow">
+          <div class="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <i class="ri-calendar-check-line text-2xl text-blue-600"></i>
+          </div>
+          <h3 class="text-xl font-bold text-gray-900 mb-2">Appointments</h3>
+          <p class="text-gray-600">Book and review appointments, then update status from the admin dashboard.</p>
+        </div>
+        <div class="bg-white p-8 rounded-2xl shadow-lg text-center hover:shadow-xl transition-shadow">
+          <div class="w-12 h-12 bg-green-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <i class="ri-file-text-line text-2xl text-green-600"></i>
+          </div>
+          <h3 class="text-xl font-bold text-gray-900 mb-2">Admin management</h3>
+          <p class="text-gray-600">Admins can access user lists, pet lists, appointment overviews, and analytics summary endpoints.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= HOW IT WORKS SECTION ================= -->
+  <section class="bg-white py-24 px-4">
+    <div class="max-w-6xl mx-auto text-center space-y-8">
+      <h2 class="text-5xl font-bold text-gray-900">
+        How the system works
+      </h2>
+      <p class="text-xl text-gray-600 leading-relaxed">
+        PetHub is designed around the actual workflows needed for pet care: account creation, verification, secure records, and meaningful admin oversight.
+      </p>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="bg-slate-50 p-8 rounded-3xl shadow-lg border border-slate-200">
+          <h3 class="text-2xl font-semibold text-gray-900 mb-3">Register</h3>
+          <p class="text-gray-600">Create your account and verify your email to start using the app.</p>
+        </div>
+        <div class="bg-slate-50 p-8 rounded-3xl shadow-lg border border-slate-200">
+          <h3 class="text-2xl font-semibold text-gray-900 mb-3">Manage pets</h3>
+          <p class="text-gray-600">Add pets, update care records, and keep their health history organized.</p>
+        </div>
+        <div class="bg-slate-50 p-8 rounded-3xl shadow-lg border border-slate-200">
+          <h3 class="text-2xl font-semibold text-gray-900 mb-3">Book appointments</h3>
+          <p class="text-gray-600">Schedule visits and review appointment statuses directly in the dashboard.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  </main>
+
+  <!-- ================= FOOTER ================= -->
+  <footer class="footer">
+    <p>&copy; 2026 PetHub. Caring for Your Pet's Health. All rights reserved.</p>
+  </footer>
+
+  <!-- ================= DARK MODE TOGGLE ================= -->
+  <button id="darkModeToggle" class="dark-mode-toggle" title="Toggle Dark Mode">
+    <i class="ri-moon-line"></i>
+  </button>
+  
+  <!-- JS -->
+  <script src="../../js/core/api.js"></script>
+  <script src="../../js/core/utils.js"></script>
+  <script src="../../js/core/storage.js"></script>
+  <script src="../../js/main.js"></script>
+  <script src="../../js/shared/ai-widget.js"></script>
+
+</body>
+</html>

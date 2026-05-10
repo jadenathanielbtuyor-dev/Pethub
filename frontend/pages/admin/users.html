@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Admin | Users</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="../../assets/css/style.css">
+
+  <!-- Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet">
+</head>
+
+<body class="min-h-screen">
+  <div class="flex min-h-screen">
+    <div id="adminSidebarRoot"></div>
+
+    <main class="flex-1 p-6">
+      <div class="max-w-7xl mx-auto space-y-6">
+        <div class="bg-white border border-gray-200 rounded-3xl shadow-sm p-6">
+          <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p class="text-sm uppercase tracking-widest text-orange-600 font-semibold">Admin Users</p>
+              <h1 class="text-3xl font-bold text-gray-900">Users</h1>
+              <p class="text-gray-600 mt-2">Review registered user accounts from PetHub records.</p>
+            </div>
+            <div class="flex items-center gap-3">
+              <button id="sidebarToggle" class="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 transition-all duration-200 md:hidden">
+                <i class="ri-menu-line"></i>
+                Menu
+              </button>
+              <a href="#logout" class="btn-logout inline-flex items-center gap-2 rounded-full bg-orange-50 px-4 py-2 text-sm font-semibold text-orange-700 hover:bg-orange-100 transition">Logout</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white shadow rounded-3xl overflow-x-auto border border-gray-100">
+          <table class="w-full text-left min-w-full">
+            <thead class="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th class="px-6 py-4 text-sm font-semibold text-gray-700">Name</th>
+                <th class="px-6 py-4 text-sm font-semibold text-gray-700">Email</th>
+                <th class="px-6 py-4 text-sm font-semibold text-gray-700">Role</th>
+                <th class="px-6 py-4 text-sm font-semibold text-gray-700">Joined</th>
+              </tr>
+            </thead>
+            <tbody id="usersTable" class="divide-y divide-gray-100">
+              <tr><td colspan="4" class="p-4 text-center text-gray-500">Loading users...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ================= FOOTER ================= -->
+  <footer class="footer">
+    <p>&copy; 2026 PetHub. Caring for Your Pet's Health. All rights reserved.</p>
+  </footer>
+
+  <!-- ================= DARK MODE TOGGLE ================= -->
+  <button id="darkModeToggle" class="dark-mode-toggle" title="Toggle Dark Mode">
+    <i class="ri-moon-line"></i>
+  </button>
+
+  <script src="../../js/core/api.js"></script>
+  <script src="../../js/core/utils.js"></script>
+  <script src="../../js/core/storage.js"></script>
+  <script src="../../js/main.js"></script>
+  <script src="../../js/admin/sidebar.js"></script>
+  <script src="../../js/admin/users.js"></script>
+
+</body>
+</html>

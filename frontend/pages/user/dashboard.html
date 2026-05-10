@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PetHub | Dashboard</title>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="../../assets/css/style.css">
+
+  <!-- Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet">
+</head>
+<body class="flex flex-col min-h-screen bg-slate-50">
+
+  <!-- ================= DASHBOARD NAVIGATION ================= -->
+  <nav class="nav sticky top-0 z-50 bg-white/95 backdrop-blur-xl shadow-xl border-b border-orange-100">
+    <div class="nav-container flex flex-wrap items-center justify-between gap-4 py-4 px-4">
+      <div class="flex items-center gap-3">
+        <img src="../../assets/images/paw.png" alt="PetHub" class="w-10 h-10 rounded-full bg-orange-100 p-2">
+        <div>
+          <p class="text-base font-bold text-gray-900">PetHub</p>
+          <p class="text-xs text-gray-500 uppercase tracking-wide">User Dashboard</p>
+        </div>
+      </div>
+      <ul class="nav-links flex flex-wrap items-center gap-1">
+        <li><a href="dashboard.html" class="flex items-center gap-2 text-orange-600 font-semibold px-3 py-2 rounded-lg bg-orange-50 transition-all duration-200 hover:bg-orange-100"><i class="ri-home-line"></i>Dashboard</a></li>
+        <li><a href="pets.html" class="flex items-center gap-2 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-100 hover:text-orange-600 transition-all duration-200"><i class="ri-paw-line"></i>Pets</a></li>
+        <li><a href="appointments.html" class="flex items-center gap-2 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-100 hover:text-orange-600 transition-all duration-200"><i class="ri-calendar-line"></i>Appointments</a></li>
+        <li><a href="#logout" class="btn-logout flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white transition-all duration-200 hover:bg-orange-600 hover:shadow-lg active:scale-95"><i class="ri-logout-circle-line"></i>Logout</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- ================= MAIN CONTENT ================= -->
+  <main class="flex-grow bg-slate-50">
+
+    <!-- ================= DASHBOARD HEADER ================= -->
+    <section class="border-b border-gray-200 bg-white">
+      <div class="max-w-6xl mx-auto px-4 py-8">
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">Dashboard</p>
+            <h1 id="welcomeMessage" class="mt-2 text-3xl font-bold text-gray-900">Welcome back</h1>
+          </div>
+          <div class="inline-flex w-fit items-center gap-2 rounded-full border border-orange-100 bg-orange-50 px-4 py-2 text-sm font-semibold text-orange-700">
+            <i class="ri-user-line"></i>
+            <span id="userBadge">User</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= DASHBOARD CONTENT ================= -->
+    <section class="px-4 py-8">
+      <div class="max-w-6xl mx-auto space-y-6">
+
+        <!-- ================= QUICK ACTIONS SECTION ================= -->
+        <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm" aria-labelledby="quickActionsTitle">
+          <div class="mb-5">
+            <h2 id="quickActionsTitle" class="flex items-center gap-2 text-xl font-bold text-gray-900">
+              <i class="ri-flashlight-line text-orange-500"></i>
+              Quick actions
+            </h2>
+          </div>
+
+          <div class="flex flex-col gap-3 sm:flex-row">
+            <a href="pets.html" class="flex flex-1 items-center justify-between gap-3 rounded-lg border border-orange-100 bg-orange-50 px-4 py-4 text-left font-semibold text-orange-700 transition-all duration-200 hover:bg-orange-100">
+              <span class="flex items-center gap-3">
+                <i class="ri-add-circle-line text-xl"></i>
+                <span>Add a pet</span>
+              </span>
+              <i class="ri-arrow-right-line"></i>
+            </a>
+
+            <a href="appointments.html" class="flex flex-1 items-center justify-between gap-3 rounded-lg border border-blue-100 bg-blue-50 px-4 py-4 text-left font-semibold text-blue-700 transition-all duration-200 hover:bg-gray-100">
+              <span class="flex items-center gap-3">
+                <i class="ri-calendar-event-line text-xl"></i>
+                <span>Book appointment</span>
+              </span>
+              <i class="ri-arrow-right-line"></i>
+            </a>
+
+            <a href="pets.html#medicalRecordsList" class="flex flex-1 items-center justify-between gap-3 rounded-lg border border-gray-200 bg-green-50 px-4 py-4 text-left font-semibold text-green-700 transition-all duration-200 hover:bg-gray-100">
+              <span class="flex items-center gap-3">
+                <i class="ri-file-medical-line text-xl"></i>
+                <span>View records</span>
+              </span>
+              <i class="ri-arrow-right-line"></i>
+            </a>
+          </div>
+        </section>
+
+        <!-- ================= PETS SECTION ================= -->
+        <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+          <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 class="flex items-center gap-2 text-xl font-bold text-gray-900">
+              <i class="ri-paw-line text-orange-500"></i>
+              Your pets
+            </h2>
+            <a href="pets.html" class="inline-flex items-center gap-2 text-sm font-semibold text-orange-600 hover:text-orange-700">
+              View pets
+              <i class="ri-arrow-right-line"></i>
+            </a>
+          </div>
+
+          <div id="recentPetsContainer" class="text-center text-gray-500 py-8">
+            <div class="dashboard-loading-state" role="status" aria-live="polite">
+              <div class="dashboard-loading-spinner" aria-hidden="true"></div>
+              <div>
+                <p class="dashboard-loading-title">Loading pets...</p>
+                <p class="dashboard-loading-copy">Fetching the latest PetHub records.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= APPOINTMENTS SECTION ================= -->
+        <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+          <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 class="flex items-center gap-2 text-xl font-bold text-gray-900">
+              <i class="ri-calendar-2-line text-blue-500"></i>
+              Appointments
+            </h2>
+            <a href="appointments.html" class="inline-flex items-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-700">
+              View appointments
+              <i class="ri-arrow-right-line"></i>
+            </a>
+          </div>
+
+          <div id="recentAppointmentsContainer" class="text-center text-gray-500 py-8">
+            <div class="dashboard-loading-state" role="status" aria-live="polite">
+              <div class="dashboard-loading-spinner" aria-hidden="true"></div>
+              <div>
+                <p class="dashboard-loading-title">Loading appointments...</p>
+                <p class="dashboard-loading-copy">Fetching the latest PetHub records.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= MEDICAL RECORDS SECTION ================= -->
+        <section id="recentRecordsCard" class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+          <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 class="flex items-center gap-2 text-xl font-bold text-gray-900">
+              <i class="ri-file-medical-line text-green-500"></i>
+              Medical records
+            </h2>
+            <a href="pets.html#medicalRecordsList" class="inline-flex items-center gap-2 text-sm font-semibold text-green-600 hover:text-green-700">
+              View records
+              <i class="ri-arrow-right-line"></i>
+            </a>
+          </div>
+
+          <div id="recentRecordsContainer" class="space-y-4 text-sm text-gray-600">
+            <div class="dashboard-loading-state" role="status" aria-live="polite">
+              <div class="dashboard-loading-spinner" aria-hidden="true"></div>
+              <div>
+                <p class="dashboard-loading-title">Loading medical records...</p>
+                <p class="dashboard-loading-copy">Fetching the latest PetHub records.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= RECENT ACTIVITY SECTION ================= -->
+        <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+          <div class="mb-5">
+            <h2 class="flex items-center gap-2 text-xl font-bold text-gray-900">
+              <i class="ri-history-line text-slate-500"></i>
+              Account activity
+            </h2>
+          </div>
+
+          <div id="recentActivityContainer" class="space-y-3 text-sm text-gray-600">
+            <div class="dashboard-loading-state" role="status" aria-live="polite">
+              <div class="dashboard-loading-spinner" aria-hidden="true"></div>
+              <div>
+                <p class="dashboard-loading-title">Loading activity logs...</p>
+                <p class="dashboard-loading-copy">Fetching the latest PetHub records.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ================= FOOTER ================= -->
+  <footer class="footer bg-gray-900 text-white py-8 px-4">
+    <div class="max-w-6xl mx-auto text-center">
+      <p>&copy; 2026 PetHub. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <!-- ================= DARK MODE TOGGLE ================= -->
+  <button id="darkModeToggle" class="dark-mode-toggle" title="Toggle Dark Mode">
+    <i class="ri-moon-line"></i>
+  </button>
+
+  <!-- JS -->
+  <script src="../../js/core/api.js"></script>
+  <script src="../../js/core/utils.js"></script>
+  <script src="../../js/core/storage.js"></script>
+  <script src="../../js/main.js"></script>
+  <script src="../../js/shared/appointment-durations.js"></script>
+  <script src="../../js/user/dashboard.js"></script>
+  <script src="../../js/shared/ai-widget.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PetHub | Admin Dashboard</title>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="../../assets/css/style.css">
+
+  <!-- Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet">
+</head>
+<body class="admin-dashboard-page">
+  <div class="admin-dashboard-shell">
+    <div id="adminSidebarRoot"></div>
+
+    <div class="admin-dashboard-content">
+      <main class="admin-dashboard-main p-6 md:p-8">
+        <div class="max-w-7xl mx-auto space-y-6">
+          <div id="adminDashboardStatus" class="mb-6 hidden rounded-3xl border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700 shadow-sm"></div>
+          <div id="adminViewOverview">
+            <section id="dashboardOverview" class="mb-6 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
+              <div class="flex flex-col gap-6">
+                <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <p class="text-sm uppercase tracking-widest text-orange-600 font-semibold">Admin Dashboard</p>
+                    <h1 class="text-4xl font-bold text-slate-800 dark:text-slate-100">PetHub Admin</h1>
+                    <p class="text-slate-600 dark:text-slate-300 mt-2">Manage users, pets, appointments, messages, and medical records from one workspace.</p>
+                  </div>
+                  <div class="flex flex-col items-start gap-3 sm:items-end">
+                    <span class="inline-flex items-center gap-2 rounded-full bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700">
+                      <i class="ri-shield-user-line"></i>
+                      <span id="adminRoleBadge">Loading role</span>
+                    </span>
+                    <span id="adminDate" class="text-sm text-slate-500 dark:text-slate-400">Loading admin account...</span>
+                    <div class="flex flex-wrap items-center gap-3">
+                      <button id="sidebarToggle" class="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 transition-all duration-200 md:hidden">
+                        <i class="ri-menu-line"></i>
+                        Menu
+                      </button>
+                      <a href="#logout" class="btn-logout inline-flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white transition-all duration-200 hover:bg-orange-600 active:scale-95">
+                        <i class="ri-logout-circle-line"></i>Logout
+                      </a>
+                    </div>
+                  </div>
+                </div>
+                <div class="inline-flex items-center gap-3 rounded-full bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700">
+                  <i class="ri-settings-5-line"></i>
+                  Live PetHub records
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
+                  <div id="cardTotalUsers" class="cursor-pointer bg-white border border-gray-200 rounded-3xl shadow-sm p-6 transition-all duration-200 hover:shadow-md hover:-translate-y-1">
+                    <div class="flex items-start justify-between gap-4">
+                      <div>
+                        <p class="text-sm uppercase tracking-wide text-slate-500 dark:text-slate-400 font-semibold">Users</p>
+                        <p id="analyticsTotalUsers" class="text-4xl font-bold text-slate-800 dark:text-slate-100 mt-3"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
+                      </div>
+                      <div class="rounded-2xl bg-orange-50 p-3 text-orange-600">
+                        <i class="ri-group-line text-2xl"></i>
+                      </div>
+                    </div>
+                    <p class="text-sm text-slate-500 dark:text-slate-400 mt-4">Registered user accounts</p>
+                  </div>
+
+                  <div id="cardTotalPets" class="cursor-pointer bg-white border border-gray-200 rounded-3xl shadow-sm p-6 transition-all duration-200 hover:shadow-md hover:-translate-y-1">
+                    <div class="flex items-start justify-between gap-4">
+                      <div>
+                        <p class="text-sm uppercase tracking-wide text-slate-500 dark:text-slate-400 font-semibold">Pets</p>
+                        <p id="analyticsTotalPets" class="text-4xl font-bold text-orange-600 mt-3"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
+                      </div>
+                      <div class="rounded-2xl bg-orange-50 p-3 text-orange-600">
+                        <i class="ri-paw-line text-2xl"></i>
+                      </div>
+                    </div>
+                    <p class="text-sm text-slate-500 dark:text-slate-400 mt-4">User-created pet profiles</p>
+                  </div>
+
+                  <div id="cardTotalAppointments" class="cursor-pointer bg-white border border-gray-200 rounded-3xl shadow-sm p-6 transition-all duration-200 hover:shadow-md hover:-translate-y-1">
+                    <div class="flex items-start justify-between gap-4">
+                      <div>
+                        <p class="text-sm uppercase tracking-wide text-slate-500 dark:text-slate-400 font-semibold">Appointments</p>
+                        <p id="analyticsTotalAppointments" class="text-4xl font-bold text-blue-600 mt-3"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
+                      </div>
+                      <div class="rounded-2xl bg-blue-50 p-3 text-blue-600">
+                        <i class="ri-calendar-event-line text-2xl"></i>
+                      </div>
+                    </div>
+                    <p class="text-sm text-slate-500 dark:text-slate-400 mt-4">Appointments in the system</p>
+                  </div>
+
+                  <div id="cardPendingAppointments" class="cursor-pointer bg-white border border-gray-200 rounded-3xl shadow-sm p-6 transition-all duration-200 hover:shadow-md hover:-translate-y-1">
+                    <div class="flex items-start justify-between gap-4">
+                      <div>
+                        <p class="text-sm uppercase tracking-wide text-slate-500 dark:text-slate-400 font-semibold">Pending Appointments</p>
+                        <p id="analyticsPendingAppointments" class="text-4xl font-bold text-yellow-600 mt-3"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
+                      </div>
+                      <div class="rounded-2xl bg-yellow-50 p-3 text-yellow-600">
+                        <i class="ri-time-line text-2xl"></i>
+                      </div>
+                    </div>
+                    <p class="text-sm text-slate-500 dark:text-slate-400 mt-4">Awaiting admin review</p>
+                  </div>
+                </div>
+
+                <div id="adminAlertsCard" class="bg-white border border-gray-200 rounded-3xl shadow-sm p-6">
+                  <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p class="text-sm uppercase tracking-widest text-orange-600 font-semibold">Admin Queue</p>
+                      <h2 class="text-2xl font-bold text-slate-800 dark:text-slate-100">Needs Attention</h2>
+                    </div>
+                    <p class="text-sm text-slate-500 dark:text-slate-400">Current queues from PetHub records.</p>
+                  </div>
+                  <div class="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    <button id="queuePendingAppointments" type="button" class="w-full cursor-pointer rounded-2xl border border-orange-100 bg-orange-50 p-4 text-left transition-all duration-200 hover:-translate-y-1 hover:shadow-md">
+                      <div class="flex items-center gap-3">
+                        <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white text-orange-600">
+                          <i class="ri-time-line text-xl"></i>
+                        </span>
+                        <div>
+                          <p class="text-sm font-semibold text-slate-700">Pending appointments</p>
+                          <p id="alertPendingAppointments" class="text-2xl font-bold text-orange-700"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
+                          <p class="text-sm text-slate-500">Awaiting admin review</p>
+                        </div>
+                      </div>
+                    </button>
+                    <button id="queueUnreadMessages" type="button" class="w-full cursor-pointer rounded-2xl border border-blue-100 bg-blue-50 p-4 text-left transition-all duration-200 hover:-translate-y-1 hover:shadow-md">
+                      <div class="flex items-center gap-3">
+                        <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white text-blue-600">
+                          <i class="ri-mail-unread-line text-xl"></i>
+                        </span>
+                        <div>
+                          <p class="text-sm font-semibold text-slate-700">Unread messages</p>
+                          <p id="alertUnreadMessages" class="text-2xl font-bold text-blue-700"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
+                          <p class="text-sm text-slate-500">Contact form messages</p>
+                        </div>
+                      </div>
+                    </button>
+                    <button id="queueNewUsers" type="button" class="w-full cursor-pointer rounded-2xl border border-gray-200 bg-slate-50 p-4 text-left transition-all duration-200 hover:-translate-y-1 hover:shadow-md">
+                      <div class="flex items-center gap-3">
+                        <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white text-slate-600">
+                          <i class="ri-user-add-line text-xl"></i>
+                        </span>
+                        <div>
+                          <p class="text-sm font-semibold text-slate-700">New users</p>
+                          <p id="alertNewUsers" class="text-2xl font-bold text-slate-700"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
+                          <p class="text-sm text-slate-500">Joined in last 7 days</p>
+                        </div>
+                      </div>
+                    </button>
+                    <button id="queueMedicalRecords" type="button" class="w-full cursor-pointer rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-left transition-all duration-200 hover:-translate-y-1 hover:shadow-md">
+                      <div class="flex items-center gap-3">
+                        <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white text-emerald-600">
+                          <i class="ri-file-medical-line text-xl"></i>
+                        </span>
+                        <div>
+                          <p class="text-sm font-semibold text-slate-700">Medical records</p>
+                          <p id="alertMedicalRecords" class="text-xl font-bold text-emerald-700"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
+                          <p class="text-sm text-slate-500">Open records center</p>
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+
+    <!-- ================= ANALYTICS SUMMARY ================= -->
+    <div id="adminViewAnalytics" class="hidden">
+      <section id="analyticsSummary" class="mb-8 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p class="text-sm uppercase tracking-widest text-orange-600 font-semibold">PetHub Analytics</p>
+            <h2 class="text-3xl font-bold text-slate-800 dark:text-slate-100">Analytics</h2>
+            <p class="text-slate-600 dark:text-slate-300 mt-2">View summarized records and trends for pets, services, and appointments.</p>
+          </div>
+        </div>
+      </section>
+
+      <div id="analyticsCharts" class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
+        <div class="bg-white border border-gray-200 rounded-3xl shadow-sm p-6">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100">Pet Type Distribution</h3>
+              <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Count by pet species</p>
+            </div>
+          </div>
+          <div class="min-h-[320px] relative">
+            <canvas id="petTypeChart" class="w-full h-72"></canvas>
+            <div id="petTypeNoData" class="hidden absolute inset-0 text-slate-500 dark:text-slate-400">
+              <div class="flex h-full items-center justify-center">No pet data available.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white border border-gray-200 rounded-3xl shadow-sm p-6">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100">Service Usage</h3>
+              <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Most requested service types</p>
+            </div>
+          </div>
+          <div class="min-h-[320px] relative">
+            <canvas id="serviceUsageChart" class="w-full h-72"></canvas>
+            <div id="serviceUsageNoData" class="hidden absolute inset-0 text-slate-500 dark:text-slate-400">
+              <div class="flex h-full items-center justify-center">No service data available.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white border border-gray-200 rounded-3xl shadow-sm p-6">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100">Appointment Trend</h3>
+              <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Weekly booking activity</p>
+            </div>
+          </div>
+          <div class="min-h-[320px] relative">
+            <canvas id="appointmentTrendChart" class="w-full h-72"></canvas>
+            <div id="appointmentTrendNoData" class="hidden absolute inset-0 text-slate-500 dark:text-slate-400">
+              <div class="flex h-full items-center justify-center">No appointment trend data available.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="analyticsInsights" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
+        <div class="bg-white border border-gray-200 rounded-3xl shadow-sm p-6">
+          <p class="text-sm uppercase tracking-wide text-slate-500 dark:text-slate-400 font-semibold">Most Common Pet Type</p>
+          <p id="insightPetType" class="text-xl font-semibold text-slate-800 dark:text-slate-100 mt-4"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-3xl shadow-sm p-6">
+          <p class="text-sm uppercase tracking-wide text-slate-500 dark:text-slate-400 font-semibold">Most Requested Service</p>
+          <p id="insightService" class="text-xl font-semibold text-slate-800 dark:text-slate-100 mt-4"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-3xl shadow-sm p-6">
+          <p class="text-sm uppercase tracking-wide text-slate-500 dark:text-slate-400 font-semibold">Upcoming Bookings</p>
+          <p id="insightBookings" class="text-xl font-semibold text-slate-800 dark:text-slate-100 mt-4"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
+        </div>
+        <div class="bg-white border border-gray-200 rounded-3xl shadow-sm p-6">
+          <p class="text-sm uppercase tracking-wide text-slate-500 dark:text-slate-400 font-semibold">Completed Rate</p>
+          <p id="insightCompletion" class="text-xl font-semibold text-slate-800 dark:text-slate-100 mt-4"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
+        </div>
+      </div>
+    </div>
+
+    <div id="adminViewMedicalRecords" class="hidden">
+      <section id="medicalRecordsSection" class="mb-8 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p class="inline-flex items-center gap-2 text-sm uppercase tracking-widest text-emerald-600 font-semibold">
+              <i class="ri-file-medical-line text-base"></i>
+              <span>Medical Records</span>
+            </p>
+            <h2 class="text-3xl font-bold text-slate-800 dark:text-slate-100">Official medical records</h2>
+            <p class="text-slate-600 dark:text-slate-300 mt-2">Review medical records for pets across PetHub.</p>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mt-2">Official medical records are added after appointments, checkups, vaccinations, or treatments.</p>
+          </div>
+        </div>
+        <div class="mt-6">
+          <div class="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+            <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">Official medical record entries</p>
+            <p id="medicalRecordsSummary" class="text-sm text-slate-500 dark:text-slate-400"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading records</span></span></p>
+          </div>
+          <div id="recentMedicalRecordsContainer" class="space-y-4 text-sm text-slate-600 dark:text-slate-300">
+            <div class="dashboard-loading-state" role="status" aria-live="polite">
+              <div class="dashboard-loading-spinner" aria-hidden="true"></div>
+              <div>
+                <p class="dashboard-loading-title">Loading medical records...</p>
+                <p class="dashboard-loading-copy">Fetching the latest PetHub records.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ================= MANAGEMENT PANELS ================= -->
+    <div id="adminViewManagement" class="hidden">
+      <section id="managementPanel" class="mb-8 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p class="text-sm uppercase tracking-widest text-orange-600 font-semibold">Management</p>
+            <h2 class="text-3xl font-bold text-slate-800 dark:text-slate-100">Manage records</h2>
+            <p class="text-slate-600 dark:text-slate-300 mt-2">Manage users, pets, and appointments using real system data.</p>
+          </div>
+          <button id="refreshDashboard" type="button" class="admin-panel-button rounded-full bg-orange-500 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-600 hover:shadow-md">Refresh</button>
+        </div>
+
+        <div class="mt-6 flex flex-wrap gap-3 border-b border-gray-200 pb-4">
+          <button id="tabUsers" type="button" class="rounded-full bg-orange-500 text-white px-4 py-2 text-sm font-semibold shadow-sm transition hover:bg-orange-600" aria-pressed="true">Users</button>
+          <button id="tabPets" type="button" class="rounded-full bg-slate-100 text-slate-700 px-4 py-2 text-sm font-semibold shadow-sm transition hover:bg-slate-200" aria-pressed="false">Pets</button>
+          <button id="tabAppointments" type="button" class="rounded-full bg-slate-100 text-slate-700 px-4 py-2 text-sm font-semibold shadow-sm transition hover:bg-slate-200" aria-pressed="false">Appointments</button>
+        </div>
+
+        <div class="mt-6 space-y-10">
+          <div id="usersTabPanel">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
+            <div class="w-full sm:max-w-xs">
+              <label class="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Search users</label>
+              <input id="userSearchInput" type="search" placeholder="Name or email" class="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 shadow-sm focus:border-orange-400 focus:outline-none dark-safe-input" />
+            </div>
+          </div>
+          <div class="overflow-x-auto rounded-3xl border border-gray-200 bg-white shadow-sm">
+            <table class="w-full min-w-full text-left text-sm">
+              <thead class="border-b border-gray-200 bg-slate-50 dark:bg-slate-900">
+                <tr>
+                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Name</th>
+                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Email</th>
+                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Role</th>
+                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Email Status</th>
+                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Joined</th>
+                </tr>
+              </thead>
+              <tbody id="usersTable">
+                <tr><td colspan="5" class="dashboard-table-loading"><div class="dashboard-loading-state" role="status" aria-live="polite"><div class="dashboard-loading-spinner" aria-hidden="true"></div><div><p class="dashboard-loading-title">Loading users...</p><p class="dashboard-loading-copy">Fetching the latest PetHub records.</p></div></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+          <div id="petsTabPanel" class="hidden">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
+            <div class="w-full sm:max-w-xs">
+              <label class="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Search pets</label>
+              <input id="petSearchInput" type="search" placeholder="Pet, species, breed, owner" class="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 shadow-sm focus:border-orange-400 focus:outline-none dark-safe-input" />
+            </div>
+          </div>
+          <div class="overflow-x-auto rounded-3xl border border-gray-200 bg-white shadow-sm">
+            <table class="w-full min-w-full text-left text-sm">
+              <thead class="border-b border-gray-200 bg-slate-50 dark:bg-slate-900">
+                <tr>
+                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Name</th>
+                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Species</th>
+                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Breed</th>
+                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Age</th>
+                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Owner</th>
+                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Latest Record</th>
+                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Created</th>
+                </tr>
+              </thead>
+              <tbody id="petsTable">
+                <tr><td colspan="7" class="dashboard-table-loading"><div class="dashboard-loading-state" role="status" aria-live="polite"><div class="dashboard-loading-spinner" aria-hidden="true"></div><div><p class="dashboard-loading-title">Loading pets...</p><p class="dashboard-loading-copy">Fetching the latest PetHub records.</p></div></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+          <div id="appointmentsTabPanel" class="hidden">
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-2 mb-6">
+            <div class="w-full sm:max-w-xs">
+              <label class="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Search appointments</label>
+              <input id="appointmentSearchInput" type="search" placeholder="Pet or service" class="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 shadow-sm focus:border-orange-400 focus:outline-none dark-safe-input" />
+            </div>
+            <div class="w-full sm:max-w-xs">
+              <label class="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Status filter</label>
+              <select id="appointmentStatusFilter" class="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-slate-800 dark:text-slate-100 shadow-sm focus:border-orange-400 focus:outline-none dark-safe-select">
+                <option value="all">All statuses</option>
+                <option value="Pending">Pending</option>
+                <option value="Approved">Approved</option>
+                <option value="Completed">Completed</option>
+                <option value="Cancelled">Cancelled</option>
+              </select>
+            </div>
+          </div>
+          <div class="overflow-x-auto rounded-3xl border border-gray-200 bg-white shadow-sm">
+            <table class="w-full min-w-full text-left text-sm">
+              <thead class="border-b border-gray-200 bg-slate-50 dark:bg-slate-900">
+                <tr>
+                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Pet</th>
+                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Service</th>
+                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Duration</th>
+                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Date</th>
+                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Time range</th>
+                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Status</th>
+                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Handled by</th>
+                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="appointmentsTable">
+                <tr><td colspan="8" class="dashboard-table-loading"><div class="dashboard-loading-state" role="status" aria-live="polite"><div class="dashboard-loading-spinner" aria-hidden="true"></div><div><p class="dashboard-loading-title">Loading appointments...</p><p class="dashboard-loading-copy">Fetching the latest PetHub records.</p></div></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ================= SYSTEM ACTIVITY LOGS ================= -->
+    <div id="adminViewActivityLogs" class="hidden">
+      <div id="systemLogs" class="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm mb-8">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <p class="text-sm uppercase tracking-wide text-orange-600 font-semibold">System Activity Logs</p>
+            <h3 class="text-xl font-bold text-slate-800 dark:text-slate-100">Recent system actions</h3>
+          </div>
+        </div>
+        <div id="systemLogsContainer" class="space-y-4 text-sm text-slate-600 dark:text-slate-300">
+          <div class="dashboard-loading-state" role="status" aria-live="polite">
+            <div class="dashboard-loading-spinner" aria-hidden="true"></div>
+            <div>
+              <p class="dashboard-loading-title">Loading activity logs...</p>
+              <p class="dashboard-loading-copy">Fetching the latest PetHub records.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= CONTACT MESSAGES ================= -->
+    <div id="adminViewMessages" class="hidden">
+      <section class="mb-8 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p class="text-sm uppercase tracking-widest text-orange-600 font-semibold">Messages</p>
+            <h2 class="text-3xl font-bold text-slate-800 dark:text-slate-100">Contact messages</h2>
+            <p class="text-slate-600 dark:text-slate-300 mt-2">Review contact form submissions and mark unread messages as read.</p>
+          </div>
+        </div>
+
+        <div class="mt-8 overflow-x-auto rounded-3xl border border-gray-200 bg-white shadow-sm">
+          <table class="w-full min-w-full text-left text-sm">
+            <thead class="border-b border-gray-200 bg-slate-50 dark:bg-slate-900">
+              <tr>
+                <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Name</th>
+                <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Email</th>
+                <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Message</th>
+                <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Status</th>
+                <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Received</th>
+                <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="contactMessagesTable">
+              <tr><td colspan="6" class="dashboard-table-loading"><div class="dashboard-loading-state" role="status" aria-live="polite"><div class="dashboard-loading-spinner" aria-hidden="true"></div><div><p class="dashboard-loading-title">Loading messages...</p><p class="dashboard-loading-copy">Fetching the latest PetHub records.</p></div></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- ================= FOOTER ================= -->
+  <footer class="footer hidden" aria-hidden="true">
+    <p>&copy; 2026 PetHub. All rights reserved.</p>
+  </footer>
+
+  <!-- ================= DARK MODE TOGGLE ================= -->
+  <button id="darkModeToggle" class="dark-mode-toggle hidden" title="Toggle Dark Mode" aria-hidden="true" tabindex="-1">
+    <i class="ri-moon-line"></i>
+  </button>
+
+  <!-- JS -->
+  <script src="../../js/core/api.js"></script>
+  <script src="../../js/core/utils.js"></script>
+  <script src="../../js/core/storage.js"></script>
+  <script src="../../js/main.js"></script>
+  <script src="../../js/admin/sidebar.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="../../js/shared/appointment-durations.js"></script>
+  <script src="../../js/admin/dashboard.js"></script>
+  <script src="../../js/shared/ai-widget.js"></script>
+
+</body>
+</html>

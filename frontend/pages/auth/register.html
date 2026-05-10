@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PetHub | Register</title>
+  <link rel="stylesheet" href="../../assets/css/style.css">
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet">
+</head>
+<body class="flex flex-col min-h-screen">
+  <nav class="nav">
+    <div class="nav-container">
+      <a href="../../index.html" class="logo">
+        <img src="../../assets/images/paw.png" alt="PetHub">
+        <h1>PetHub</h1>
+      </a>
+      <ul class="nav-links">
+        <li><a href="../../index.html">Home</a></li>
+        <li><a href="../public/about.html">About</a></li>
+        <li><a href="../public/services.html">Services</a></li>
+        <li><a href="../public/contact.html">Contact</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main class="flex-grow">
+    <section class="auth-section">
+      <div class="auth-card">
+        <h2>Create an Account</h2>
+        <p class="text-gray-500">Join PetHub today and manage your pets, appointments, and records in one place.</p>
+
+        <form id="registerForm" class="space-y-5">
+          <div class="form-group" id="fullnameGroup">
+            <label class="flex items-center gap-2 font-semibold text-gray-700 mb-2">
+              <i class="ri-user-line text-orange-500"></i>
+              Full Name
+            </label>
+            <input type="text" id="fullname" placeholder="Enter your full name" required
+              class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-100 focus:outline-none transition-all duration-200 bg-white hover:border-orange-300">
+          </div>
+
+          <div class="form-group" id="emailGroup">
+            <label class="flex items-center gap-2 font-semibold text-gray-700 mb-2">
+              <i class="ri-mail-line text-orange-500"></i>
+              Email
+            </label>
+            <input type="email" id="email" placeholder="Enter your email" required
+              class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-100 focus:outline-none transition-all duration-200 bg-white hover:border-orange-300">
+            <p id="emailErrorMessage" class="mt-2 text-sm font-medium text-red-600"></p>
+          </div>
+
+          <div class="form-group" id="passwordGroup">
+            <label class="flex items-center gap-2 font-semibold text-gray-700 mb-2">
+              <i class="ri-lock-line text-orange-500"></i>
+              Password
+            </label>
+            <div class="relative">
+              <input type="password" id="password" placeholder="Create a password" required
+                class="w-full px-4 py-3 pr-12 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-100 focus:outline-none transition-all duration-200 bg-white hover:border-orange-300">
+              <button type="button" id="togglePassword" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-orange-500 transition-colors duration-150">
+                <i class="ri-eye-line"></i>
+              </button>
+            </div>
+            <p id="passwordHint" class="mt-2 text-sm text-gray-500">Use at least 8 characters.</p>
+          </div>
+
+          <div class="form-group" id="confirmPasswordGroup">
+            <label class="flex items-center gap-2 font-semibold text-gray-700 mb-2">
+              <i class="ri-shield-check-line text-orange-500"></i>
+              Confirm Password
+            </label>
+            <div class="relative">
+              <input type="password" id="confirmPassword" placeholder="Confirm your password" required
+                class="w-full px-4 py-3 pr-12 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-100 focus:outline-none transition-all duration-200 bg-white hover:border-orange-300">
+              <button type="button" id="togglePasswordConfirm" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-orange-500 transition-colors duration-150">
+                <i class="ri-eye-line"></i>
+              </button>
+            </div>
+          </div>
+
+          <div id="formMessageContainer" class="min-h-10 text-sm font-medium rounded-lg transition-all duration-200"></div>
+
+          <button type="submit" class="w-full py-3 mt-6 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 active:from-orange-700 active:to-orange-800 text-white font-semibold rounded-lg transition-all duration-200 cursor-pointer border-none transform hover:scale-105 active:scale-95 shadow-lg hover:shadow-xl">Register</button>
+        </form>
+
+        <p class="auth-link">
+          Already have an account?
+          <a href="login.html">Login here</a>
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>&copy; 2026 PetHub. Caring for Your Pet's Health. All rights reserved.</p>
+  </footer>
+
+  <button id="darkModeToggle" class="dark-mode-toggle" title="Toggle Dark Mode">
+    <i class="ri-moon-line"></i>
+  </button>
+
+  <script src="../../js/core/api.js"></script>
+  <script src="../../js/core/utils.js"></script>
+  <script src="../../js/core/storage.js"></script>
+  <script src="../../js/main.js"></script>
+  <script src="../../js/core/auth.js"></script>
+</body>
+</html>

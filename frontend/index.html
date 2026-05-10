@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PetHub | Home</title>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="assets/css/style.css">
+
+  <!-- Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet">
+</head>
+<body class="flex flex-col min-h-screen">
+
+  <!-- ================= NAVIGATION ================= -->
+  <nav class="nav">
+    <div class="nav-container">
+
+      <!-- Logo -->
+      <a href="index.html" class="logo">
+        <img src="assets/images/paw.png" alt="PetHub">
+        <h1>PetHub</h1>
+      </a>
+
+      <!-- Links -->
+      <ul class="nav-links">
+        <li><a href="index.html" class="active">Home</a></li>
+        <li><a href="pages/public/about.html">About</a></li>
+        <li><a href="pages/public/services.html">Services</a></li>
+        <li><a href="pages/public/contact.html">Contact</a></li>
+        <li><a href="pages/auth/login.html" class="btn-login">Login</a></li>
+      </ul>
+
+    </div>
+  </nav>
+
+  <!-- ================= MAIN CONTENT ================= -->
+  <main class="flex-grow">
+
+  <!-- ================= HERO SECTION ================= -->
+  <header class="relative min-h-screen bg-gradient-to-br from-orange-50 via-white to-blue-50 flex items-center py-16 px-4">
+    <div class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-16 items-center w-full">
+
+      <div class="space-y-8 animate-fadeInUp">
+        <div class="space-y-4">
+          <h1 class="text-6xl md:text-7xl font-bold text-gray-900 leading-tight">
+            PetHub
+          </h1>
+          <p class="text-2xl font-semibold text-orange-500">A real pet care platform for owners and teams.</p>
+        </div>
+        <p class="text-lg text-gray-600 leading-relaxed max-w-lg">
+          PetHub is built with Node, Express, and Supabase to support secure pet profiles, appointment booking, medical record management, and admin workflows in a single accessible app.
+        </p>
+        <div class="flex flex-col sm:flex-row gap-4 pt-4">
+          <a href="pages/auth/register.html" class="inline-flex items-center justify-center bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-semibold py-4 px-8 rounded-2xl transition-all duration-300 transform hover:scale-105 hover:shadow-xl shadow-lg text-center">
+            <i class="ri-arrow-right-line mr-2"></i>Create Account
+          </a>
+          <a href="pages/auth/login.html" class="inline-flex items-center justify-center bg-white border-2 border-orange-500 text-orange-600 hover:bg-orange-50 font-semibold py-4 px-8 rounded-2xl transition-all duration-300 text-center hover:shadow-lg">
+            Sign In
+          </a>
+        </div>
+      </div>
+
+      <div class="flex justify-center transform hover:scale-105 transition-transform duration-300">
+        <img src="assets/images/logo.jpg" alt="PetHub Illustration" class="w-full max-w-xs md:max-w-sm lg:max-w-md h-auto rounded-3xl object-cover shadow-2xl" loading="lazy">
+      </div>
+
+    </div>
+  </header>
+
+  <!-- ================= WHAT PETHUB DOES ================= -->
+  <section class="bg-white py-32 px-4">
+    <div class="max-w-6xl mx-auto">
+      <div class="text-center mb-20">
+        <h2 class="text-5xl font-bold text-gray-900 mb-6">
+          What PetHub Does
+        </h2>
+        <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+          Clear, accurate tools for managing pets, appointments, records, and support within one secure system.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div class="group bg-white p-8 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-gray-100 hover:border-orange-200">
+          <div class="flex justify-center mb-6">
+            <div class="w-16 h-16 bg-gradient-to-br from-orange-100 to-orange-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
+              <i class="ri-paw-line text-3xl text-orange-500"></i>
+            </div>
+          </div>
+          <h3 class="text-lg font-bold text-gray-900 mb-3 text-center">Pet Profiles</h3>
+          <p class="text-gray-600 text-center text-sm leading-relaxed">Create, view, and update pet profiles with medical history, allergies, and care notes.</p>
+        </div>
+
+        <div class="group bg-white p-8 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-gray-100 hover:border-green-200">
+          <div class="flex justify-center mb-6">
+            <div class="w-16 h-16 bg-gradient-to-br from-green-100 to-green-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
+              <i class="ri-file-text-line text-3xl text-green-500"></i>
+            </div>
+          </div>
+          <h3 class="text-lg font-bold text-gray-900 mb-3 text-center">Medical Records</h3>
+          <p class="text-gray-600 text-center text-sm leading-relaxed">Keep health records and treatment history accessible to authorized users.</p>
+        </div>
+
+        <div class="group bg-white p-8 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-gray-100 hover:border-blue-200">
+          <div class="flex justify-center mb-6">
+            <div class="w-16 h-16 bg-gradient-to-br from-blue-100 to-blue-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
+              <i class="ri-calendar-check-line text-3xl text-blue-500"></i>
+            </div>
+          </div>
+          <h3 class="text-lg font-bold text-gray-900 mb-3 text-center">Appointment Booking</h3>
+          <p class="text-gray-600 text-center text-sm leading-relaxed">Book appointments and track their status through the user and admin dashboards.</p>
+        </div>
+
+        <div class="group bg-white p-8 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-gray-100 hover:border-purple-200">
+          <div class="flex justify-center mb-6">
+            <div class="w-16 h-16 bg-gradient-to-br from-purple-100 to-purple-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
+              <i class="ri-settings-5-line text-3xl text-purple-500"></i>
+            </div>
+          </div>
+          <h3 class="text-lg font-bold text-gray-900 mb-3 text-center">Admin Panel</h3>
+          <p class="text-gray-600 text-center text-sm leading-relaxed">Admin features include user, pet, appointment, and records management.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+
+
+
+  <section class="bg-slate-50 py-24 px-4">
+    <div class="max-w-6xl mx-auto">
+      <div class="text-center mb-16">
+        <p class="uppercase tracking-[0.3em] text-orange-500 font-semibold mb-3">How PetHub works</p>
+        <h2 class="text-5xl font-bold text-gray-900">A dependable workflow for pet care</h2>
+        <p class="text-xl text-gray-600 max-w-2xl mx-auto mt-4">
+          Register, verify your account, and manage pets and appointments with secure Supabase-backed storage.
+        </p>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="bg-white p-8 rounded-3xl shadow-lg border border-gray-100">
+          <h3 class="text-2xl font-semibold text-gray-900 mb-3">Register & Verify</h3>
+          <p class="text-gray-600 text-sm leading-relaxed">Create an account and verify your email so you can access appointments and pet records securely.</p>
+        </div>
+        <div class="bg-white p-8 rounded-3xl shadow-lg border border-gray-100">
+          <h3 class="text-2xl font-semibold text-gray-900 mb-3">Manage Records</h3>
+          <p class="text-gray-600 text-sm leading-relaxed">Add or update pet details, health history, vaccinations, and care notes through your dashboard.</p>
+        </div>
+        <div class="bg-white p-8 rounded-3xl shadow-lg border border-gray-100">
+          <h3 class="text-2xl font-semibold text-gray-900 mb-3">Book Appointments</h3>
+          <p class="text-gray-600 text-sm leading-relaxed">Schedule visits and review appointment statuses directly in the dashboard.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="bg-gradient-to-r from-orange-50 to-blue-50 py-24 px-4">
+    <div class="max-w-6xl mx-auto">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="bg-white p-10 rounded-3xl shadow-lg border border-gray-200 text-center">
+          <p class="text-4xl font-bold text-orange-600">Secure</p>
+          <p class="mt-4 text-gray-600">Supabase authentication and API controls protect user accounts and pet data.</p>
+        </div>
+        <div class="bg-white p-10 rounded-3xl shadow-lg border border-gray-200 text-center">
+          <p class="text-4xl font-bold text-blue-600">Integrated</p>
+          <p class="mt-4 text-gray-600">A single app connects pet profiles, appointments, medical records, and admin workflows.</p>
+        </div>
+        <div class="bg-white p-10 rounded-3xl shadow-lg border border-gray-200 text-center">
+          <p class="text-4xl font-bold text-green-600">Practical</p>
+          <p class="mt-4 text-gray-600">Real system capabilities for owners, vets, and administrators, not just homepage claims.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  </main>
+
+  <!-- ================= FOOTER ================= -->
+  <footer class="footer">
+    <p>&copy; 2026 PetHub. Caring for Your Pet's Health. All rights reserved.</p>
+  </footer>
+
+  <!-- ================= DARK MODE TOGGLE ================= -->
+  <button id="darkModeToggle" class="dark-mode-toggle" title="Toggle Dark Mode">
+    <i class="ri-moon-line"></i>
+  </button>
+
+  <!-- JS -->
+  <script src="js/core/api.js"></script>
+  <script src="js/core/utils.js"></script>
+  <script src="js/core/storage.js"></script>
+  <script src="js/main.js"></script>
+  <script src="js/shared/ai-widget.js"></script>
+
+</body>
+</html>

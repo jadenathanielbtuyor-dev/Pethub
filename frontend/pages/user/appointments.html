@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PetHub | Appointments</title>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="../../assets/css/style.css">
+
+  <!-- Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet">
+</head>
+
+<body class="flex flex-col min-h-screen"
+  style="background-image: url('../../assets/images/bgpaws.jpg'); background-repeat: repeat; background-attachment: fixed;">
+
+  <!-- ================= NAVIGATION ================= -->
+  <nav class="nav sticky top-0 z-50 bg-white shadow-md border-b-2 border-orange-100">
+    <div class="nav-container flex flex-wrap items-center justify-between gap-4 py-4 px-4">
+      <div class="flex items-center gap-3">
+        <img src="../../assets/images/paw.png" alt="PetHub" class="w-10 h-10 rounded-full bg-orange-100 p-2">
+        <div>
+          <p class="text-base font-bold text-gray-900">PetHub</p>
+          <p class="text-xs text-gray-500 uppercase tracking-wide">Private Dashboard</p>
+        </div>
+      </div>
+      <ul class="nav-links flex flex-wrap items-center gap-1">
+        <li><a href="dashboard.html" class="flex items-center gap-2 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-100 hover:text-orange-600 transition-all duration-200"><i class="ri-home-line"></i>Dashboard</a></li>
+        <li><a href="pets.html" class="flex items-center gap-2 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-100 hover:text-orange-600 transition-all duration-200"><i class="ri-paw-line"></i>Pets</a></li>
+        <li><a href="appointments.html" class="flex items-center gap-2 text-orange-600 font-semibold px-3 py-2 rounded-lg bg-orange-50 transition-all duration-200 hover:bg-orange-100"><i class="ri-calendar-line"></i>Appointments</a></li>
+        <li><a href="#logout" class="btn-logout flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white transition-all duration-200 hover:bg-orange-600 hover:shadow-lg active:scale-95"><i class="ri-logout-circle-line"></i>Logout</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- ================= MAIN CONTENT ================= -->
+  <main class="flex-grow py-12 px-4">
+    <div class="max-w-5xl mx-auto">
+
+      <!-- Header -->
+      <header class="mb-8">
+        <h1 class="text-4xl font-bold text-gray-900 mb-2">My Appointments</h1>
+        <p class="text-gray-600">Schedule veterinary visits and track their status</p>
+      </header>
+
+      <!-- Book Appointment & List Section -->
+      <div class="grid grid-cols-1 lg:grid-cols-4 gap-8 mb-12">
+        
+        <!-- Book Appointment Form -->
+        <div class="lg:col-span-1 bg-white rounded-2xl shadow-lg p-8 border border-gray-100 h-fit sticky top-24">
+          <h2 class="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+            <i class="ri-calendar-event-line text-blue-500"></i>
+            Book Appointment
+          </h2>
+
+          <div id="messageContainer" class="mb-4 p-3 rounded-lg bg-blue-50 text-blue-700 text-sm hidden"></div>
+
+          <form id="appointmentForm" class="space-y-4">
+            <div>
+              <label class="block text-gray-700 font-semibold text-sm mb-2">Pet</label>
+              <select id="petSelect" required
+                class="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-colors">
+                <option value="">Loading pets...</option>
+              </select>
+              <p id="petSelectHint" class="mt-2 hidden text-sm font-medium text-slate-500" aria-live="polite"></p>
+            </div>
+
+            <div>
+              <label class="block text-gray-700 font-semibold text-sm mb-2">Service Type</label>
+              <select id="serviceType" required
+                class="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-colors">
+                <option value="">Select Service</option>
+                <option value="Checkup">✓ Checkup</option>
+                <option value="Vaccination">💉 Vaccination</option>
+                <option value="Grooming">✄ Grooming</option>
+                <option value="Dental Cleaning">🦷 Dental Cleaning</option>
+                <option value="Surgery">🔧 Surgery</option>
+                <option value="Other">📋 Other</option>
+              </select>
+              <p id="serviceDurationHint" class="mt-2 hidden text-sm font-medium text-slate-500" aria-live="polite"></p>
+            </div>
+
+            <div>
+              <label class="block text-gray-700 font-semibold text-sm mb-2">Date</label>
+              <input type="date" id="appointmentDate" required aria-describedby="appointmentDateError"
+                class="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-colors">
+              <p id="appointmentDateError" class="mt-2 hidden text-sm font-medium text-red-600" aria-live="polite"></p>
+            </div>
+
+            <div>
+              <label class="block text-gray-700 font-semibold text-sm mb-2">Time</label>
+              <input type="time" id="appointmentTime" required aria-describedby="appointmentTimeError"
+                class="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-colors">
+              <p id="appointmentTimeError" class="mt-2 hidden text-sm font-medium text-red-600" aria-live="polite"></p>
+            </div>
+
+            <button type="submit"
+              class="w-full py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold rounded-lg transition-all duration-200 transform hover:scale-105 active:scale-95 mt-6">
+              <i class="ri-check-line mr-2"></i>Book
+            </button>
+          </form>
+        </div>
+
+        <!-- Appointments List -->
+        <div class="lg:col-span-3">
+          <div class="bg-white rounded-2xl shadow-lg p-8 border border-gray-100">
+            <h2 class="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+              <i class="ri-calendar-2-line text-blue-500"></i>
+              Appointments
+            </h2>
+
+            <div id="appointmentsList" class="space-y-4">
+              <div class="text-center py-12 text-gray-500">
+                <p class="text-4xl mb-3">📅</p>
+                <p class="font-medium">Loading appointments...</p>
+                <p class="text-sm">Fetching the latest PetHub records.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ================= FOOTER ================= -->
+  <footer class="footer bg-gray-900 text-white py-8 px-4">
+    <div class="max-w-6xl mx-auto text-center">
+      <p>© 2026 PetHub. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <!-- ================= DARK MODE TOGGLE ================= -->
+  <button id="darkModeToggle" class="dark-mode-toggle" title="Toggle Dark Mode">
+    <i class="ri-moon-line"></i>
+  </button>
+
+  <!-- JAVASCRIPT -->
+  <script src="../../js/core/api.js"></script>
+  <script src="../../js/core/utils.js"></script>
+  <script src="../../js/core/storage.js"></script>
+  <script src="../../js/main.js"></script>
+  <script src="../../js/shared/appointment-durations.js"></script>
+  <script src="../../js/user/appointments.js"></script>
+  <script src="../../js/shared/ai-widget.js"></script>
+
+</body>
+</html>
