@@ -7,10 +7,29 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
+const allowedOrigins = [
+  'https://pethub-beige.vercel.app',
+  'https://pethub-zzz-duke1-s-projects.vercel.app',
+  'https://pethub-git-main-zzz-duke1-s-projects.vercel.app',
+  'https://pethub-jxb3zsszt-zzz-duke1-s-projects.vercel.app'
+];
+
 const corsOptions = {
-  origin: process.env.NODE_ENV === 'production'
-    ? ['https://pethub-beige.vercel.app'] // Update with your production domain
-    : true, // Allow all development origins so local files and different dev ports work
+  origin: (origin, callback) => {
+    // Allow requests with no origin (Postman/mobile apps/local tools)
+    if (!origin) return callback(null, true);
+
+    // Allow Vercel deployments + localhost
+    if (
+      allowedOrigins.includes(origin) ||
+      origin.endsWith('.vercel.app') ||
+      origin.includes('localhost')
+    ) {
+      return callback(null, true);
+    }
+
+    return callback(new Error('Not allowed by CORS'));
+  },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-User-ID'],
   credentials: true
