@@ -13,7 +13,8 @@ const INVALID_APPOINTMENT_DATE_MESSAGE = "Enter a valid appointment date.";
 const INVALID_APPOINTMENT_TIME_MESSAGE = "Enter a valid appointment time.";
 const PAST_APPOINTMENT_DATE_MESSAGE = "Appointment date cannot be in the past.";
 const PAST_APPOINTMENT_TIME_MESSAGE = "Appointment time must be later than the current time when booking for today.";
-const APPOINTMENT_DATE_AVAILABILITY_NOTE = "Some times are unavailable based on existing appointments.";
+const APPOINTMENT_DATE_AVAILABILITY_NOTE = "That slot is unavailable. Choose another time.";
+const OCCUPIED_APPOINTMENT_STATUSES = new Set(["approved", "completed"]);
 const APPOINTMENT_DATE_TIME_MESSAGES = [
   INVALID_APPOINTMENT_DATE_MESSAGE,
   INVALID_APPOINTMENT_TIME_MESSAGE,
@@ -77,7 +78,10 @@ function setupAppointmentDateMin() {
     updateAppointmentDateTimeValidation({ showFeedback: true });
     updateAppointmentDateAvailabilityNote();
   };
-  const updateTimeValidity = () => updateAppointmentDateTimeValidation({ showFeedback: true });
+  const updateTimeValidity = () => {
+    updateAppointmentDateTimeValidation({ showFeedback: true });
+    updateAppointmentDateAvailabilityNote();
+  };
 
   dateInput.addEventListener("input", updateDateValidity);
   dateInput.addEventListener("change", updateDateValidity);
@@ -284,9 +288,46 @@ function getAppointmentRecordDateValue(dateValue) {
   return getTodayDateValue(parsedDate);
 }
 
-function isActiveAppointmentForDate(appointment, dateValue) {
+function getAppointmentTimeRange(dateValue, timeValue, durationMinutes) {
+  const startTime = parseAppointmentDateTime(dateValue, timeValue);
+  const duration = Number(durationMinutes);
+  if (!startTime || !Number.isFinite(duration) || duration <= 0) return null;
+
+  return {
+    date: getAppointmentRecordDateValue(dateValue),
+    startMs: startTime.getTime(),
+    endMs: startTime.getTime() + duration * 60000,
+  };
+}
+
+function appointmentRangesOverlap(first, second) {
+  if (!first || !second || first.date !== second.date) return false;
+  return first.startMs < second.endMs && second.startMs < first.endMs;
+}
+
+function getSelectedAppointmentTimeRange() {
+  const serviceType = document.getElementById("serviceType")?.value.trim() || "";
+  const dateValue = document.getElementById("appointmentDate")?.value.trim() || "";
+  const timeValue = document.getElementById("appointmentTime")?.value.trim() || "";
+  return getAppointmentTimeRange(dateValue, timeValue, getAppointmentDurationMinutes(serviceType));
+}
+
+function getStoredAppointmentTimeRange(appointment) {
+  return getAppointmentTimeRange(
+    getAppointmentRecordDateValue(appointment?.appointment_date),
+    appointment?.appointment_time,
+    getStoredAppointmentDurationMinutes(appointment)
+  );
+}
+
+function isOccupiedAppointment(appointment) {
   const status = String(appointment?.status || "").trim().toLowerCase();
-  return status !== "cancelled" && getAppointmentRecordDateValue(appointment?.appointment_date) === dateValue;
+  return OCCUPIED_APPOINTMENT_STATUSES.has(status);
+}
+
+function appointmentConflictsWithSelectedSlot(appointment, selectedRange) {
+  return isOccupiedAppointment(appointment) &&
+    appointmentRangesOverlap(getStoredAppointmentTimeRange(appointment), selectedRange);
 }
 
 async function fetchAppointmentsForSelectedDate(dateValue, signal) {
@@ -299,8 +340,8 @@ async function fetchAppointmentsForSelectedDate(dateValue, signal) {
 }
 
 async function updateAppointmentDateAvailabilityNote() {
-  const dateInput = document.getElementById("appointmentDate");
-  const dateValue = String(dateInput?.value || "").trim();
+  const dateValue = String(document.getElementById("appointmentDate")?.value || "").trim();
+  const selectedRange = getSelectedAppointmentTimeRange();
   const requestId = appointmentDateAvailabilityRequestId + 1;
   appointmentDateAvailabilityRequestId = requestId;
 
@@ -308,7 +349,7 @@ async function updateAppointmentDateAvailabilityNote() {
     appointmentDateAvailabilityController.abort();
   }
 
-  if (!dateValue || !isValidAppointmentDateValue(dateValue) || dateValue < getTodayDateValue()) {
+  if (!dateValue || !isValidAppointmentDateValue(dateValue) || dateValue < getTodayDateValue() || !selectedRange) {
     setAppointmentDateAvailabilityNote("");
     return;
   }
@@ -324,10 +365,10 @@ async function updateAppointmentDateAvailabilityNote() {
     );
     if (requestId !== appointmentDateAvailabilityRequestId) return;
 
-    const hasUnavailableTimes = appointments.some(appointment =>
-      isActiveAppointmentForDate(appointment, dateValue)
+    const hasUnavailableSlot = appointments.some(appointment =>
+      appointmentConflictsWithSelectedSlot(appointment, selectedRange)
     );
-    setAppointmentDateAvailabilityNote(hasUnavailableTimes ? APPOINTMENT_DATE_AVAILABILITY_NOTE : "");
+    setAppointmentDateAvailabilityNote(hasUnavailableSlot ? APPOINTMENT_DATE_AVAILABILITY_NOTE : "");
   } catch (error) {
     if (error?.name !== "AbortError") {
       console.warn("Unable to load appointment date availability:", error);
@@ -516,6 +557,7 @@ function setupServiceDurationHint() {
   };
 
   serviceInput.addEventListener("change", updateHint);
+  serviceInput.addEventListener("change", updateAppointmentDateAvailabilityNote);
   if (dateInput) dateInput.addEventListener("change", updateHint);
   if (timeInput) timeInput.addEventListener("change", updateHint);
   if (timeInput) timeInput.addEventListener("input", updateHint);
@@ -912,6 +954,7 @@ function setupFormHandler() {
       form.reset();
       clearServiceDurationHint();
       clearAppointmentDateTimeErrors();
+      setAppointmentDateAvailabilityNote("");
       applyAppointmentDateMin();
       applyAppointmentTimeMin();
       updateAppointmentPetBookingState();

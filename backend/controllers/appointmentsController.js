@@ -14,6 +14,7 @@ const INVALID_APPOINTMENT_TIME_MESSAGE = 'Enter a valid appointment time.';
 const PAST_APPOINTMENT_DATE_MESSAGE = 'Appointment date cannot be in the past.';
 const PAST_APPOINTMENT_TIME_MESSAGE = 'Appointment time must be later than the current time when booking for today.';
 const SCHEDULE_CONFLICT_MESSAGE = 'Selected time is unavailable.';
+const OCCUPIED_APPOINTMENT_STATUSES = new Set(['approved', 'completed']);
 
 function hasValue(value) {
   return value !== undefined && value !== null && String(value).trim() !== '';
@@ -190,9 +191,14 @@ function formatSuggestedAppointmentTime(timeMs) {
   return `${hours}:${minutes}`;
 }
 
-function getActiveAppointmentRanges(appointments) {
+function getActiveAppointmentRanges(appointments, excludedAppointmentId = '') {
+  const excludedId = String(excludedAppointmentId || '').trim();
   return (appointments || [])
-    .filter(appointment => String(appointment.status || '').trim().toLowerCase() !== 'cancelled')
+    .filter(appointment => {
+      const appointmentId = String(appointment?.id || '').trim();
+      const status = String(appointment?.status || '').trim().toLowerCase();
+      return (!excludedId || appointmentId !== excludedId) && OCCUPIED_APPOINTMENT_STATUSES.has(status);
+    })
     .map(appointment => {
       const range = getAppointmentTimeRange(
         appointment.appointment_date,
@@ -235,7 +241,7 @@ function getSuggestedTimeAfterConflict(requestedRange, existingRanges) {
   };
 }
 
-async function getScheduleConflict(appointmentDate, appointmentTime, estimatedDurationMinutes) {
+async function getScheduleConflict(appointmentDate, appointmentTime, estimatedDurationMinutes, excludedAppointmentId = '') {
   const requestedRange = getAppointmentTimeRange(appointmentDate, appointmentTime, estimatedDurationMinutes);
   if (!requestedRange) return { hasConflict: false, error: '' };
 
@@ -248,7 +254,7 @@ async function getScheduleConflict(appointmentDate, appointmentTime, estimatedDu
     throw error;
   }
 
-  const existingRanges = getActiveAppointmentRanges(appointments);
+  const existingRanges = getActiveAppointmentRanges(appointments, excludedAppointmentId);
   const conflict = getSuggestedTimeAfterConflict(requestedRange, existingRanges);
   if (!conflict.hasConflict) {
     return { hasConflict: false, error: '' };
@@ -517,7 +523,7 @@ const updateStatus = async (req, res) => {
 
     const { data: existingAppointment, error: existingError } = await supabase
       .from('appointments')
-      .select('id, status')
+      .select(APPOINTMENT_SELECT)
       .eq('id', normalizedAppointmentId)
       .maybeSingle();
 
@@ -546,6 +552,22 @@ const updateStatus = async (req, res) => {
       return res.status(400).json({
         error: `Cannot change appointment from ${currentStatus || 'unknown'} to ${normalizedStatus}.`
       });
+    }
+
+    if (normalizedStatus === 'Approved') {
+      const conflict = await getScheduleConflict(
+        existingAppointment.appointment_date,
+        existingAppointment.appointment_time,
+        existingAppointment.estimated_duration_minutes,
+        normalizedAppointmentId
+      );
+
+      if (conflict.hasConflict) {
+        return res.status(409).json({
+          error: conflict.error || SCHEDULE_CONFLICT_MESSAGE,
+          suggested_time: conflict.suggested_time || null
+        });
+      }
     }
 
     const { data, error } = await supabase

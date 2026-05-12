@@ -4,6 +4,7 @@ const supabase = require('../config/supabase');
 
 const APPOINTMENT_SELECT = 'id, user_id, pet_id, pet_name, service_type, estimated_duration_minutes, appointment_date, appointment_time, status, handled_by, created_at';
 const MEDICAL_RECORD_SELECT = 'id, pet_id, record_date, created_at, created_by, weight, vaccination_status, treatment, medical_notes';
+const MEDICAL_RECORD_COMPLETED_APPOINTMENT_ACTION = 'Created medical record for completed appointment';
 
 function isVerifiedValue(value) {
   return value === true || value === 'true' || value === 1 || value === '1';
@@ -127,6 +128,63 @@ function getMedicalRecordSummary(record) {
     .filter(Boolean);
 
   return parts.length ? parts[0] : 'Medical record available';
+}
+
+function getAppointmentIdFromMedicalRecordAction(action) {
+  const match = String(action || '').match(/completed appointment\s+([^\s]+)/i);
+  return match ? match[1].replace(/[.,;:]+$/, '') : '';
+}
+
+function getMedicalRecordCompletedAppointmentAction(appointmentId) {
+  return `${MEDICAL_RECORD_COMPLETED_APPOINTMENT_ACTION} ${String(appointmentId || '').trim()}`;
+}
+
+async function getCompletedMedicalRecordAppointmentState(appointmentIds = []) {
+  const requestedIds = new Set((Array.isArray(appointmentIds) ? appointmentIds : [])
+    .map(id => String(id || '').trim())
+    .filter(Boolean));
+
+  try {
+    const { data: logs, error } = await supabase
+      .from('activity_logs')
+      .select('id, target_id, action, created_at')
+      .eq('target_table', 'medical_records')
+      .ilike('action', `${MEDICAL_RECORD_COMPLETED_APPOINTMENT_ACTION}%`)
+      .order('created_at', { ascending: false })
+      .limit(5000);
+
+    if (error) {
+      console.warn('Unable to load completed medical record action state:', error);
+      return {};
+    }
+
+    return (logs || []).reduce((state, log) => {
+      const appointmentId = getAppointmentIdFromMedicalRecordAction(log.action);
+      if (!appointmentId || (requestedIds.size && !requestedIds.has(appointmentId))) {
+        return state;
+      }
+
+      if (!state[appointmentId]) {
+        state[appointmentId] = {
+          has_medical_record: true,
+          medical_record_action_completed: true,
+          medical_record_id: log.target_id || null,
+          medical_record_log_id: log.id || null
+        };
+      }
+      return state;
+    }, {});
+  } catch (error) {
+    console.warn('Unable to load completed medical record action state:', error);
+    return {};
+  }
+}
+
+function applyMedicalRecordStateToAppointments(appointments, medicalRecordState = {}) {
+  return (Array.isArray(appointments) ? appointments : []).map(appointment => {
+    const state = medicalRecordState[String(appointment?.id || '').trim()];
+    return state ? { ...appointment, ...state } : appointment;
+  });
 }
 
 function buildMedicalRecordContext(records) {
@@ -512,7 +570,13 @@ const getDashboardOverview = async (req, res) => {
       };
     });
 
-    const normalizedAppointments = normalizeAppointmentNames(appointments, userMap);
+    const appointmentMedicalRecordState = await getCompletedMedicalRecordAppointmentState(
+      appointments.map(appointment => appointment.id)
+    );
+    const normalizedAppointments = applyMedicalRecordStateToAppointments(
+      normalizeAppointmentNames(appointments, userMap),
+      appointmentMedicalRecordState
+    );
 
     const totalUsers = users.length;
     const totalPets = pets.length;
@@ -1001,7 +1065,13 @@ const getAllAppointments = async (req, res) => {
       }
     }
 
-    const normalizedAppointments = normalizeAppointmentNames(appointmentsList, userMap);
+    const appointmentMedicalRecordState = await getCompletedMedicalRecordAppointmentState(
+      appointmentsList.map(appointment => appointment.id)
+    );
+    const normalizedAppointments = applyMedicalRecordStateToAppointments(
+      normalizeAppointmentNames(appointmentsList, userMap),
+      appointmentMedicalRecordState
+    );
 
     res.json({ success: true, appointments: normalizedAppointments });
   } catch (error) {
@@ -1389,6 +1459,14 @@ const createMedicalRecord = async (req, res) => {
       if (hasValue(appointment.pet_id) && String(appointment.pet_id).trim() !== normalizedPetId) {
         return res.status(400).json({ success: false, error: 'Selected pet does not match the appointment pet.' });
       }
+
+      const existingMedicalRecordState = await getCompletedMedicalRecordAppointmentState([normalizedAppointmentId]);
+      if (existingMedicalRecordState[normalizedAppointmentId]?.has_medical_record) {
+        return res.status(409).json({
+          success: false,
+          error: 'A medical record has already been added for this appointment.'
+        });
+      }
     }
 
     const payload = {
@@ -1437,14 +1515,23 @@ const createMedicalRecord = async (req, res) => {
       'medical_records',
       record?.id || normalizedPetId,
       normalizedAppointmentId
-        ? `Created medical record for completed appointment ${normalizedAppointmentId}`
+        ? getMedicalRecordCompletedAppointmentAction(normalizedAppointmentId)
         : `Created medical record for pet ${normalizedPetId}`
     );
+
+    const responseRecord = record && normalizedAppointmentId
+      ? {
+          ...record,
+          appointment_id: normalizedAppointmentId,
+          has_medical_record: true,
+          medical_record_action_completed: true
+        }
+      : record;
 
     res.status(201).json({
       success: true,
       message: 'Medical record created successfully',
-      record
+      record: responseRecord
     });
   } catch (error) {
     console.error('Create admin medical record error:', error);

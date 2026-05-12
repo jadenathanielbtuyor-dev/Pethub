@@ -133,7 +133,7 @@ function displayAppointmentsTable(appointments) {
         </td>
         <td class="p-4 text-slate-700">${handledBy ? escapeHtml(handledBy) : '<span class="text-slate-400">-</span>'}</td>
         <td class="p-4">
-          ${renderAppointmentActions(status, apt)}
+          <div class="admin-medical-record-action-cell">${renderAppointmentActions(status, apt)}</div>
         </td>
       </tr>
     `;
@@ -223,6 +223,59 @@ function hasMedicalRecordCreateContext(appointment) {
   return getAppointmentOwnerPetsForMedicalRecord(appointment, adminPetsData).length > 0;
 }
 
+function hasAppointmentRecordedValue(value) {
+  return value !== undefined && value !== null && String(value).trim() !== '';
+}
+
+function hasCompletedMedicalRecordFlag(appointment) {
+  const positiveFlags = [
+    appointment?.has_medical_record,
+    appointment?.medical_record_action_completed,
+    appointment?.medical_record_created,
+    appointment?.medicalRecordCreated
+  ].some(value => value === true || value === 'true' || value === 1 || value === '1');
+
+  if (positiveFlags) return true;
+
+  return [
+    appointment?.medicalRecord?.id,
+    appointment?.medical_record?.id,
+    appointment?.medical_record_id,
+    appointment?.medicalRecordId
+  ].some(value => hasAppointmentRecordedValue(value));
+}
+
+function getMedicalRecordCompletedActionHtml() {
+  return `
+    <span class="admin-status-badge admin-status-success admin-medical-record-complete-badge" aria-label="Medical record already added" title="Medical record already added">
+      <i class="ri-check-line" aria-hidden="true"></i>
+      <span>Record added</span>
+    </span>
+  `;
+}
+
+function markAppointmentMedicalRecordCompleted(appointmentId, record = null) {
+  const id = String(appointmentId || '').trim();
+  if (!id) return;
+
+  adminAppointmentsData = adminAppointmentsData.map(appointment => (
+    String(appointment?.id || '').trim() === id
+      ? {
+          ...appointment,
+          has_medical_record: true,
+          medical_record_action_completed: true,
+          medical_record_id: record?.id || appointment.medical_record_id || null
+        }
+      : appointment
+  ));
+
+  displayAppointmentsTable(adminAppointmentsData);
+}
+
+function isMedicalRecordAlreadyAddedError(error) {
+  return /medical record has already been added/i.test(String(error?.message || error || ''));
+}
+
 function renderAppointmentActions(status, appointment) {
   const appointmentId = appointment?.id;
   if (!appointmentId) {
@@ -234,6 +287,10 @@ function renderAppointmentActions(status, appointment) {
   const isCompleted = status === 'Completed';
   const isFinal = isCompleted || status === 'Cancelled';
   const safeAppointmentId = escapeInlineHandlerValue(appointmentId);
+
+  if (isCompleted && hasCompletedMedicalRecordFlag(appointment)) {
+    return getMedicalRecordCompletedActionHtml();
+  }
 
   if (isCompleted && hasMedicalRecordCreateContext(appointment)) {
     return `
@@ -504,6 +561,12 @@ async function openMedicalRecordForm(button, appointmentId) {
     return;
   }
 
+  if (hasCompletedMedicalRecordFlag(appointment)) {
+    markAppointmentMedicalRecordCompleted(appointmentId);
+    showSuccess('Medical record already added for this appointment.');
+    return;
+  }
+
   const originalText = button?.textContent?.trim() || 'Add Medical Record';
   try {
     setAppointmentActionGroupLoading(button, true, 'Loading...', originalText);
@@ -619,6 +682,10 @@ async function submitMedicalRecordForm(event) {
       throw new Error('Medical records can only be added after an appointment is completed.');
     }
 
+    if (hasCompletedMedicalRecordFlag(appointment)) {
+      throw new Error('A medical record has already been added for this appointment.');
+    }
+
     const payload = getMedicalRecordFormPayload(form, appointmentId);
     const adminQuery = getAdminUserIdQuery();
     const adminId = getCurrentAdminUserId();
@@ -644,15 +711,17 @@ async function submitMedicalRecordForm(event) {
       throw new Error('Medical record save succeeded but no record was returned.');
     }
 
-    const refreshed = await loadAppointments();
+    markAppointmentMedicalRecordCompleted(appointmentId, data.record);
     closeMedicalRecordForm(true);
-    if (refreshed) {
-      showSuccess('Medical record added.');
-    } else {
-      showError('Medical record saved, but the appointments list could not refresh. Please refresh.');
-    }
+    showSuccess('Medical record added.');
   } catch (error) {
     console.error('Error creating medical record:', error);
+    if (isMedicalRecordAlreadyAddedError(error)) {
+      markAppointmentMedicalRecordCompleted(appointmentId);
+      closeMedicalRecordForm(true);
+      showSuccess('Medical record already added for this appointment.');
+      return;
+    }
     setMedicalRecordFormError(error.message || 'Could not create medical record.');
   } finally {
     setFormSubmitting(form, false, 'Saving...', 'Save Record');
@@ -671,6 +740,31 @@ function getStatusBadgeClass(status) {
     'Cancelled': 'bg-red-50 text-red-700'
   };
   return classes[status] || 'bg-slate-100 text-slate-700';
+}
+
+function formatSuggestedAppointmentTimeDisplay(timeValue) {
+  const match = String(timeValue || '').trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!match) return '';
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const seconds = Number(match[3] || 0);
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59 || seconds < 0 || seconds > 59) {
+    return '';
+  }
+
+  return new Date(2000, 0, 1, hours, minutes, seconds).toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+}
+
+function getAppointmentStatusUpdateErrorMessage(error) {
+  const suggestedTime = formatSuggestedAppointmentTimeDisplay(error?.suggestedTime);
+  if (suggestedTime) {
+    return `Selected time is unavailable. Next available time: ${suggestedTime}.`;
+  }
+  return error?.message || 'Could not update appointment.';
 }
 
 /**
@@ -711,7 +805,9 @@ async function updateAppointmentStatus(button, appointmentId, newStatus) {
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok || data.success === false) {
-      throw new Error(data.error || 'Could not update appointment.');
+      const updateError = new Error(data.error || 'Could not update appointment.');
+      updateError.suggestedTime = data.suggested_time;
+      throw updateError;
     }
 
     if (!data.appointment) {
@@ -723,7 +819,7 @@ async function updateAppointmentStatus(button, appointmentId, newStatus) {
   } catch (error) {
     console.error('Error updating appointment:', error);
     setAppointmentActionGroupLoading(button, false, 'Updating...', originalText);
-    showError(error.message || 'Could not update appointment.');
+    showError(getAppointmentStatusUpdateErrorMessage(error));
   }
 }
 
