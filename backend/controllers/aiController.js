@@ -8,6 +8,7 @@ require('dotenv').config();
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
+const UNKNOWN_PETHUB_RESPONSE = "I'm not sure based on the current PetHub system.";
 
 const EMERGENCY_KEYWORDS = [
   'blood', 'bleeding', 'seizure', 'convulsion', 'poison', 'toxic', 'toxin',
@@ -19,101 +20,115 @@ const EMERGENCY_KEYWORDS = [
 
 const MINI_FAQ = {
   // ==================== PETHUB BASICS ====================
-  'what is pethub': "🐾 **PetHub** is your all-in-one pet health management platform! Track pet profiles, schedule vet appointments, store medical records securely, and get 24/7 AI pet care advice. Everything your pets need in one place!",
-  'what does pethub do': "PetHub provides **4 core services**: 1️⃣ **Pet Profile Management** (detailed pet health records), 2️⃣ **Smart Scheduling** (easy vet appointment booking), 3️⃣ **Secure Pet Profiles** (encrypted medical records with HIPAA security), 4️⃣ **AI Pet Assistant** (instant pet care guidance). All integrated seamlessly!",
-  'what services does pethub offer': "**4 Core Services**: 📝 **Pet Profile** - comprehensive pet records | 📅 **Smart Scheduling** - appointment booking in seconds | 🔒 **Secure Pet Profiles** - encrypted data protection | 🤖 **AI Pet Assistant** - 24/7 wellness advice. Learn more on the **Services** page!",
-  'why should i use pethub': "✅ No more lost vet records | ✅ Easy appointment scheduling | ✅ Medical history always accessible | ✅ AI-powered health insights | ✅ Multi-pet management | ✅ Enterprise-grade security | ✅ Completely free!",
-  'is pethub free': "Yes! 🎉 PetHub is completely free to use. Create unlimited pet profiles, schedule unlimited appointments, and access AI assistance anytime. No hidden fees!",
-  'what makes pethub different': "Other platforms focus on ONE thing. PetHub integrates **profiles + scheduling + security + AI** seamlessly. One dashboard, complete pet wellness. It's pet health management done RIGHT.",
+  'what is pethub': "**PetHub** helps users manage pet profiles, book appointments, review medical records, send contact messages, and use user/admin dashboards.",
+  'what does pethub do': "PetHub supports these current features: **pet profiles**, **appointment booking**, **medical records**, **contact/messages**, and **admin/user dashboards**.",
+  'what features does pethub have': "PetHub supports these current features: **pet profiles**, **appointment booking**, **medical records**, **contact/messages**, and **admin/user dashboards**.",
+  'what services does pethub offer': "Current PetHub features include **pet profiles**, **appointment booking**, **medical records**, **contact/messages**, and **admin/user dashboards**.",
+  'why should i use pethub': "PetHub can help keep pet profiles, appointment requests, medical records, and dashboard views organized in one system.",
+  'is pethub free': "I'm not sure based on the current PetHub system.",
+  'what makes pethub different': "PetHub brings pet profiles, appointment booking, medical records, contact/messages, and dashboards into the same system.",
+  'is pethub hipaa compliant': "I'm not sure based on the current PetHub system.",
+  'hipaa compliant': "I'm not sure based on the current PetHub system.",
   
   // ==================== GETTING STARTED ====================
-  'how do i sign up': "Super easy! 📝 Visit **Register**, enter your full name, email, and password (6+ characters), then click Register. You'll be redirected to login. Log in and you're in your Dashboard instantly! 🎉",
+  'how do i sign up': "Visit **Register**, enter the required account details, then log in to access your **Dashboard**.",
   'how do i login': "Go to **Login**, enter your registered email and password, click Login. You'll land on your personalized **Dashboard** with all your pets and appointments! 🔐",
   'how do i logout': "Click **Logout** in the top-right navigation bar. You'll be safely logged out and returned to the homepage. Simple!",
   'what happens after i sign up': "After registration: 1️⃣ Verify email if needed 2️⃣ Log in 3️⃣ Land on Dashboard 4️⃣ Click **Pets** to add your first pet 5️⃣ Click **Appointments** to book a vet visit 6️⃣ Start managing! 🚀",
   'can i have multiple accounts': "We recommend one account per person. Use that one account to manage all your pets! If needed, create a new email and sign up separately.",
-  'is my account secure': "Yes! 🔒 Your account is protected with encrypted passwords, secure sessions, and HIPAA-grade data protection. Your data never leaves our secure servers.",
+  'is my account secure': "I'm not sure based on the current PetHub system.",
   
   // ==================== PET MANAGEMENT ====================
   'how do i add a pet': "Go to **Pets** page → Click **Add New Pet** form → Enter: Name, Species (Dog/Cat/Bird/Rabbit/Other), Breed, Age (optional) → Click **Add Pet**. Done! 🎉",
-  'what info should i add for my pet': "**Required**: Pet name, species. **Optional but helpful**: Breed, age. You can also add: medical history, allergies, vaccinations, behavioral notes, special needs. More = better care! 📋",
-  'can i add multiple pets': "Absolutely! Add as many as you want. Each pet gets its own profile, medical records, and appointment schedule. Perfect for households with multiple pets! 🐕🐈🦜",
-  'how do i edit a pets profile': "Go **Pets** page → Find your pet → (Edit button appears) → Update name/breed/age/details → Click Save. Changes are instant! ⚡",
-  'how do i delete a pet': "Go **Pets** page → Find your pet → Click delete button (trash icon) → confirm. Note: This removes the pet from active profiles but keeps history for records.",
-  'what if i add my pet by wrong name': "No problem! Go to **Pets**, find the pet, click edit, correct the name, and save. You can update any information anytime! 🔄",
+  'what info should i add for my pet': "Add the pet details PetHub asks for, such as pet name, species, breed, and age when available. Use **medical records** for medical notes when that feature is available to you.",
+  'can i add multiple pets': "I'm not sure based on the current PetHub system.",
+  'how do i edit a pets profile': "Go to the **Pets** page, find your pet profile, use the available edit option, update the details, and save.",
+  'how do i delete a pet': "Go to the **Pets** page, find the pet profile, use the available delete option, and confirm.",
+  'what if i add my pet by wrong name': "Go to the **Pets** page, find the pet profile, use the available edit option, correct the name, and save.",
   'the species options are limited': "We support: 🐕 Dog, 🐈 Cat, 🦜 Bird, 🐰 Rabbit, 🐾 Other (for exotic pets, fish, reptiles, etc). If you need a specific type under 'Other', note it in your pet profile!",
-  'how do i track my pets health': "Add details in the pet profile (vaccines, medical history, notes), use **Appointment** records as health timeline, and reference the AI assistant for specific health concerns! 📊",
-  'can i share pet profiles with my vet': "Not directly in the app, but you can screenshot or share appointment confirmations. Your vet can access info during scheduled appointments! 📧",
+  'how do i track my pets health': "Use **pet profiles** and available **medical records** to keep pet information organized. You can also use **appointment booking** when a vet visit is needed.",
+  'can i share pet profiles with my vet': "I'm not sure based on the current PetHub system.",
   
   // ==================== APPOINTMENTS ====================
-  'how do i book an appointment': "Go **Appointments** → Fill form: Pet Name, Service Type, Date, Time → Click **Book** → Status shows **Pending** → Vet reviews within 24h → Approval notification! 📅",
+  'how do i book an appointment': "Go to **Appointments**, fill in the required appointment details, and submit the request. The status starts as **Pending** and can be updated by an admin.",
   'what appointment services are available': "✓ **Checkup** (general wellness), 💉 **Vaccination** (boosters, required shots), ✄ **Grooming** (professional care), 🦷 **Dental** (teeth cleaning), 🔧 **Surgery** (if needed), 📋 **Other** (custom services)",
-  'what does pending mean': "**Pending** = Your appointment request is submitted and waiting for vet approval. ⏳ Usually takes **24 hours or less**. Check your Appointments page for updates!",
-  'what does approved mean': "**Approved** = The vet confirmed your appointment! ✅ Date/time is locked in. Arrive a few minutes early. Check your dashboard for location/time details!",
-  'what does completed mean': "**Completed** = Your appointment finished successfully! 🎉 It stays in your history for future reference. Great for tracking vaccination dates, health progression!",
+  'what does pending mean': "**Pending** means your appointment request was submitted and is waiting for admin review. Check your **Appointments** page for updates.",
+  'what does approved mean': "**Approved** means the appointment request has been accepted in PetHub. Check your **Appointments** page or dashboard for the current details.",
+  'what does completed mean': "**Completed** means the appointment was marked finished in PetHub. It can remain visible as part of appointment history if the current system shows it.",
   'what does cancelled mean': "**Cancelled** = The vet rejected the appointment or you cancelled it. ❌ No problem! Book a new one with different date/time. ♻️",
-  'how long does approval take': "Most appointments are approved **within 24 hours**. If it's been longer, contact support via the **Contact** page. Vet might need more info!",
-  'can i cancel an appointment': "If **Pending**: Yes, book a new one anytime. If **Approved**: Contact support or the vet first to cancel as a courtesy. ✅",
-  'can i reschedule after approval': "Cancel current and book a new one with preferred date/time! Super easy. We recommend doing this ASAP if the vet has availability. 📅",
-  'what if i miss an appointment': "Contact your vet immediately! They may charge no-show fees. Then reschedule in PetHub. Better communication = better care! 📞",
-  'can i book multiple appointments': "Yes! Book as many as needed for all your pets. Each has its own timeline and status tracking. Manage everything from one dashboard! 📊",
-  'what time should i book appointments': "Check your vet's hours and availability! Choose a time that works for you AND the vet. Book during their business hours for faster approval. ⏰",
+  'how long does approval take': "I'm not sure based on the current PetHub system.",
+  'can i cancel an appointment': "Use the available appointment actions in the **Appointments** page. If you do not see a cancel option, use **Contact/messages** or ask an admin.",
+  'can i reschedule after approval': "I'm not sure based on the current PetHub system.",
+  'what if i miss an appointment': "Check your appointment status in PetHub and contact the clinic or admin through the available contact/messages flow if you need help.",
+  'can i book multiple appointments': "I'm not sure based on the current PetHub system.",
+  'what time should i book appointments': "I'm not sure based on the current PetHub system.",
   
   // ==================== DASHBOARD & FEATURES ====================
-  'what is my dashboard': "Your personal **command center**! 📊 See an overview of: Total pets, Upcoming appointments, Account status, Recent pets (quick add links), Recent appointments. Everything at a glance!",
-  'what can i see on the dashboard': "✓ Pet count, ✓ Appointment count, ✓ Account status (Active), ✓ Quick links to Pets/Appointments pages, ✓ Recent pet updates, ✓ Upcoming appointment summary",
+  'what is my dashboard': "Your **Dashboard** helps you review PetHub information such as pet profiles and appointment-related records available to your account.",
+  'what can i see on the dashboard': "The dashboard can show PetHub account views related to your pet profiles and appointments. Exact contents depend on the current system data available to you.",
   'how do i navigate pethub': "Top navigation bar has everything: 🏠 **Home** | 👤 **Dashboard** | 🐾 **Pets** | 📅 **Appointments** | ℹ️ **About** | 🎯 **Services** | 📧 **Contact** | 🚪 **Logout** + 🌙 dark mode toggle",
   'where is the dark mode toggle': "Bottom-right corner of any page! 🌙 Click to switch between light and dark modes. Your preference saves automatically! 🌗",
   'what is the home page': "Landing page with PetHub intro, features overview, and Call-to-Action buttons to Register or Login. Great place to learn about PetHub before creating an account! 🏠",
-  'what is the about page': "Learn PetHub's mission, values, and team story. We're dedicated to pet wellness and making pet health management **simple, secure, and smart**! 💙",
-  'what is the services page': "Deep dive into our 4 core services with detailed explanations: Pet Profile, Smart Scheduling, Secure Pet Profiles, and AI Pet Assistant. Perfect for understanding what you get! 🎯",
-  'what is the contact page': "Send us messages, ask questions, report issues, or request features! 📧 Also shows contact info: email, phone, hours. We respond within 24 hours!",
+  'what is the about page': "The **About** page shares general information about PetHub.",
+  'what is the services page': "The **Services** page explains current PetHub features such as pet profiles, appointment booking, medical records, contact/messages, and dashboards.",
+  'what is the contact page': "The **Contact** page lets users send messages or inquiries through PetHub.",
   
   // ==================== SECURITY & PRIVACY ====================
-  'is my pet data secure': "Yes! 🔒 **HIPAA-grade encryption** via Supabase, secure servers, encrypted at rest and in transit. Your pet's medical records are protected like real hospital records!",
-  'what security does pethub have': "✓ Encrypted passwords | ✓ HTTPS connections | ✓ Secure database (Supabase) | ✓ HIPAA compliance | ✓ No third-party sharing | ✓ Enterprise-grade protection",
-  'what data does pethub collect': "Only what you provide: name, email, pet details, vaccination/health records. We NEVER collect location, device ID, browsing history, or sell data to third parties! 🛡️",
-  'can vets see my pet records': "Only during appointments or if you explicitly share info. Your medical records belong to YOU. Vets cannot access unless authorized!",
-  'does pethub share my data': "No! 🔒 We never sell, share, or export your data. Your pet's medical information is yours alone. Full privacy guaranteed!",
-  'is my password stored safely': "Ultra-safe! 🔐 Passwords are cryptographically hashed using modern standards. We never store plain-text passwords. Unhackable!",
+  'is my pet data secure': "PetHub uses account login and database-backed storage for system records, but I can't claim HIPAA compliance, medical certification, or a specific security standard.",
+  'what security does pethub have': "I'm not sure based on the current PetHub system.",
+  'what data does pethub collect': "I'm not sure based on the current PetHub system.",
+  'can vets see my pet records': "I'm not sure based on the current PetHub system.",
+  'does pethub share my data': "I'm not sure based on the current PetHub system.",
+  'is my password stored safely': "I'm not sure based on the current PetHub system.",
   
   // ==================== AI ASSISTANT ====================
-  'who are you': "I'm **PetHub AI Copilot**! 🤖 A 24/7 pet wellness assistant built specifically for PetHub. I can help with pet care advice, guide you through PetHub features, answer wellness questions, and more! Ask me anything!",
-  'what can you help me with': "I can help with: 🐾 Pet wellness advice | 🏥 Health guidance | 🐕 Behavior & training tips | 🥘 Nutrition info | 🎓 PetHub feature walkthroughs | 📞 General pet questions | 🚨 Emergency guidance",
-  'are you available 24/7': "Yes! I'm available anytime, anywhere. 🌍 Pop up this chat bubble to ask questions at any time. Day, night, weekend, holidays — I'm here!",
+  'who are you': "I'm **PetHub AI Copilot**. I can help explain current PetHub features and provide general pet wellness information.",
+  'what can you help me with': "I can help with general pet wellness questions and current PetHub features: **pet profiles**, **appointment booking**, **medical records**, **contact/messages**, and **admin/user dashboards**.",
+  'are you available 24/7': "I'm not sure based on the current PetHub system.",
   'can you replace my vet': "No way! I'm an **informational assistant**, not a veterinarian. 🏥 For medical emergencies, go to an emergency vet immediately! Use me for wellness guidance before/after vet visits!",
   'what if i have an emergency': "Contact your nearest **emergency vet clinic immediately**! 🚨 I can provide guidance, but NOTHING replaces professional medical care for emergencies. Call 911 or poison control if needed!",
-  'how accurate is your advice': "Very accurate for wellness information! 📚 But I'm not a vet — just an informed assistant. Always verify important health decisions with your veterinarian! ✅",
-  'can you diagnose my pet': "No, but I can help you understand symptoms and recommend when to call your vet! 🏥 Diagnosis requires professional examination. I guide you TO the vet! 🎯",
+  'how accurate is your advice': "I provide general wellness information only. I am not a veterinarian, and important health decisions should be checked with a vet.",
+  'can you diagnose my pet': "No. I can't diagnose your pet. I can share general wellness information and suggest when to contact a veterinarian.",
+  'can pethub diagnose my pet': "No. PetHub AI cannot diagnose pets. It can share general wellness information, and medical concerns should be checked with a veterinarian.",
+  'does pethub guarantee treatment': "No. PetHub does not promise treatment outcomes. For medical concerns, consult a veterinarian.",
   
   // ==================== ADMIN FEATURES (if user asks) ====================
-  'what can admins do': "Admins have special powers: 🔍 View all pending appointments, ✅ Approve/reject appointment requests, 👥 Manage user accounts, 🐾 View all pet records, 📊 Generate reports, 🔐 System management",
-  'how do appointments get approved': "Admin Dashboard shows all Pending appointments. Admins review pet/vet/time info, check availability, then: ✅ Approve (schedule confirmed) or ❌ Reject (reschedule needed). User notified instantly!",
-  'what is the admin dashboard': "Special admin-only interface to: oversee all appointments, approve requests, manage users, view system metrics, generate reports. It's the backend nerve center! 🎛️",
+  'what can admins do': "Admins can use the **Admin Dashboard** for current views such as overview, analytics, management, medical records, messages, and activity logs.",
+  'how do appointments get approved': "Appointment requests can be reviewed in the **Admin Dashboard** and updated from **Pending** to another supported status. Approval depends on admin review.",
+  'what is the admin dashboard': "The **Admin Dashboard** is the admin-facing area for PetHub overview, analytics, management, medical records, messages, and activity logs.",
   
   // ==================== TROUBLESHOOTING ====================
-  'i forgot my password': "Visit **Login** page → Look for 'Forgot Password' link → Follow reset instructions via email. Can't find it? Contact support on **Contact** page! 🔄",
-  'my appointment is not showing': "Try refreshing page or logging out/back in! 🔄 If still missing: Check if it's **Cancelled** status, verify you entered correct pet name, or contact support!",
-  'why is my appointment still pending': "Vet is reviewing! Usually 24h or less. ⏳ If longer: Contact support or call the vet directly. They might need additional info! 📞",
-  'i see an error message': "Take a screenshot! 📸 Then: 1) Try refreshing the page, 2) Clear browser cache, 3) Try different browser, 4) Contact support with screenshot. We'll fix it! 🛠️",
+  'i forgot my password': "I'm not sure based on the current PetHub system.",
+  'my appointment is not showing': "Try refreshing the page and checking your **Appointments** page again. If it still does not appear, use **Contact/messages** or ask an admin.",
+  'why is my appointment still pending': "**Pending** means the appointment request is still waiting for admin review. The current PetHub system does not promise an approval time.",
+  'i see an error message': "Try refreshing the page. If the issue continues, use the **Contact** page to send a message with what happened.",
   'my page is loading slowly': "Check your internet connection 🌐, try refreshing, clear browser cache 🧹, or try a different browser. If issue persists, contact support!",
-  'there is a bug': "Found a bug? 🐛 Contact support on the **Contact** page with: what you were doing, what happened, browser type, screenshots. We'll fix it ASAP! 🚀",
+  'there is a bug': "Use the **Contact** page to send a message about what happened and what you were doing when the issue appeared.",
   
   // ==================== QUICK FEATURES ====================
-  'how do i manage my pets health timeline': "Use your Appointments page! 📅 Every completed appointment is timestamped and recorded. Vaccination dates, checkup history, all tracked automatically!",
-  'can i track vaccination dates': "Yes! 💉 Add vaccination details in pet profile. Future: appointments system tracks dates automatically. Your complete vaccination timeline in one place!",
-  'how do i remember vet recommendations': "Add to pet profile notes! 📝 You can also screenshot Approved appointment confirmations. Reference them anytime with PetHub! 📸",
+  'how do i manage my pets health timeline': "Use available **medical records** and appointment history in PetHub to review pet health information.",
+  'can i track vaccination dates': "Use **medical records** if vaccination details are available there.",
+  'how do i remember vet recommendations': "Use available **medical records** or pet profile information in PetHub.",
   'what if i need emergency help': "🚨 **IMMEDIATE EMERGENCY**: Call emergency vet clinic or poison control NOW. Don't wait for app! For guidance afterward, use PetHub. Life comes first! 🏥",
   
   // ==================== COMMON QUESTIONS ====================
-  'help': "Hi! 👋 I'm PetHub AI! Need help? You can ask me: ❓ Questions about using PetHub | 🐾 Pet wellness advice | 🏥 Health guidance | 🚀 How to get started | 🐕 General pet questions. What do you need?",
-  'hi': "Hey there! 👋 Welcome to PetHub AI! I'm here 24/7 to help. What would you like to know about managing your pets or using PetHub? 🐾",
-  'hello': "Hello! 👋 I'm PetHub's AI assistant. Ready to help! Ask me anything about pets, PetHub features, or wellness guidance! 🤖",
+  'help': "Hi! I can help with current PetHub features and general pet wellness information. You can ask about pet profiles, appointment booking, medical records, contact/messages, or dashboards.",
+  'hi': "Hi! I can help with current PetHub features and general pet wellness information.",
+  'hello': "Hello! I can help explain current PetHub features and provide general pet wellness information.",
   'thanks': "You're welcome! 😊 Happy to help! Got more questions? I'm here! 🐾",
 };
 
 
-const SYSTEM_PROMPT = `You are PetHub AI Copilot 🐾 — Premium pet care assistant built just for PetHub.
+const SYSTEM_PROMPT = `You are PetHub AI Copilot 🐾 - a helpful PetHub assistant for product guidance and general pet wellness information.
+
+ANTI-FABRICATION RULES - HIGHEST PRIORITY:
+  - Only describe PetHub features that exist in the current system.
+  - Real PetHub features you may mention: pet profiles, appointment booking, medical records, contact/messages, admin dashboard, and user dashboard.
+  - Do not mention or imply HIPAA compliance, HIPAA-grade encryption, certified medical security, enterprise-grade security, guaranteed privacy, guaranteed treatment, guaranteed appointment approval, AI diagnosis, or any certified medical/security standard.
+  - Do not invent data, values, pricing, response times, statistics, security levels, approvals, notifications, clinic availability, future features, or features not listed above.
+  - Do not call PetHub "complete", "all-in-one", "premium", "certified", or make exaggerated product claims.
+  - If the user asks about a PetHub feature, data value, statistic, security/compliance level, pricing, guarantee, or workflow you cannot verify from the current PetHub system, answer exactly: "I'm not sure based on the current PetHub system."
+  - For pet health questions, provide general wellness guidance only. Never diagnose, prescribe, or promise outcomes.
 
 YOUR CORE MISSION:
 Provide warm, professional pet wellness advice AND guide users through every PetHub workflow with ease and confidence.
@@ -125,7 +140,7 @@ LANGUAGE UNDERSTANDING & RESPONSE MATCHING:
   • If the user asks in Taglish, answer naturally in Taglish.
   • Match the user's language style instead of translating every answer unnecessarily.
   • For Filipino users, sound natural and simple, like a helpful pet-care assistant. Avoid overly formal textbook Tagalog.
-  • Keep PetHub page names and feature names clear, such as **Pets page**, **Appointments page**, **Dashboard**, and **Smart Scheduling**.
+  • Keep PetHub page names and verified feature names clear, such as **Pets page**, **Appointments page**, **Dashboard**, **Pet profiles**, **Medical records**, and **Contact/messages**.
   • Keep answers simple, helpful, and focused on safe pet care or PetHub guidance.
 
 FILIPINO/TAGALOG EXAMPLES TO UNDERSTAND AND MATCH:
@@ -146,55 +161,45 @@ FILIPINO/TAGALOG EXAMPLES TO UNDERSTAND AND MATCH:
 ╚════════════════════════════════════════════════════════════════════════════════╝
 
 🏠 PUBLIC PAGES (For All Visitors):
-  Home Page - Main landing page, features overview, get started CTA
+  Home Page - Main landing page with PetHub introduction and navigation
   About Page - PetHub mission: "Track, Care, Schedule", company values
-  Services Page - 4 core features: Pet Profile, Smart Scheduling, Secure Pet Profiles, AI Pet Assistant
+  Services Page - PetHub feature overview using only verified current features
   Contact Page - Support inquiries, customer contact form
   Login Page - User authentication entry
   Register Page - New account creation
 
-📊 CORE FEATURES (The Foundation):
-  1. Pet Profile Management
+📊 VERIFIED PETHUB FEATURES (ONLY MENTION THESE):
+  1. Pet Profiles
      - Create detailed profiles for each pet
-     - Track species, breed, age, medical history
-     - Store vaccination records
-     - Monitor health timeline
+     - Track basic pet details such as species, breed, and age when available
 
-  2. Smart Scheduling
+  2. Appointment Booking
      - Book veterinary appointments
-     - Real-time availability checking
-     - Appointment confirmation system
      - Status tracking (Pending → Approved → Completed)
 
-  3. Secure Pet Profiles
-     - HIPAA-grade security
-     - Cloud-based data storage via Supabase
-     - Encrypted medical records
-     - Reliable data protection
-     - Never lose pet health history
+  3. Medical Records
+     - View medical record entries where available
+     - Store medical notes connected to PetHub records
 
-  4. AI Pet Assistant
-     - Instant pet care guidance
-     - Nutrition recommendations
-     - Grooming & behavior advice
-     - Symptom recognition
-     - General wellness tips
-     - (That's me! 🤖)
+  4. Contact/Messages
+     - Send contact messages
+     - Admins can review messages
+
+  5. Admin/User Dashboard
+     - Users can review their PetHub information from the user dashboard
+     - Admins can use the admin dashboard for overview, analytics, management, medical records, messages, and activity logs
 
 👤 USER DASHBOARD ECOSYSTEM:
   Dashboard Page
     - Quick overview of all pets
     - Upcoming appointments summary
-    - Health alerts
-    - Activity timeline
+    - Pet and appointment overview based on available system data
 
   Pets Page
     - Manage all pet profiles
     - Add new pets
     - Edit pet information
-    - View medical history
-    - Track vaccination status
-    - Upload health documents
+    - Link pet profiles with available medical records
 
   Appointments Page
     - Book new appointments
@@ -204,14 +209,12 @@ FILIPINO/TAGALOG EXAMPLES TO UNDERSTAND AND MATCH:
       ∙ Approved (confirmed, ready)
       ∙ Completed (finished successfully)
       ∙ Cancelled (rejected or user cancelled)
-    - Upcoming appointment reminders
     - Appointment history
 
 🔐 ADMIN DASHBOARD WORKFLOW:
   Admin Dashboard
     - Overview of pending tasks
-    - System statistics
-    - Performance analytics
+    - Management views available in the admin dashboard
 
   Admin Appointments
     - View all user appointment requests
@@ -222,8 +225,7 @@ FILIPINO/TAGALOG EXAMPLES TO UNDERSTAND AND MATCH:
 
   Admin Pets
     - Monitor all user pet profiles
-    - Health record verification
-    - Pet population statistics
+    - Monitor pet profiles and available medical records
 
   Admin Users
     - View registered users
@@ -233,8 +235,7 @@ FILIPINO/TAGALOG EXAMPLES TO UNDERSTAND AND MATCH:
 ⚙️ SYSTEM BEHAVIORS & FEATURES:
   - Dark Mode Toggle (bottom-right, accessible everywhere)
   - Floating AI Assistant (me! bottom-left, on every page)
-  - Real-time Data Sync (all changes saved immediately)
-  - Session Persistence (chat resets on page refresh for privacy)
+  - Data is handled by the current PetHub backend and Supabase setup
   - Responsive Design (mobile, tablet, desktop)
   - Secure Authentication (username/password login)
 
@@ -405,7 +406,7 @@ Your response ends with:
 ╚════════════════════════════════════════════════════════════════════════════════╝
 
 When user is on SERVICES page:
-  → Emphasize the 4 features: Pet Management, Smart Scheduling, Secure Storage, AI Assistant
+  → Emphasize only verified features: pet profiles, appointment booking, medical records, contact/messages, admin dashboard, and user dashboard
   → Explain benefits and how each helps
   
 When user is on APPOINTMENTS page:
@@ -440,7 +441,7 @@ Please contact an emergency vet clinic NOW. Do not wait.
 
 Once stabilized, book urgent appointment in your **Appointments** page.
 
-For 24/7 emergency care, search '[Your City] Emergency Vet Clinic' or call animal poison control.
+For emergency care, contact a local emergency vet clinic or animal poison control.
 
 Your pet's life may depend on immediate action. ⚠️"
 
@@ -466,7 +467,7 @@ NEW USER WORKFLOW:
 5. Wait for Admin approval (Appointments page)
 6. Appointment confirmed (Dashboard)
 
-Always present PetHub as the complete solution! This is your website. Be its voice.
+Present PetHub accurately. Do not exaggerate or claim unsupported capabilities.
 
 RESPONSE STYLE & GUIDELINES                                  ║
 ╚════════════════════════════════════════════════════════════════════════════════╝
@@ -480,14 +481,14 @@ TONE:
 
 WHEN GUIDING USERS:
   • Use exact page names: "Pets page", "Appointments page", "Admin Dashboard"
-  • Use feature names: "Smart Scheduling", "Secure Pet Profiles"
+  • Use only verified feature names: "Pet profiles", "Appointment booking", "Medical records", "Contact/messages", "Admin dashboard", "User dashboard"
   • Provide step-by-step guidance
   • Suggest next logical steps
   • Link features to user goals
 
 FORMATTING:
   • Use bullet points for lists
-  • Bold important feature names: **Smart Scheduling**
+  • Bold important verified feature names, such as **Appointment booking**
   • Use emojis sparingly: 🐾, 📅, ✅, ⚠️
   • Keep paragraphs short
   • One idea per sentence
@@ -495,7 +496,7 @@ FORMATTING:
 EXAMPLES OF GOOD RESPONSES:
 
 User: "How do I book an appointment?"
-Response: "Go to your **Appointments** page in your dashboard. Click 'Book Appointment', select your pet, choose a date/time, then submit. The vet will review your request and approve it within 24 hours. You'll see the status change from Pending to Approved once confirmed! 🐾
+Response: "Go to your **Appointments** page in your dashboard. Choose your pet, select the appointment details, then submit. The appointment status starts as Pending and can be updated by an admin. Check your dashboard for the current status. 🐾
 
 ---
 💡 Next questions:
@@ -546,7 +547,7 @@ Response: "I'm here to help with PetHub features and pet wellness only 🐾"
    → Use current_page in your responses if mentioned
    → Give specific guidance based on where user is
 
-This is YOUR website. Be its voice. Help users love PetHub. 🐾`;
+Be accurate, helpful, and honest about what the current PetHub system supports. 🐾`;
 
 
 
@@ -570,7 +571,7 @@ const chat = async (req, res) => {
     );
 
     if (isEmergency) {
-      const emergencyResponse = "🚨 **EMERGENCY - Your pet needs immediate veterinary care!**\n\nPlease contact an emergency vet clinic NOW. Do not wait.\n\nOnce stabilized, book urgent appointment in your **Appointments** page.\n\nFor 24/7 emergency care, search '[Your City] Emergency Vet Clinic' or call animal poison control.\n\nYour pet's life may depend on immediate action. ⚠️";
+      const emergencyResponse = "🚨 **EMERGENCY - Your pet needs immediate veterinary care!**\n\nPlease contact an emergency vet clinic NOW. Do not wait.\n\nOnce stabilized, book urgent appointment in your **Appointments** page.\n\nFor emergency care, contact a local emergency vet clinic or animal poison control.\n\nYour pet's life may depend on immediate action. ⚠️";
       return res.json({
         reply: emergencyResponse,
         success: true,
@@ -581,6 +582,9 @@ const chat = async (req, res) => {
     // ==================== MINI FAQ ENGINE ====================
     // Check for instant FAQ matches (faster response, better UX)
     const faqMatch = Object.keys(MINI_FAQ).find(question => {
+      if (question.length <= 3) {
+        return lowerMessage.trim() === question;
+      }
       return lowerMessage.includes(question) || question.includes(lowerMessage);
     });
 
@@ -635,10 +639,19 @@ const chat = async (req, res) => {
  * Generate smart follow-up suggestions based on message topic
  */
 function generateFollowUpSuggestions(topic, response) {
+  const normalizedResponse = String(response || '').trim();
+  if (
+    normalizedResponse === UNKNOWN_PETHUB_RESPONSE
+    || /can't claim|cannot diagnose|does not promise treatment outcomes|not a veterinarian/i.test(normalizedResponse)
+  ) {
+    return '';
+  }
+
   // Keyword-based follow-up generation
   const followUps = {
+    'pethub': ['How do I add a pet profile?', 'How do I book an appointment?', 'Where are medical records?'],
     'feeding': ['What food brands do you recommend?', 'How often should I feed my pet?', 'Are there foods to avoid?'],
-    'appointment': ['What should I bring?', 'How long does it take?', 'Can I reschedule?'],
+    'appointment': ['How do I check appointment status?', 'What does Pending mean?', 'How do I use Contact/messages?'],
     'vaccine': ["What's the vaccination schedule?", 'Are there side effects?', 'Do adult pets need boosters?'],
     'grooming': ['What tools do I need?', 'How often should I groom?', 'Can I groom at home?'],
     'symptom': ['When should I see a vet?', 'Is this serious?', 'What should I do now?'],

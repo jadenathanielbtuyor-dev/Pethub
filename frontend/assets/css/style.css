@@ -3201,10 +3201,15 @@ body.admin-sidebar-open {
 
 .admin-sidebar-stats {
   margin-top: auto;
+  flex-shrink: 0;
   border-radius: 1.25rem;
   border: 1px solid #fed7aa;
   background: #fff7ed;
   padding: 1rem;
+}
+
+.admin-sidebar-stats-list {
+  display: grid;
 }
 
 .admin-sidebar-stat {
@@ -4900,6 +4905,290 @@ nav,
 body main.flex-grow,
 body.admin-dashboard-page .admin-dashboard-main {
   padding-bottom: max(var(--pethub-floating-safe-bottom), env(safe-area-inset-bottom));
+}
+
+/* Admin page spacing and floating controls */
+body.admin-dashboard-page {
+  --admin-active-sidebar-width: var(--admin-sidebar-width);
+}
+
+body.admin-dashboard-page.admin-sidebar-collapsed {
+  --admin-active-sidebar-width: 5.5rem;
+}
+
+body.admin-dashboard-page .admin-dashboard-inner {
+  width: 100%;
+  max-width: 80rem !important;
+  margin-inline: auto !important;
+}
+
+body.admin-dashboard-page .admin-dashboard-card {
+  width: 100%;
+  border-radius: 1.25rem !important;
+  padding: clamp(1rem, 1.6vw, 1.5rem) !important;
+}
+
+body.admin-dashboard-page .admin-section-header {
+  align-items: flex-start;
+}
+
+body.admin-dashboard-page .admin-section-header > :first-child {
+  min-width: 0;
+  max-width: min(100%, 46rem);
+}
+
+body.admin-dashboard-page .admin-section-header .admin-panel-button {
+  min-height: 2.5rem;
+  align-self: flex-start;
+  margin-top: 0.125rem;
+}
+
+body.admin-dashboard-page .admin-filter-row {
+  align-items: flex-end !important;
+  justify-content: flex-start !important;
+  gap: 1.25rem 2rem !important;
+}
+
+body.admin-dashboard-page .admin-filter-control {
+  width: min(100%, 20rem) !important;
+  max-width: 20rem !important;
+}
+
+body.admin-dashboard-page #appointmentsTabPanel .admin-filter-row {
+  display: flex !important;
+  flex-wrap: wrap;
+}
+
+body.admin-dashboard-page #appointmentsTabPanel .admin-filter-control {
+  flex: 0 1 20rem;
+}
+
+body.admin-dashboard-page .pethub-ai-widget {
+  left: calc(var(--admin-active-sidebar-width) + 1.5rem) !important;
+  bottom: 1.25rem !important;
+  z-index: 45 !important;
+}
+
+body.admin-dashboard-page .pethub-ai-popup {
+  left: calc(var(--admin-active-sidebar-width) + 1.5rem) !important;
+  bottom: 5.75rem !important;
+  z-index: 45 !important;
+}
+
+body.admin-dashboard-page .dark-mode-toggle {
+  right: 1.5rem;
+  bottom: 1.25rem;
+  z-index: 45;
+}
+
+html.dark body.admin-dashboard-page.dark-mode :where(.pethub-ai-popup, .pethub-ai-messages) {
+  background-color: var(--admin-surface) !important;
+  color: var(--admin-text-soft) !important;
+}
+
+html.dark body.admin-dashboard-page.dark-mode :where(.pethub-ai-message.ai .bubble, .pethub-ai-starter-chip, .pethub-ai-input-area input) {
+  border-color: var(--admin-border) !important;
+  background-color: var(--admin-surface-soft) !important;
+  color: var(--admin-text-soft) !important;
+}
+
+html.dark body.admin-dashboard-page.dark-mode :where(.pethub-ai-starters, .pethub-ai-input-area, .pethub-ai-footer) {
+  border-color: var(--admin-border) !important;
+}
+
+html.dark body.admin-dashboard-page.dark-mode .pethub-ai-footer {
+  color: var(--admin-text-muted) !important;
+}
+
+@media (min-width: 768px) {
+  body.admin-dashboard-page .admin-dashboard-inner {
+    margin-left: 0 !important;
+    margin-right: auto !important;
+  }
+}
+
+@media (min-width: 1280px) {
+  body.admin-dashboard-page .admin-dashboard-inner {
+    margin-left: clamp(1.5rem, 3vw, 4rem) !important;
+  }
+}
+
+/* Admin records table sizing */
+body.admin-dashboard-page :where(.admin-table-card, #recentMedicalRecordsContainer > .overflow-x-auto) {
+  width: 100%;
+  max-width: 100%;
+  border-radius: 1.25rem !important;
+  border-color: var(--admin-border) !important;
+  background-color: var(--admin-surface) !important;
+  box-shadow: var(--admin-shadow-sm) !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+body.admin-dashboard-page :where(.admin-table-card, #recentMedicalRecordsContainer > .overflow-x-auto) > table {
+  width: 100% !important;
+  max-width: none !important;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+body.admin-dashboard-page .admin-users-table {
+  min-width: 52rem !important;
+}
+
+body.admin-dashboard-page .admin-pets-table,
+body.admin-dashboard-page #recentMedicalRecordsContainer > .overflow-x-auto > table {
+  min-width: 64rem !important;
+}
+
+body.admin-dashboard-page .admin-appointments-table {
+  min-width: 72rem !important;
+}
+
+body.admin-dashboard-page .admin-messages-table {
+  min-width: 68rem !important;
+}
+
+body.admin-dashboard-page :where(.admin-table-card, #recentMedicalRecordsContainer > .overflow-x-auto) thead,
+body.admin-dashboard-page :where(.admin-table-card, #recentMedicalRecordsContainer > .overflow-x-auto) th {
+  background-color: var(--admin-surface-muted) !important;
+}
+
+body.admin-dashboard-page :where(.admin-table-card, #recentMedicalRecordsContainer > .overflow-x-auto) th,
+body.admin-dashboard-page :where(.admin-table-card, #recentMedicalRecordsContainer > .overflow-x-auto) td {
+  max-width: none;
+  border-color: var(--admin-border) !important;
+  padding: 0.875rem 1rem !important;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+body.admin-dashboard-page :where(.admin-table-card, #recentMedicalRecordsContainer > .overflow-x-auto) th {
+  border-bottom-width: 1px;
+  color: var(--admin-text-soft) !important;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.25rem;
+  text-transform: none;
+}
+
+body.admin-dashboard-page .admin-users-table th:nth-child(1) { width: 16%; }
+body.admin-dashboard-page .admin-users-table th:nth-child(2) { width: 32%; }
+body.admin-dashboard-page .admin-users-table th:nth-child(3) { width: 14%; }
+body.admin-dashboard-page .admin-users-table th:nth-child(4) { width: 16%; }
+body.admin-dashboard-page .admin-users-table th:nth-child(5) { width: 22%; }
+
+body.admin-dashboard-page .admin-pets-table th:nth-child(1) { width: 12%; }
+body.admin-dashboard-page .admin-pets-table th:nth-child(2) { width: 12%; }
+body.admin-dashboard-page .admin-pets-table th:nth-child(3) { width: 13%; }
+body.admin-dashboard-page .admin-pets-table th:nth-child(4) { width: 10%; }
+body.admin-dashboard-page .admin-pets-table th:nth-child(5) { width: 14%; }
+body.admin-dashboard-page .admin-pets-table th:nth-child(6) { width: 25%; }
+body.admin-dashboard-page .admin-pets-table th:nth-child(7) { width: 14%; }
+
+body.admin-dashboard-page .admin-appointments-table th:nth-child(1) { width: 10%; }
+body.admin-dashboard-page .admin-appointments-table th:nth-child(2) { width: 12%; }
+body.admin-dashboard-page .admin-appointments-table th:nth-child(3) { width: 11%; }
+body.admin-dashboard-page .admin-appointments-table th:nth-child(4) { width: 13%; }
+body.admin-dashboard-page .admin-appointments-table th:nth-child(5) { width: 16%; }
+body.admin-dashboard-page .admin-appointments-table th:nth-child(6) { width: 12%; }
+body.admin-dashboard-page .admin-appointments-table th:nth-child(7) { width: 12%; }
+body.admin-dashboard-page .admin-appointments-table th:nth-child(8) { width: 14%; }
+
+body.admin-dashboard-page .admin-messages-table th:nth-child(1) { width: 14%; }
+body.admin-dashboard-page .admin-messages-table th:nth-child(2) { width: 22%; }
+body.admin-dashboard-page .admin-messages-table th:nth-child(3) { width: 28%; }
+body.admin-dashboard-page .admin-messages-table th:nth-child(4) { width: 10%; }
+body.admin-dashboard-page .admin-messages-table th:nth-child(5) { width: 14%; }
+body.admin-dashboard-page .admin-messages-table th:nth-child(6) { width: 12%; }
+
+body.admin-dashboard-page #recentMedicalRecordsContainer > .overflow-x-auto th:nth-child(1) { width: 12%; }
+body.admin-dashboard-page #recentMedicalRecordsContainer > .overflow-x-auto th:nth-child(2) { width: 14%; }
+body.admin-dashboard-page #recentMedicalRecordsContainer > .overflow-x-auto th:nth-child(3) { width: 10%; }
+body.admin-dashboard-page #recentMedicalRecordsContainer > .overflow-x-auto th:nth-child(4) { width: 17%; }
+body.admin-dashboard-page #recentMedicalRecordsContainer > .overflow-x-auto th:nth-child(5) { width: 16%; }
+body.admin-dashboard-page #recentMedicalRecordsContainer > .overflow-x-auto th:nth-child(6) { width: 14%; }
+body.admin-dashboard-page #recentMedicalRecordsContainer > .overflow-x-auto th:nth-child(7) { width: 17%; }
+
+body.admin-dashboard-page :where(.admin-table-card, #recentMedicalRecordsContainer > .overflow-x-auto) td {
+  color: var(--admin-text-soft) !important;
+  line-height: 1.375rem;
+}
+
+body.admin-dashboard-page :where(.admin-table-card, #recentMedicalRecordsContainer > .overflow-x-auto) tbody tr:last-child td {
+  border-bottom-width: 0;
+}
+
+body.admin-dashboard-page .admin-pets-table td:nth-child(6),
+body.admin-dashboard-page .admin-pets-table td:nth-child(6) p,
+body.admin-dashboard-page .admin-messages-table td:nth-child(3) {
+  max-width: 22rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+body.admin-dashboard-page :where(.admin-table-card, #recentMedicalRecordsContainer > .overflow-x-auto) td[class*="break-words"] {
+  max-width: 18rem;
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+body.admin-dashboard-page .admin-table-card select {
+  min-width: 7rem;
+}
+
+@media (max-width: 640px) {
+  body.admin-dashboard-page :where(.admin-table-card, #recentMedicalRecordsContainer > .overflow-x-auto) {
+    border-radius: 1rem !important;
+  }
+
+  body.admin-dashboard-page :where(.admin-table-card, #recentMedicalRecordsContainer > .overflow-x-auto) th,
+  body.admin-dashboard-page :where(.admin-table-card, #recentMedicalRecordsContainer > .overflow-x-auto) td {
+    padding: 0.75rem 0.875rem !important;
+  }
+}
+
+@media (max-width: 767px) {
+  body.admin-dashboard-page .admin-dashboard-inner {
+    margin-inline: auto !important;
+  }
+
+  body.admin-dashboard-page .admin-dashboard-card {
+    padding: 1rem !important;
+  }
+
+  body.admin-dashboard-page .admin-section-header .admin-panel-button {
+    align-self: flex-start;
+  }
+
+  body.admin-dashboard-page .pethub-ai-widget {
+    left: 1rem !important;
+    bottom: 1rem !important;
+  }
+
+  body.admin-dashboard-page .pethub-ai-popup {
+    left: 1rem !important;
+    bottom: 5.25rem !important;
+    width: min(22rem, calc(100vw - 2rem)) !important;
+  }
+
+  body.admin-dashboard-page .dark-mode-toggle {
+    right: 1rem;
+    bottom: 1rem;
+  }
+
+  body.admin-dashboard-page.admin-sidebar-open :where(.pethub-ai-widget, .dark-mode-toggle) {
+    opacity: 0;
+    pointer-events: none;
+  }
 }
 
 .footer {

@@ -71,6 +71,7 @@ function setupSidebarToggle() {
   };
 
   const resetDesktopCollapseStyles = (clearTransition = true) => {
+    document.body.classList.remove('admin-sidebar-collapsed');
     adminSidebar.style.transform = '';
     adminSidebar.style.boxShadow = '';
     adminSidebar.style.width = '';
@@ -95,6 +96,7 @@ function setupSidebarToggle() {
 
   const applyDesktopCollapsedState = (isCollapsed, shouldSave = true) => {
     isDesktopSidebarCollapsed = isCollapsed;
+    document.body.classList.toggle('admin-sidebar-collapsed', isCollapsed && desktopMediaQuery.matches);
 
     if (shouldSave) {
       saveDesktopCollapsed(isCollapsed);
@@ -280,7 +282,7 @@ function renderAdminSidebar() {
 
       <div class="admin-sidebar-stats">
         <p class="admin-sidebar-label">QUICK STATS</p>
-        <div>
+        <div class="admin-sidebar-stats-list">
           <div class="admin-sidebar-stat">
             <span>Total Users</span>
             <span id="sidebarTotalUsers" class="admin-sidebar-stat-value">${getAdminSidebarLoadingHtml()}</span>
