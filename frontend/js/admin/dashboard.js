@@ -219,6 +219,35 @@ function showAdminView(viewName) {
   updateAdminSidebarActiveState(currentAdminView);
   renderCurrentAdminView();
   updateAdminViewHash(currentAdminView);
+  resetAdminMobileNavigationState();
+}
+
+function resetAdminMobileNavigationState() {
+  if (typeof window.closeAdminMobileSidebar === 'function') {
+    window.closeAdminMobileSidebar();
+    return;
+  }
+
+  if (!window.matchMedia('(max-width: 767px)').matches) {
+    return;
+  }
+
+  const adminSidebar = document.getElementById('adminSidebar');
+  const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+  const sidebarToggles = document.querySelectorAll('#sidebarToggle, [data-admin-sidebar-toggle]');
+
+  adminSidebar?.classList.remove('is-open');
+  adminSidebar?.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('admin-sidebar-open');
+  if (sidebarBackdrop) {
+    sidebarBackdrop.classList.add('hidden');
+    sidebarBackdrop.hidden = true;
+    sidebarBackdrop.setAttribute('aria-hidden', 'true');
+  }
+  sidebarToggles.forEach(toggle => {
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.classList.remove('is-open');
+  });
 }
 
 function updateAdminViewHash(viewName) {

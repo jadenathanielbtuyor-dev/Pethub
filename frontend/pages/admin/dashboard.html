@@ -18,6 +18,13 @@
     <div class="admin-dashboard-content">
       <main class="admin-dashboard-main p-6 md:p-8">
         <div class="admin-dashboard-inner max-w-7xl mx-auto space-y-6">
+          <div class="admin-mobile-toolbar md:hidden" aria-label="Admin mobile navigation">
+            <button id="sidebarToggle" type="button" class="admin-mobile-menu-button" data-admin-sidebar-toggle aria-controls="adminSidebar" aria-expanded="false">
+              <i class="ri-menu-line" aria-hidden="true"></i>
+              <span>Menu</span>
+            </button>
+            <span class="admin-mobile-toolbar-title">PetHub Admin</span>
+          </div>
           <div id="adminDashboardStatus" class="mb-6 hidden rounded-3xl border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700 shadow-sm"></div>
           <div id="adminViewOverview">
             <section id="dashboardOverview" class="admin-dashboard-card mb-6 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -35,10 +42,6 @@
                     </span>
                     <span id="adminDate" class="text-sm text-slate-500 dark:text-slate-400">Loading admin account...</span>
                     <div class="flex flex-wrap items-center gap-3">
-                      <button id="sidebarToggle" class="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 transition-all duration-200 md:hidden">
-                        <i class="ri-menu-line"></i>
-                        Menu
-                      </button>
                       <a href="#logout" class="btn-logout inline-flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white transition-all duration-200 hover:bg-orange-600 active:scale-95">
                         <i class="ri-logout-circle-line"></i>Logout
                       </a>

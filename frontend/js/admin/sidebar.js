@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
  * Setup sidebar toggle functionality for mobile
  */
 function setupSidebarToggle() {
-  const sidebarToggle = document.getElementById('sidebarToggle');
+  const sidebarToggles = Array.from(new Set(document.querySelectorAll('#sidebarToggle, [data-admin-sidebar-toggle]')));
   const adminSidebarToggle = document.getElementById('adminSidebarToggle');
   const sidebarBackdrop = document.getElementById('sidebarBackdrop');
   const adminSidebarRoot = document.getElementById('adminSidebarRoot');
@@ -36,22 +36,42 @@ function setupSidebarToggle() {
     return;
   }
 
+  const isMobileSidebar = () => !desktopMediaQuery.matches;
+
+  const setMobileToggleState = (isOpen) => {
+    sidebarToggles.forEach((toggle) => {
+      toggle.setAttribute('aria-expanded', String(isOpen));
+      toggle.classList.toggle('is-open', isOpen);
+    });
+  };
+
+  const setSidebarOpen = (isOpen) => {
+    const shouldOpen = Boolean(isOpen) && isMobileSidebar();
+
+    adminSidebar.classList.toggle('is-open', shouldOpen);
+    adminSidebar.setAttribute('aria-hidden', isMobileSidebar() ? String(!shouldOpen) : 'false');
+    document.body.classList.toggle('admin-sidebar-open', shouldOpen);
+    if (sidebarBackdrop) {
+      sidebarBackdrop.classList.toggle('hidden', !shouldOpen);
+      sidebarBackdrop.hidden = !shouldOpen;
+      sidebarBackdrop.setAttribute('aria-hidden', String(!shouldOpen));
+    }
+    setMobileToggleState(shouldOpen);
+
+    if (isMobileSidebar() && adminSidebarToggle) {
+      adminSidebarToggle.setAttribute('aria-expanded', String(shouldOpen));
+      adminSidebarToggle.setAttribute('aria-label', 'Close sidebar');
+    }
+  };
+
   const openSidebar = (e) => {
     e?.preventDefault?.();
-    adminSidebar.classList.add('is-open');
-    document.body.classList.add('admin-sidebar-open');
-    if (sidebarBackdrop) {
-      sidebarBackdrop.classList.remove('hidden');
-    }
+    setSidebarOpen(true);
   };
 
   const closeSidebar = (e) => {
     e?.preventDefault?.();
-    adminSidebar.classList.remove('is-open');
-    document.body.classList.remove('admin-sidebar-open');
-    if (sidebarBackdrop) {
-      sidebarBackdrop.classList.add('hidden');
-    }
+    setSidebarOpen(false);
   };
 
   const getSavedDesktopCollapsed = () => {
@@ -102,19 +122,16 @@ function setupSidebarToggle() {
       saveDesktopCollapsed(isCollapsed);
     }
 
-    if (!desktopMediaQuery.matches) {
+    if (isMobileSidebar()) {
       resetDesktopCollapseStyles();
+      setSidebarOpen(false);
       if (adminSidebarToggle) {
         adminSidebarToggle.setAttribute('aria-label', 'Close sidebar');
       }
       return;
     }
 
-    adminSidebar.classList.remove('is-open');
-    document.body.classList.remove('admin-sidebar-open');
-    if (sidebarBackdrop) {
-      sidebarBackdrop.classList.add('hidden');
-    }
+    setSidebarOpen(false);
 
     if (adminSidebarRoot) {
       adminSidebarRoot.style.transition = 'width 0.25s ease, min-width 0.25s ease, flex-basis 0.25s ease';
@@ -147,7 +164,7 @@ function setupSidebarToggle() {
   const toggleAdminSidebar = (e) => {
     e?.preventDefault?.();
 
-    if (!desktopMediaQuery.matches) {
+    if (isMobileSidebar()) {
       closeSidebar();
       return;
     }
@@ -165,15 +182,22 @@ function setupSidebarToggle() {
   };
 
   // Attach event listeners safely
-  if (sidebarToggle) {
-    sidebarToggle.addEventListener('click', openSidebar);
-  }
+  sidebarToggles.forEach((toggle) => {
+    toggle.addEventListener('click', openSidebar);
+  });
   if (adminSidebarToggle) {
     adminSidebarToggle.addEventListener('click', toggleAdminSidebar);
   }
   if (sidebarBackdrop) {
     sidebarBackdrop.addEventListener('click', closeSidebar);
   }
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && isMobileSidebar() && adminSidebar.classList.contains('is-open')) {
+      closeSidebar(event);
+    }
+  });
+
+  window.closeAdminMobileSidebar = () => setSidebarOpen(false);
 
   applyDesktopCollapsedState(getSavedDesktopCollapsed(), false);
   const handleDesktopBreakpointChange = () => {
@@ -191,6 +215,11 @@ function setupSidebarToggle() {
     link.addEventListener('click', (event) => {
       markSidebarLinkActivating(link);
       const targetView = link.dataset.adminView;
+      const shouldCloseMobileSidebar = isMobileSidebar();
+      if (shouldCloseMobileSidebar) {
+        closeSidebar();
+      }
+
       if (isDashboardPage && isDashboardAdminView(targetView)) {
         event.preventDefault();
         if (typeof window.showAdminView === 'function') {
@@ -198,10 +227,6 @@ function setupSidebarToggle() {
         } else {
           window.location.hash = targetView;
         }
-      }
-
-      if (window.matchMedia('(max-width: 767px)').matches) {
-        closeSidebar();
       }
     });
   });
@@ -311,7 +336,7 @@ function renderAdminSidebar() {
       </div>
     </aside>
 
-    <div id="sidebarBackdrop" class="admin-sidebar-backdrop hidden md:hidden"></div>
+    <div id="sidebarBackdrop" class="admin-sidebar-backdrop hidden md:hidden" hidden aria-hidden="true"></div>
   `;
 
   root.innerHTML = sidebarHTML;
