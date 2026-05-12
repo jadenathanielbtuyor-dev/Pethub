@@ -4416,3 +4416,133 @@ body.admin-dashboard-page .admin-dashboard-main {
     color: rgb(100 116 139 / var(--tw-text-opacity, 1));
   }
 }
+
+/* Force auth navbar alignment at very small mobile widths */
+@media (max-width: 360px) {
+  .nav-container {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+  }
+
+  .nav-links {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    width: 100% !important;
+    gap: 0.75rem 1rem !important;
+  }
+
+  .nav-links li {
+    width: 100% !important;
+    text-align: center !important;
+  }
+
+  .nav-links li a {
+    display: block !important;
+    width: 100% !important;
+    text-align: center !important;
+  }
+
+  .nav-links li:nth-child(1) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .nav-links li:nth-child(2) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .nav-links li:nth-child(3) {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .nav-links li:nth-child(4) {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .nav-links li:nth-child(5) {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+}
+
+/* Fix scattered text on login/auth pages mobile */
+@media (max-width: 480px) {
+  .login-container,
+  .auth-container,
+  .login-card,
+  .auth-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden;
+  }
+
+  .login-container h1,
+  .login-container h2,
+  .login-container h3,
+  .auth-container h1,
+  .auth-container h2,
+  .auth-container h3,
+  .login-container p,
+  .auth-container p {
+    word-break: normal;
+    overflow-wrap: break-word;
+    white-space: normal;
+    line-height: 1.5;
+  }
+
+  .login-container form,
+  .auth-container form {
+    width: 100%;
+  }
+
+  .login-container input,
+  .auth-container input {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+/* Clean public/auth mobile navbar layout */
+@media (max-width: 768px) {
+  .nav-container {
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0.75rem !important;
+  }
+
+  .nav-links {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    width: min(100%, 360px) !important;
+    gap: 0.75rem 1rem !important;
+    align-items: center !important;
+  }
+
+  .nav-links li {
+    width: 100% !important;
+    text-align: center !important;
+  }
+
+  .nav-links a {
+    display: block !important;
+    width: 100% !important;
+    text-align: center !important;
+    white-space: nowrap !important;
+  }
+
+  .nav-links li:nth-child(5) {
+    grid-column: 1 / -1 !important;
+  }
+
+  .btn-login,
+  .btn-logout {
+    width: 100% !important;
+    max-width: 220px !important;
+    margin: 0 auto !important;
+  }
+}
