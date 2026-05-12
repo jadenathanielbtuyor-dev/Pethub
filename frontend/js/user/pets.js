@@ -118,7 +118,7 @@ function displayPetsList(pets) {
         <div class="flex-1">
           <div class="flex flex-wrap items-center gap-3 mb-3">
             <h3 class="font-semibold text-lg text-gray-900 flex items-center gap-2">
-              <span>${getAnimalEmoji(pet.species)}</span>
+              <span class="pet-species-emoji">${getAnimalEmoji(pet.species)}</span>
               ${escapeHtml(pet.name || 'Pet')}
             </h3>
             <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">

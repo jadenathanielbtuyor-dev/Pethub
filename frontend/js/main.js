@@ -22,9 +22,11 @@ function initializeApp() {
 function initializeDarkMode() {
   const darkModeToggle = getDarkModeToggle();
   
-  // Apply saved preference
+  // Apply only the saved preference on page load.
   if (isDarkMode()) {
     applyDarkMode();
+  } else {
+    removeDarkMode();
   }
   
   if (darkModeToggle) {

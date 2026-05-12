@@ -1628,3 +1628,46 @@ body.dark-mode ::-webkit-scrollbar-track {
     opacity: 0.7;
   }
 }
+
+/* Keep fixed floating controls from covering low page content. */
+:root {
+  --pethub-floating-safe-bottom: 5.75rem;
+}
+
+body main.flex-grow,
+body.admin-dashboard-page .admin-dashboard-main {
+  padding-bottom: max(var(--pethub-floating-safe-bottom), env(safe-area-inset-bottom));
+}
+
+.footer {
+  padding-bottom: max(5.5rem, calc(2rem + env(safe-area-inset-bottom)));
+}
+
+.pet-species-emoji {
+  display: inline-flex;
+  width: 1.5em;
+  min-width: 1.5em;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+@media (max-width: 640px) {
+  .auth-section {
+    align-items: flex-start;
+    padding-bottom: var(--pethub-floating-safe-bottom);
+  }
+}
+
+@media (max-width: 480px) {
+  :root {
+    --pethub-floating-safe-bottom: 5.25rem;
+  }
+
+  .dark-mode-toggle {
+    right: 1rem;
+    bottom: 1rem;
+    width: 3rem;
+    height: 3rem;
+  }
+}

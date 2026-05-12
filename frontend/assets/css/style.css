@@ -3058,7 +3058,7 @@ body.admin-dashboard-page {
   background: rgba(255, 255, 255, 0.98);
   padding: 1.25rem;
   box-shadow: 24px 0 48px rgba(15, 23, 42, 0.18);
-  transition: transform 0.25s ease, box-shadow 0.25s ease, width 0.25s ease;
+  transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease;
 }
 
 .admin-sidebar.is-open {
@@ -3149,7 +3149,7 @@ body.admin-sidebar-open {
 }
 
 .admin-nav-link.is-activating {
-  transform: translateX(2px);
+  box-shadow: 0 8px 18px rgba(249, 115, 22, 0.18);
 }
 
 .admin-dashboard-page [role="button"],
@@ -3158,7 +3158,7 @@ body.admin-sidebar-open {
 #appointmentForm button[type="submit"],
 #contactForm button[type="submit"],
 .btn-logout {
-  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease, opacity 0.16s ease, transform 0.16s ease;
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
 }
 
 .admin-dashboard-page [role="button"]:hover:not([aria-busy="true"]),
@@ -3167,7 +3167,7 @@ body.admin-sidebar-open {
 #appointmentForm button[type="submit"]:hover:not(:disabled),
 #contactForm button[type="submit"]:hover:not(:disabled),
 .btn-logout:hover {
-  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
 }
 
 .admin-dashboard-page [role="button"]:active,
@@ -3178,7 +3178,7 @@ body.admin-sidebar-open {
 #appointmentForm button[type="submit"]:active:not(:disabled),
 #contactForm button[type="submit"]:active:not(:disabled),
 .btn-logout:active {
-  transform: translateY(0);
+  box-shadow: none;
 }
 
 .admin-dashboard-page button:disabled,
@@ -3192,13 +3192,11 @@ body.admin-sidebar-open {
 
 .admin-tab-panel {
   opacity: 0;
-  transform: translateY(2px);
-  transition: opacity 0.14s ease, transform 0.14s ease;
+  transition: none;
 }
 
 .admin-tab-panel.is-active {
   opacity: 1;
-  transform: translateY(0);
 }
 
 .admin-sidebar-stats {
@@ -3351,627 +3349,7 @@ body.admin-sidebar-open {
   }
 }
 
-body.dark-mode.admin-dashboard-page {
-  background: #0f172a;
-}
-
-body.dark-mode .admin-sidebar {
-  border-right-color: #334155;
-  background: rgba(15, 23, 42, 0.98);
-}
-
-body.dark-mode .admin-sidebar-close {
-  color: #cbd5e1;
-}
-
-body.dark-mode .admin-sidebar-close:hover {
-  background: #1e293b;
-  color: #ffb088;
-}
-
-body.dark-mode .admin-nav-link {
-  color: #cbd5e1;
-}
-
-body.dark-mode .admin-nav-link:hover,
-body.dark-mode .admin-nav-link.is-active {
-  background: #f97316;
-  color: #fff;
-}
-
-body.dark-mode .admin-sidebar-label {
-  color: #94a3b8;
-}
-
-body.dark-mode .admin-sidebar-stats {
-  border-color: #7c2d12;
-  background: #1e293b;
-}
-
-body.dark-mode .admin-sidebar-stat {
-  border-bottom-color: rgba(251, 146, 60, 0.22);
-  color: #cbd5e1;
-}
-
-body.dark-mode .admin-sidebar-stat-value {
-  color: #ffb088;
-}
-
-body.dark-mode.admin-dashboard-page section,
-body.dark-mode.admin-dashboard-page #systemLogs,
-body.dark-mode.admin-dashboard-page :where([class~="bg-white"]) {
-  border-color: #334155 !important;
-  background: #1e293b !important;
-}
-
-body.dark-mode.admin-dashboard-page :where([class~="bg-slate-50"], [class~="bg-slate-100"]) {
-  background: #0f172a !important;
-}
-
-body.dark-mode.admin-dashboard-page :where(
-  [class~="text-slate-800"],
-  [class~="text-slate-900"],
-  [class~="text-gray-900"],
-  [class~="text-slate-700"],
-  [class~="text-gray-700"]
-) {
-  color: #e2e8f0 !important;
-}
-
-body.dark-mode.admin-dashboard-page :where(
-  [class~="text-slate-600"],
-  [class~="text-gray-600"],
-  [class~="text-slate-500"],
-  [class~="text-gray-500"]
-) {
-  color: #cbd5e1 !important;
-}
-
-body.dark-mode.admin-dashboard-page .dark-safe-input,
-body.dark-mode.admin-dashboard-page .dark-safe-select {
-  border-color: #475569 !important;
-  background: #0f172a !important;
-  color: #e2e8f0 !important;
-}
-
-body.dark-mode.admin-dashboard-page .admin-panel-secondary-button {
-  border-color: #475569 !important;
-  background: #0f172a !important;
-  color: #e2e8f0 !important;
-}
-
-body.dark-mode.admin-dashboard-page table th {
-  border-color: #334155 !important;
-  background: #0f172a !important;
-  color: #e2e8f0 !important;
-}
-
-body.dark-mode.admin-dashboard-page table td {
-  border-color: #334155 !important;
-  color: #cbd5e1 !important;
-}
-
-body.dark-mode.admin-dashboard-page table tr:hover,
-body.dark-mode.admin-dashboard-page :where([class~="hover:bg-gray-50"]):hover {
-  background: #334155 !important;
-}
-
-body.dark-mode.admin-dashboard-page .admin-status-success {
-  border-color: #166534;
-  background: #052e16;
-  color: #bbf7d0;
-}
-
-body.dark-mode.admin-dashboard-page .admin-status-warning {
-  border-color: #92400e;
-  background: #451a03;
-  color: #fde68a;
-}
-
-body.dark-mode.admin-dashboard-page .admin-status-info {
-  border-color: #1d4ed8;
-  background: #172554;
-  color: #bfdbfe;
-}
-
-body.dark-mode.admin-dashboard-page .admin-status-danger {
-  border-color: #b91c1c;
-  background: #450a0a;
-  color: #fecaca;
-}
-
-body.dark-mode.admin-dashboard-page .admin-status-neutral {
-  border-color: #475569;
-  background: #0f172a;
-  color: #cbd5e1;
-}
-
-@media (prefers-color-scheme: dark) {
-  body.admin-dashboard-page {
-    background: #0f172a;
-    color: #e2e8f0;
-  }
-
-  body.admin-dashboard-page section,
-  body.admin-dashboard-page #systemLogs,
-  body.admin-dashboard-page :where([class~="bg-white"]) {
-    border-color: #334155 !important;
-    background: #1e293b !important;
-  }
-
-  body.admin-dashboard-page :where([class~="bg-slate-50"], [class~="bg-slate-100"]) {
-    background: #0f172a !important;
-  }
-
-  body.admin-dashboard-page :where(
-    [class~="text-slate-800"],
-    [class~="text-slate-900"],
-    [class~="text-gray-900"],
-    [class~="text-slate-700"],
-    [class~="text-gray-700"]
-  ) {
-    color: #e2e8f0 !important;
-  }
-
-  body.admin-dashboard-page :where(
-    [class~="text-slate-600"],
-    [class~="text-gray-600"],
-    [class~="text-slate-500"],
-    [class~="text-gray-500"]
-  ) {
-    color: #cbd5e1 !important;
-  }
-
-  body.admin-dashboard-page .dark-safe-input,
-  body.admin-dashboard-page .dark-safe-select {
-    border-color: #475569 !important;
-    background: #0f172a !important;
-    color: #e2e8f0 !important;
-  }
-
-  body.admin-dashboard-page .admin-panel-secondary-button {
-    border-color: #475569 !important;
-    background: #0f172a !important;
-    color: #e2e8f0 !important;
-  }
-
-  body.admin-dashboard-page table th {
-    border-color: #334155 !important;
-    background: #0f172a !important;
-    color: #e2e8f0 !important;
-  }
-
-  body.admin-dashboard-page table td {
-    border-color: #334155 !important;
-    color: #cbd5e1 !important;
-  }
-
-  body.admin-dashboard-page table tr:hover,
-  body.admin-dashboard-page :where([class~="hover:bg-gray-50"]):hover {
-    background: #334155 !important;
-  }
-
-  body.admin-dashboard-page .admin-status-success {
-    border-color: #166534;
-    background: #052e16;
-    color: #bbf7d0;
-  }
-
-  body.admin-dashboard-page .admin-status-warning {
-    border-color: #92400e;
-    background: #451a03;
-    color: #fde68a;
-  }
-
-  body.admin-dashboard-page .admin-status-info {
-    border-color: #1d4ed8;
-    background: #172554;
-    color: #bfdbfe;
-  }
-
-  body.admin-dashboard-page .admin-status-danger {
-    border-color: #b91c1c;
-    background: #450a0a;
-    color: #fecaca;
-  }
-
-  body.admin-dashboard-page .admin-status-neutral {
-    border-color: #475569;
-    background: #0f172a;
-    color: #cbd5e1;
-  }
-
-  body.admin-dashboard-page .admin-sidebar {
-    border-right-color: #334155;
-    background: rgba(15, 23, 42, 0.98);
-  }
-
-  body.admin-dashboard-page .admin-sidebar-close {
-    color: #cbd5e1;
-  }
-
-  body.admin-dashboard-page .admin-sidebar-close:hover {
-    background: #1e293b;
-    color: #ffb088;
-  }
-
-  body.admin-dashboard-page .admin-nav-link {
-    color: #cbd5e1;
-  }
-
-  body.admin-dashboard-page .admin-nav-link:hover,
-  body.admin-dashboard-page .admin-nav-link.is-active {
-    background: #f97316;
-    color: #fff;
-  }
-
-  body.admin-dashboard-page .admin-sidebar-label {
-    color: #94a3b8;
-  }
-
-  body.admin-dashboard-page .admin-sidebar-stats {
-    border-color: #7c2d12;
-    background: #1e293b;
-  }
-
-  body.admin-dashboard-page .admin-sidebar-stat {
-    border-bottom-color: rgba(251, 146, 60, 0.22);
-    color: #cbd5e1;
-  }
-
-  body.admin-dashboard-page .admin-sidebar-stat-value {
-    color: #ffb088;
-  }
-}
-
-/* Admin dark mode visual overrides */
-
-body.dark-mode.admin-dashboard-page,
-body.dark-mode.admin-dashboard-page .admin-dashboard-shell,
-body.dark-mode.admin-dashboard-page .admin-dashboard-content,
-body.dark-mode.admin-dashboard-page .admin-dashboard-main,
-body.dark-mode #adminSidebarRoot ~ main {
-  background: #0f172a !important;
-  color: #e2e8f0;
-}
-
-body.dark-mode .admin-sidebar {
-  border-right-color: #334155;
-  background: rgba(15, 23, 42, 0.98);
-  color: #e2e8f0;
-}
-
-body.dark-mode .admin-sidebar-brand-icon {
-  background: rgba(249, 115, 22, 0.16);
-  color: #fdba74;
-}
-
-body.dark-mode .admin-sidebar :where([class~="text-slate-500"], [class~="text-gray-500"]) {
-  color: #cbd5e1 !important;
-}
-
-body.dark-mode .admin-sidebar-close {
-  color: #cbd5e1;
-}
-
-body.dark-mode .admin-sidebar-close:hover {
-  background: #1e293b;
-  color: #fdba74;
-}
-
-body.dark-mode .admin-nav-link {
-  color: #cbd5e1;
-}
-
-body.dark-mode .admin-nav-link:hover,
-body.dark-mode .admin-nav-link.is-active {
-  background: #f97316;
-  color: #fff;
-  box-shadow: 0 10px 22px rgba(249, 115, 22, 0.22);
-}
-
-body.dark-mode .admin-sidebar-label {
-  color: #94a3b8;
-}
-
-body.dark-mode .admin-sidebar-stats {
-  border-color: rgba(249, 115, 22, 0.34);
-  background: rgba(30, 41, 59, 0.94);
-}
-
-body.dark-mode .admin-sidebar-stat {
-  border-bottom-color: rgba(251, 146, 60, 0.22);
-  color: #cbd5e1;
-}
-
-body.dark-mode .admin-sidebar-stat-value {
-  color: #fdba74;
-}
-
-body.dark-mode.admin-dashboard-page :where(section, #systemLogs, [class~="bg-white"]),
-body.dark-mode #adminSidebarRoot ~ main :where([class~="bg-white"]),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="bg-white"]),
-body.dark-mode #adminMedicalRecordModal :where([class~="bg-white"]) {
-  border-color: #334155 !important;
-  background: #1e293b !important;
-  color: #e2e8f0 !important;
-}
-
-body.dark-mode.admin-dashboard-page :where([class~="bg-slate-50"], [class~="bg-slate-100"], [class~="bg-gray-50"], [class~="bg-gray-100"]),
-body.dark-mode #adminSidebarRoot ~ main :where([class~="bg-slate-50"], [class~="bg-slate-100"], [class~="bg-gray-50"], [class~="bg-gray-100"]),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="bg-slate-50"], [class~="bg-slate-100"], [class~="bg-gray-50"], [class~="bg-gray-100"]),
-body.dark-mode #adminMedicalRecordModal :where([class~="bg-slate-50"], [class~="bg-slate-100"], [class~="bg-gray-50"], [class~="bg-gray-100"]) {
-  background: #0f172a !important;
-}
-
-body.dark-mode.admin-dashboard-page :where([class~="border-gray-200"], [class~="border-gray-100"], [class~="border-slate-200"], [class~="border-slate-100"]),
-body.dark-mode #adminSidebarRoot ~ main :where([class~="border-gray-200"], [class~="border-gray-100"], [class~="border-slate-200"], [class~="border-slate-100"]),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="border-gray-200"], [class~="border-gray-100"], [class~="border-slate-200"], [class~="border-slate-100"]),
-body.dark-mode #adminMedicalRecordModal :where([class~="border-gray-200"], [class~="border-gray-100"], [class~="border-slate-200"], [class~="border-slate-100"]) {
-  border-color: #334155 !important;
-}
-
-body.dark-mode.admin-dashboard-page :where(h1, h2, h3, [class~="text-slate-900"], [class~="text-slate-800"], [class~="text-gray-900"]),
-body.dark-mode #adminSidebarRoot ~ main :where(h1, h2, h3, [class~="text-slate-900"], [class~="text-slate-800"], [class~="text-gray-900"]),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(h1, h2, h3, [class~="text-slate-900"], [class~="text-slate-800"], [class~="text-gray-900"]),
-body.dark-mode #adminMedicalRecordModal :where(h1, h2, h3, [class~="text-slate-900"], [class~="text-slate-800"], [class~="text-gray-900"]) {
-  color: #f8fafc !important;
-}
-
-body.dark-mode.admin-dashboard-page :where([class~="text-slate-700"], [class~="text-slate-600"], [class~="text-gray-700"], [class~="text-gray-600"]),
-body.dark-mode #adminSidebarRoot ~ main :where([class~="text-slate-700"], [class~="text-slate-600"], [class~="text-gray-700"], [class~="text-gray-600"]),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="text-slate-700"], [class~="text-slate-600"], [class~="text-gray-700"], [class~="text-gray-600"]),
-body.dark-mode #adminMedicalRecordModal :where([class~="text-slate-700"], [class~="text-slate-600"], [class~="text-gray-700"], [class~="text-gray-600"]) {
-  color: #cbd5e1 !important;
-}
-
-body.dark-mode.admin-dashboard-page :where([class~="text-slate-500"], [class~="text-slate-400"], [class~="text-gray-500"], [class~="text-gray-400"]),
-body.dark-mode #adminSidebarRoot ~ main :where([class~="text-slate-500"], [class~="text-slate-400"], [class~="text-gray-500"], [class~="text-gray-400"]),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="text-slate-500"], [class~="text-slate-400"], [class~="text-gray-500"], [class~="text-gray-400"]),
-body.dark-mode #adminMedicalRecordModal :where([class~="text-slate-500"], [class~="text-slate-400"], [class~="text-gray-500"], [class~="text-gray-400"]) {
-  color: #94a3b8 !important;
-}
-
-body.dark-mode.admin-dashboard-page :where(input, select, textarea, .dark-safe-input, .dark-safe-select),
-body.dark-mode #adminSidebarRoot ~ main :where(input, select, textarea, .dark-safe-input, .dark-safe-select),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(input, select, textarea, .dark-safe-input, .dark-safe-select),
-body.dark-mode #adminMedicalRecordModal :where(input, select, textarea, .dark-safe-input, .dark-safe-select) {
-  border-color: #475569 !important;
-  background: #0f172a !important;
-  color: #f8fafc !important;
-}
-
-body.dark-mode.admin-dashboard-page :where(input, textarea)::placeholder,
-body.dark-mode #adminSidebarRoot ~ main :where(input, textarea)::placeholder,
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(input, textarea)::placeholder,
-body.dark-mode #adminMedicalRecordModal :where(input, textarea)::placeholder {
-  color: #94a3b8 !important;
-}
-
-body.dark-mode.admin-dashboard-page :where(input, select, textarea):focus,
-body.dark-mode #adminSidebarRoot ~ main :where(input, select, textarea):focus,
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(input, select, textarea):focus,
-body.dark-mode #adminMedicalRecordModal :where(input, select, textarea):focus {
-  border-color: #fb923c !important;
-  box-shadow: 0 0 0 3px rgba(251, 146, 60, 0.22);
-}
-
-body.dark-mode.admin-dashboard-page :where(option),
-body.dark-mode #adminSidebarRoot ~ main :where(option),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(option),
-body.dark-mode #adminMedicalRecordModal :where(option) {
-  background: #0f172a;
-  color: #f8fafc;
-}
-
-body.dark-mode.admin-dashboard-page :where(table),
-body.dark-mode #adminSidebarRoot ~ main :where(table),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(table) {
-  background: #1e293b !important;
-  color: #e2e8f0;
-}
-
-body.dark-mode.admin-dashboard-page :where(thead, table th),
-body.dark-mode #adminSidebarRoot ~ main :where(thead, table th),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(thead, table th) {
-  border-color: #334155 !important;
-  background: #0f172a !important;
-  color: #f8fafc !important;
-}
-
-body.dark-mode.admin-dashboard-page :where(table tr, table td),
-body.dark-mode #adminSidebarRoot ~ main :where(table tr, table td),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(table tr, table td) {
-  border-color: #334155 !important;
-}
-
-body.dark-mode.admin-dashboard-page :where(table td),
-body.dark-mode #adminSidebarRoot ~ main :where(table td),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(table td) {
-  color: #cbd5e1 !important;
-}
-
-body.dark-mode.admin-dashboard-page :where(table tr:hover, [class~="hover:bg-gray-50"]:hover, [class~="hover:bg-slate-50"]:hover),
-body.dark-mode #adminSidebarRoot ~ main :where(table tr:hover, [class~="hover:bg-gray-50"]:hover, [class~="hover:bg-slate-50"]:hover),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(table tr:hover, [class~="hover:bg-gray-50"]:hover, [class~="hover:bg-slate-50"]:hover) {
-  background: #263449 !important;
-}
-
-body.dark-mode.admin-dashboard-page :where([class~="bg-orange-50"]),
-body.dark-mode #adminSidebarRoot ~ main :where([class~="bg-orange-50"]),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="bg-orange-50"]) {
-  border-color: rgba(251, 146, 60, 0.34) !important;
-  background: rgba(154, 52, 18, 0.36) !important;
-}
-
-body.dark-mode.admin-dashboard-page :where([class~="bg-blue-50"], [class~="bg-blue-100"]),
-body.dark-mode #adminSidebarRoot ~ main :where([class~="bg-blue-50"], [class~="bg-blue-100"]),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="bg-blue-50"], [class~="bg-blue-100"]) {
-  border-color: rgba(96, 165, 250, 0.34) !important;
-  background: rgba(30, 64, 175, 0.3) !important;
-}
-
-body.dark-mode.admin-dashboard-page :where([class~="bg-yellow-50"], [class~="bg-yellow-100"]),
-body.dark-mode #adminSidebarRoot ~ main :where([class~="bg-yellow-50"], [class~="bg-yellow-100"]),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="bg-yellow-50"], [class~="bg-yellow-100"]) {
-  border-color: rgba(250, 204, 21, 0.34) !important;
-  background: rgba(113, 63, 18, 0.34) !important;
-}
-
-body.dark-mode.admin-dashboard-page :where([class~="bg-green-50"], [class~="bg-green-100"], [class~="bg-emerald-50"], [class~="bg-emerald-100"]),
-body.dark-mode #adminSidebarRoot ~ main :where([class~="bg-green-50"], [class~="bg-green-100"], [class~="bg-emerald-50"], [class~="bg-emerald-100"]),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="bg-green-50"], [class~="bg-green-100"], [class~="bg-emerald-50"], [class~="bg-emerald-100"]) {
-  border-color: rgba(52, 211, 153, 0.34) !important;
-  background: rgba(6, 78, 59, 0.34) !important;
-}
-
-body.dark-mode.admin-dashboard-page :where([class~="bg-red-50"], [class~="bg-red-100"]),
-body.dark-mode #adminSidebarRoot ~ main :where([class~="bg-red-50"], [class~="bg-red-100"]),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="bg-red-50"], [class~="bg-red-100"]),
-body.dark-mode #adminMedicalRecordModal :where([class~="bg-red-50"], [class~="bg-red-100"]) {
-  border-color: rgba(248, 113, 113, 0.34) !important;
-  background: rgba(127, 29, 29, 0.34) !important;
-}
-
-body.dark-mode.admin-dashboard-page :where([class~="bg-purple-100"]),
-body.dark-mode #adminSidebarRoot ~ main :where([class~="bg-purple-100"]),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="bg-purple-100"]) {
-  border-color: rgba(192, 132, 252, 0.34) !important;
-  background: rgba(88, 28, 135, 0.34) !important;
-}
-
-body.dark-mode.admin-dashboard-page :where([class~="text-orange-600"], [class~="text-orange-700"]),
-body.dark-mode #adminSidebarRoot ~ main :where([class~="text-orange-600"], [class~="text-orange-700"]),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="text-orange-600"], [class~="text-orange-700"]) {
-  color: #fdba74 !important;
-}
-
-body.dark-mode.admin-dashboard-page :where([class~="text-blue-600"], [class~="text-blue-700"]),
-body.dark-mode #adminSidebarRoot ~ main :where([class~="text-blue-600"], [class~="text-blue-700"]),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="text-blue-600"], [class~="text-blue-700"]) {
-  color: #93c5fd !important;
-}
-
-body.dark-mode.admin-dashboard-page :where([class~="text-yellow-600"], [class~="text-yellow-700"]),
-body.dark-mode #adminSidebarRoot ~ main :where([class~="text-yellow-600"], [class~="text-yellow-700"]),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="text-yellow-600"], [class~="text-yellow-700"]) {
-  color: #fde68a !important;
-}
-
-body.dark-mode.admin-dashboard-page :where([class~="text-green-600"], [class~="text-green-700"], [class~="text-emerald-600"], [class~="text-emerald-700"]),
-body.dark-mode #adminSidebarRoot ~ main :where([class~="text-green-600"], [class~="text-green-700"], [class~="text-emerald-600"], [class~="text-emerald-700"]),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="text-green-600"], [class~="text-green-700"], [class~="text-emerald-600"], [class~="text-emerald-700"]) {
-  color: #86efac !important;
-}
-
-body.dark-mode.admin-dashboard-page :where([class~="text-red-500"], [class~="text-red-600"], [class~="text-red-700"]),
-body.dark-mode #adminSidebarRoot ~ main :where([class~="text-red-500"], [class~="text-red-600"], [class~="text-red-700"]),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="text-red-500"], [class~="text-red-600"], [class~="text-red-700"]),
-body.dark-mode #adminMedicalRecordModal :where([class~="text-red-500"], [class~="text-red-600"], [class~="text-red-700"]) {
-  color: #fca5a5 !important;
-}
-
-body.dark-mode.admin-dashboard-page :where([class~="text-purple-700"]),
-body.dark-mode #adminSidebarRoot ~ main :where([class~="text-purple-700"]),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where([class~="text-purple-700"]) {
-  color: #d8b4fe !important;
-}
-
-body.dark-mode.admin-dashboard-page :where(.btn-logout, [class~="bg-slate-100"][class~="text-slate-700"], [class~="bg-red-50"][class~="text-red-700"], [class~="bg-green-50"][class~="text-green-700"]),
-body.dark-mode #adminSidebarRoot ~ main :where(.btn-logout, [class~="bg-slate-100"][class~="text-slate-700"], [class~="bg-red-50"][class~="text-red-700"], [class~="bg-green-50"][class~="text-green-700"]),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(.btn-logout, [class~="bg-slate-100"][class~="text-slate-700"], [class~="bg-red-50"][class~="text-red-700"], [class~="bg-green-50"][class~="text-green-700"]) {
-  border: 1px solid rgba(148, 163, 184, 0.25);
-}
-
-body.dark-mode.admin-dashboard-page :where(.dashboard-loading-state),
-body.dark-mode #adminSidebarRoot ~ main :where(.dashboard-loading-state),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(.dashboard-loading-state) {
-  border-color: #334155;
-  background: rgba(15, 23, 42, 0.82);
-  color: #cbd5e1;
-}
-
-body.dark-mode.admin-dashboard-page :where(.dashboard-loading-title),
-body.dark-mode #adminSidebarRoot ~ main :where(.dashboard-loading-title),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(.dashboard-loading-title) {
-  color: #f8fafc;
-}
-
-body.dark-mode.admin-dashboard-page :where(.dashboard-loading-copy),
-body.dark-mode #adminSidebarRoot ~ main :where(.dashboard-loading-copy),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(.dashboard-loading-copy) {
-  color: #94a3b8;
-}
-
-body.dark-mode.admin-dashboard-page :where(.dashboard-skeleton-row),
-body.dark-mode #adminSidebarRoot ~ main :where(.dashboard-skeleton-row),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(.dashboard-skeleton-row) {
-  background: #111827;
-}
-
-body.dark-mode.admin-dashboard-page :where(.dashboard-skeleton-icon, .dashboard-skeleton-line),
-body.dark-mode #adminSidebarRoot ~ main :where(.dashboard-skeleton-icon, .dashboard-skeleton-line),
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content :where(.dashboard-skeleton-icon, .dashboard-skeleton-line) {
-  background: linear-gradient(90deg, #334155 25%, #475569 50%, #334155 75%);
-  background-size: 200% 100%;
-}
-
-body.dark-mode.admin-dashboard-page #adminDashboardStatus:not(.hidden),
-body.dark-mode.admin-dashboard-page :where([id*="Error"], [class~="text-red-500"]) {
-  border-color: rgba(248, 113, 113, 0.44) !important;
-}
-
-body.dark-mode #adminMedicalRecordModal {
-  background: rgba(2, 6, 23, 0.72);
-}
-
-body.dark-mode #adminMedicalRecordModal > div {
-  border: 1px solid #334155;
-  background: #1e293b !important;
-  color: #e2e8f0;
-}
-
-body.dark-mode .admin-dashboard-page,
-body.dark-mode .admin-dashboard-shell,
-body.dark-mode .admin-dashboard-content,
-body.dark-mode .admin-dashboard-main {
-  background: #0f172a !important;
-  color: #e2e8f0;
-}
-
-body.dark-mode.admin-dashboard-page .bg-white,
-body.dark-mode .admin-dashboard-page .bg-white,
-body.dark-mode #adminSidebarRoot ~ main .bg-white,
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content .bg-white {
-  border-color: #334155 !important;
-  background: #1e293b !important;
-  color: #e2e8f0 !important;
-}
-
-body.dark-mode.admin-dashboard-page .bg-slate-50,
-body.dark-mode .admin-dashboard-page .bg-slate-50,
-body.dark-mode #adminSidebarRoot ~ main .bg-slate-50,
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content .bg-slate-50 {
-  background: #0f172a !important;
-}
-
-body.dark-mode.admin-dashboard-page .text-gray-900,
-body.dark-mode.admin-dashboard-page .text-slate-800,
-body.dark-mode .admin-dashboard-page .text-gray-900,
-body.dark-mode .admin-dashboard-page .text-slate-800,
-body.dark-mode #adminSidebarRoot ~ main .text-gray-900,
-body.dark-mode #adminSidebarRoot ~ main .text-slate-800,
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content .text-gray-900,
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content .text-slate-800 {
-  color: #f8fafc !important;
-}
-
-body.dark-mode.admin-dashboard-page .border-gray-200,
-body.dark-mode .admin-dashboard-page .border-gray-200,
-body.dark-mode #adminSidebarRoot ~ main .border-gray-200,
-body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content .border-gray-200 {
-  border-color: #334155 !important;
-}
+/* Admin dashboard theme rules are consolidated after generated utilities. */
 
 /* Page Header */
 
@@ -4281,6 +3659,120 @@ body.dark-mode #adminSidebarRoot ~ .admin-dashboard-content .border-gray-200 {
       font-size: 0.875rem;
       line-height: 1.25rem;
     }
+  }
+}
+
+/* Public navbar mobile layout */
+@media (max-width: 900px) {
+  .nav-container {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.75rem 1rem;
+    padding-top: 0.875rem;
+    padding-bottom: 0.875rem;
+  }
+
+  .logo {
+    flex: 0 0 auto;
+    max-width: 100%;
+    gap: 0.5rem;
+    justify-content: center;
+    white-space: nowrap;
+  }
+
+  .logo img {
+    flex-shrink: 0;
+    height: 2.75rem;
+  }
+
+  .logo h1 {
+    font-size: 1.125rem;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+
+  .nav-links {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.625rem 0.875rem;
+    min-width: 0;
+  }
+
+  .nav-links li {
+    display: flex;
+  }
+
+  .nav-links a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.25rem;
+    padding: 0.25rem 0.35rem;
+    white-space: nowrap;
+  }
+
+  .btn-login {
+    flex: 0 0 auto;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .nav-container {
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  .logo img {
+    height: 2.5rem;
+  }
+
+  .logo h1 {
+    font-size: 1.0625rem;
+  }
+
+  .nav-links {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+    width: 100%;
+  }
+
+  .nav-links li {
+    min-width: 0;
+  }
+
+  .nav-links li:last-child {
+    grid-column: 1 / -1;
+    justify-content: center;
+  }
+
+  .nav-links a {
+    width: 100%;
+    min-height: 2.35rem;
+    padding: 0.45rem 0.25rem;
+    font-size: 0.8125rem;
+    line-height: 1.1;
+  }
+
+  .nav-links li:last-child .btn-login {
+    width: min(11rem, 100%);
+  }
+}
+
+@media (max-width: 360px) {
+  .nav-links {
+    gap: 0.4rem;
+  }
+
+  .nav-links a {
+    font-size: 0.78rem;
   }
 }
 
@@ -4701,5 +4193,848 @@ body.dark-mode ::-webkit-scrollbar-track {
   .dark\:placeholder\:text-slate-500::placeholder {
     --tw-text-opacity: 1;
     color: rgb(100 116 139 / var(--tw-text-opacity, 1));
+  }
+}
+
+/* Admin dashboard theme: driven only by body.dark-mode + html.dark. */
+body.admin-dashboard-page {
+  --admin-bg: #f8fafc;
+  --admin-surface: #ffffff;
+  --admin-surface-muted: #f8fafc;
+  --admin-surface-soft: #f1f5f9;
+  --admin-border: #e5e7eb;
+  --admin-border-strong: #e2e8f0;
+  --admin-text: #1e293b;
+  --admin-text-soft: #475569;
+  --admin-text-muted: #64748b;
+  --admin-text-subtle: #94a3b8;
+  --admin-sidebar-bg: rgba(255, 255, 255, 0.98);
+  --admin-backdrop: rgba(15, 23, 42, 0.42);
+  --admin-brand-soft: #ffedd5;
+  --admin-brand: #ea580c;
+  --admin-brand-strong: #c2410c;
+  --admin-brand-border: #fed7aa;
+  --admin-orange-soft: #fff7ed;
+  --admin-orange-border: #fed7aa;
+  --admin-orange-text: #c2410c;
+  --admin-blue-soft: #eff6ff;
+  --admin-blue-border: #bfdbfe;
+  --admin-blue-text: #1d4ed8;
+  --admin-yellow-soft: #fefce8;
+  --admin-yellow-border: #fde68a;
+  --admin-yellow-text: #a16207;
+  --admin-green-soft: #ecfdf5;
+  --admin-green-border: #bbf7d0;
+  --admin-green-text: #047857;
+  --admin-red-soft: #fef2f2;
+  --admin-red-border: #fecaca;
+  --admin-red-text: #b91c1c;
+  --admin-purple-soft: #f5f3ff;
+  --admin-purple-border: #ddd6fe;
+  --admin-purple-text: #6d28d9;
+  --admin-row-hover: #f8fafc;
+  --admin-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --admin-shadow-md: 0 10px 24px rgba(15, 23, 42, 0.1);
+  --admin-shadow-sidebar: 18px 0 36px rgba(15, 23, 42, 0.14);
+  --admin-skeleton: linear-gradient(90deg, #e2e8f0 25%, #f8fafc 50%, #e2e8f0 75%);
+  color-scheme: light;
+  background-color: var(--admin-bg) !important;
+  color: var(--admin-text-soft);
+}
+
+html.dark body.admin-dashboard-page.dark-mode {
+  --admin-bg: #0f172a;
+  --admin-surface: #1e293b;
+  --admin-surface-muted: #111827;
+  --admin-surface-soft: #172033;
+  --admin-border: #334155;
+  --admin-border-strong: #475569;
+  --admin-text: #e2e8f0;
+  --admin-text-soft: #cbd5e1;
+  --admin-text-muted: #94a3b8;
+  --admin-text-subtle: #64748b;
+  --admin-sidebar-bg: rgba(15, 23, 42, 0.98);
+  --admin-backdrop: rgba(2, 6, 23, 0.58);
+  --admin-brand-soft: rgba(249, 115, 22, 0.16);
+  --admin-brand: #fdba74;
+  --admin-brand-strong: #ffedd5;
+  --admin-brand-border: rgba(249, 115, 22, 0.34);
+  --admin-orange-soft: rgba(154, 52, 18, 0.34);
+  --admin-orange-border: rgba(251, 146, 60, 0.36);
+  --admin-orange-text: #fdba74;
+  --admin-blue-soft: rgba(30, 64, 175, 0.28);
+  --admin-blue-border: rgba(96, 165, 250, 0.36);
+  --admin-blue-text: #93c5fd;
+  --admin-yellow-soft: rgba(113, 63, 18, 0.32);
+  --admin-yellow-border: rgba(250, 204, 21, 0.36);
+  --admin-yellow-text: #fde68a;
+  --admin-green-soft: rgba(6, 78, 59, 0.32);
+  --admin-green-border: rgba(52, 211, 153, 0.36);
+  --admin-green-text: #86efac;
+  --admin-red-soft: rgba(127, 29, 29, 0.32);
+  --admin-red-border: rgba(248, 113, 113, 0.4);
+  --admin-red-text: #fca5a5;
+  --admin-purple-soft: rgba(88, 28, 135, 0.32);
+  --admin-purple-border: rgba(192, 132, 252, 0.36);
+  --admin-purple-text: #d8b4fe;
+  --admin-row-hover: #263449;
+  --admin-shadow-sm: 0 1px 2px rgba(2, 6, 23, 0.22);
+  --admin-shadow-md: 0 12px 28px rgba(2, 6, 23, 0.3);
+  --admin-shadow-sidebar: 18px 0 36px rgba(2, 6, 23, 0.42);
+  --admin-skeleton: linear-gradient(90deg, #334155 25%, #475569 50%, #334155 75%);
+  color-scheme: dark;
+}
+
+body.admin-dashboard-page,
+body.admin-dashboard-page :where(
+  .admin-dashboard-shell,
+  .admin-dashboard-content,
+  .admin-dashboard-main,
+  #adminSidebarRoot,
+  .admin-sidebar,
+  .admin-sidebar *,
+  section,
+  #systemLogs,
+  [class~="bg-white"],
+  [class~="bg-slate-50"],
+  [class~="bg-slate-100"],
+  [class~="bg-gray-50"],
+  [class~="bg-gray-100"],
+  [class~="border-gray-200"],
+  [class~="border-slate-200"],
+  [class~="transition"],
+  [class~="transition-all"],
+  [class~="transition-colors"],
+  [class~="transition-shadow"],
+  button,
+  [role="button"],
+  input,
+  select,
+  textarea,
+  table,
+  thead,
+  tr,
+  th,
+  td,
+  .dashboard-loading-state,
+  .admin-status-badge,
+  #adminDashboardStatus,
+  #adminMedicalRecordModal,
+  #adminMedicalRecordModal > div,
+  .dashboard-skeleton-row,
+  .dashboard-skeleton-icon,
+  .dashboard-skeleton-line,
+  .dark-mode-toggle
+) {
+  transition-property: background-color, color, border-color, box-shadow !important;
+  transition-duration: 180ms !important;
+  transition-timing-function: ease !important;
+}
+
+body.admin-dashboard-page :where(.hover\:-translate-y-1:hover, .hover\:-translate-y-2:hover, .hover\:scale-105:hover, .active\:scale-95:active) {
+  transform: none !important;
+}
+
+body.admin-dashboard-page .admin-dashboard-shell,
+body.admin-dashboard-page .admin-dashboard-content,
+body.admin-dashboard-page .admin-dashboard-main {
+  background-color: var(--admin-bg) !important;
+  color: var(--admin-text-soft) !important;
+}
+
+body.admin-dashboard-page .admin-sidebar {
+  border-right-color: var(--admin-border) !important;
+  background-color: var(--admin-sidebar-bg) !important;
+  color: var(--admin-text-soft) !important;
+  box-shadow: var(--admin-shadow-sidebar);
+}
+
+body.admin-dashboard-page .admin-sidebar-backdrop {
+  background-color: var(--admin-backdrop) !important;
+}
+
+body.admin-dashboard-page .admin-sidebar-brand-icon {
+  background-color: var(--admin-brand-soft) !important;
+  color: var(--admin-brand) !important;
+}
+
+body.admin-dashboard-page .admin-sidebar-close,
+body.admin-dashboard-page .admin-nav-link {
+  color: var(--admin-text-soft) !important;
+}
+
+body.admin-dashboard-page .admin-sidebar-close:hover {
+  background-color: var(--admin-surface-soft) !important;
+  color: var(--admin-brand) !important;
+}
+
+body.admin-dashboard-page .admin-nav-link:hover,
+body.admin-dashboard-page .admin-nav-link.is-active {
+  background-color: #f97316 !important;
+  color: #fff !important;
+  box-shadow: 0 8px 18px rgba(249, 115, 22, 0.18);
+}
+
+body.admin-dashboard-page .admin-sidebar-label {
+  color: var(--admin-text-subtle) !important;
+}
+
+body.admin-dashboard-page .admin-sidebar-stats {
+  border-color: var(--admin-brand-border) !important;
+  background-color: var(--admin-orange-soft) !important;
+}
+
+body.admin-dashboard-page .admin-sidebar-stat {
+  border-bottom-color: var(--admin-brand-border) !important;
+  color: var(--admin-text-muted) !important;
+}
+
+body.admin-dashboard-page .admin-sidebar-stat-value {
+  color: var(--admin-brand-strong) !important;
+}
+
+body.admin-dashboard-page :where(section, #systemLogs, [class~="bg-white"]) {
+  border-color: var(--admin-border) !important;
+  background-color: var(--admin-surface) !important;
+  color: var(--admin-text) !important;
+}
+
+body.admin-dashboard-page :where([class~="bg-slate-50"], [class~="bg-gray-50"], [class~="dark:bg-slate-900"]) {
+  background-color: var(--admin-surface-muted) !important;
+}
+
+body.admin-dashboard-page :where([class~="bg-slate-100"], [class~="bg-gray-100"]) {
+  background-color: var(--admin-surface-soft) !important;
+}
+
+body.admin-dashboard-page :where([class~="border-gray-200"], [class~="border-slate-200"], [class~="border-gray-100"], [class~="border-slate-100"]) {
+  border-color: var(--admin-border) !important;
+}
+
+body.admin-dashboard-page :where([class~="shadow-sm"]) {
+  box-shadow: var(--admin-shadow-sm) !important;
+}
+
+body.admin-dashboard-page :where([class~="hover:shadow-md"]:hover, [class~="hover:shadow-lg"]:hover) {
+  box-shadow: var(--admin-shadow-md) !important;
+}
+
+body.admin-dashboard-page :where(h1, h2, h3, [class~="text-slate-800"], [class~="text-slate-900"], [class~="text-gray-900"], [class~="dark:text-slate-100"]) {
+  color: var(--admin-text) !important;
+}
+
+body.admin-dashboard-page :where([class~="text-slate-700"], [class~="text-slate-600"], [class~="text-gray-700"], [class~="text-gray-600"], [class~="dark:text-slate-200"], [class~="dark:text-slate-300"]) {
+  color: var(--admin-text-soft) !important;
+}
+
+body.admin-dashboard-page :where([class~="text-slate-500"], [class~="text-slate-400"], [class~="text-gray-500"], [class~="text-gray-400"], [class~="dark:text-slate-400"]) {
+  color: var(--admin-text-muted) !important;
+}
+
+body.admin-dashboard-page :where([class~="bg-orange-50"], [class~="bg-orange-100"]) {
+  border-color: var(--admin-orange-border) !important;
+  background-color: var(--admin-orange-soft) !important;
+}
+
+body.admin-dashboard-page :where([class~="bg-blue-50"], [class~="bg-blue-100"]) {
+  border-color: var(--admin-blue-border) !important;
+  background-color: var(--admin-blue-soft) !important;
+}
+
+body.admin-dashboard-page :where([class~="bg-yellow-50"], [class~="bg-yellow-100"]) {
+  border-color: var(--admin-yellow-border) !important;
+  background-color: var(--admin-yellow-soft) !important;
+}
+
+body.admin-dashboard-page :where([class~="bg-green-50"], [class~="bg-green-100"], [class~="bg-emerald-50"], [class~="bg-emerald-100"]) {
+  border-color: var(--admin-green-border) !important;
+  background-color: var(--admin-green-soft) !important;
+}
+
+body.admin-dashboard-page :where([class~="bg-red-50"], [class~="bg-red-100"]) {
+  border-color: var(--admin-red-border) !important;
+  background-color: var(--admin-red-soft) !important;
+}
+
+body.admin-dashboard-page :where([class~="bg-purple-100"]) {
+  border-color: var(--admin-purple-border) !important;
+  background-color: var(--admin-purple-soft) !important;
+}
+
+body.admin-dashboard-page :where([class~="text-orange-600"], [class~="text-orange-700"]) {
+  color: var(--admin-orange-text) !important;
+}
+
+body.admin-dashboard-page :where([class~="text-blue-600"], [class~="text-blue-700"]) {
+  color: var(--admin-blue-text) !important;
+}
+
+body.admin-dashboard-page :where([class~="text-yellow-600"], [class~="text-yellow-700"]) {
+  color: var(--admin-yellow-text) !important;
+}
+
+body.admin-dashboard-page :where([class~="text-green-600"], [class~="text-green-700"], [class~="text-emerald-600"], [class~="text-emerald-700"]) {
+  color: var(--admin-green-text) !important;
+}
+
+body.admin-dashboard-page :where([class~="text-red-500"], [class~="text-red-600"], [class~="text-red-700"]) {
+  color: var(--admin-red-text) !important;
+}
+
+body.admin-dashboard-page :where([class~="text-purple-700"]) {
+  color: var(--admin-purple-text) !important;
+}
+
+body.admin-dashboard-page :where([class~="bg-orange-500"], .btn-logout, .admin-panel-button) {
+  border-color: #f97316 !important;
+  background-color: #f97316 !important;
+  color: #fff !important;
+}
+
+body.admin-dashboard-page :where([class~="hover:bg-orange-600"]:hover, .btn-logout:hover, .admin-panel-button:hover) {
+  background-color: #ea580c !important;
+  color: #fff !important;
+}
+
+body.admin-dashboard-page :where(input, select, textarea, .dark-safe-input, .dark-safe-select) {
+  border-color: var(--admin-border) !important;
+  background-color: var(--admin-surface) !important;
+  color: var(--admin-text) !important;
+}
+
+body.admin-dashboard-page :where(input, textarea)::placeholder {
+  color: var(--admin-text-subtle) !important;
+}
+
+body.admin-dashboard-page :where(input, select, textarea):focus {
+  border-color: #fb923c !important;
+  box-shadow: 0 0 0 3px rgba(251, 146, 60, 0.22) !important;
+}
+
+body.admin-dashboard-page :where(option) {
+  background-color: var(--admin-surface) !important;
+  color: var(--admin-text) !important;
+}
+
+body.admin-dashboard-page :where(table) {
+  background-color: var(--admin-surface) !important;
+  color: var(--admin-text-soft) !important;
+}
+
+body.admin-dashboard-page :where(thead, table th) {
+  border-color: var(--admin-border) !important;
+  background-color: var(--admin-surface-muted) !important;
+  color: var(--admin-text-soft) !important;
+}
+
+body.admin-dashboard-page :where(table tr, table td) {
+  border-color: var(--admin-border) !important;
+}
+
+body.admin-dashboard-page :where(table td) {
+  color: var(--admin-text-soft) !important;
+}
+
+body.admin-dashboard-page :where(table tr:hover, [class~="hover:bg-gray-50"]:hover, [class~="hover:bg-slate-50"]:hover) {
+  background-color: var(--admin-row-hover) !important;
+}
+
+body.admin-dashboard-page .admin-status-success {
+  border-color: var(--admin-green-border) !important;
+  background-color: var(--admin-green-soft) !important;
+  color: var(--admin-green-text) !important;
+}
+
+body.admin-dashboard-page .admin-status-warning {
+  border-color: var(--admin-yellow-border) !important;
+  background-color: var(--admin-yellow-soft) !important;
+  color: var(--admin-yellow-text) !important;
+}
+
+body.admin-dashboard-page .admin-status-info {
+  border-color: var(--admin-blue-border) !important;
+  background-color: var(--admin-blue-soft) !important;
+  color: var(--admin-blue-text) !important;
+}
+
+body.admin-dashboard-page .admin-status-danger {
+  border-color: var(--admin-red-border) !important;
+  background-color: var(--admin-red-soft) !important;
+  color: var(--admin-red-text) !important;
+}
+
+body.admin-dashboard-page .admin-status-neutral {
+  border-color: var(--admin-border-strong) !important;
+  background-color: var(--admin-surface-muted) !important;
+  color: var(--admin-text-soft) !important;
+}
+
+body.admin-dashboard-page :where(.dashboard-loading-state) {
+  border-color: var(--admin-border) !important;
+  background-color: var(--admin-surface-muted) !important;
+  color: var(--admin-text-soft) !important;
+}
+
+body.admin-dashboard-page :where(.dashboard-loading-title) {
+  color: var(--admin-text) !important;
+}
+
+body.admin-dashboard-page :where(.dashboard-loading-copy) {
+  color: var(--admin-text-muted) !important;
+}
+
+body.admin-dashboard-page :where(.dashboard-inline-spinner, .dashboard-loading-spinner) {
+  border-color: rgba(249, 115, 22, 0.24) !important;
+  border-top-color: #f97316 !important;
+  animation-duration: 0.9s;
+}
+
+body.admin-dashboard-page :where(.dashboard-skeleton-row) {
+  background-color: var(--admin-surface-muted) !important;
+}
+
+body.admin-dashboard-page :where(.dashboard-skeleton-icon, .dashboard-skeleton-line) {
+  background: var(--admin-skeleton) !important;
+  background-size: 200% 100% !important;
+  animation-duration: 1.6s;
+}
+
+body.admin-dashboard-page #adminDashboardStatus:not(.hidden),
+body.admin-dashboard-page :where([id*="Error"], [class~="text-red-500"]) {
+  border-color: var(--admin-red-border) !important;
+}
+
+body.admin-dashboard-page #adminMedicalRecordModal {
+  background-color: var(--admin-backdrop) !important;
+}
+
+body.admin-dashboard-page #adminMedicalRecordModal > div {
+  border: 1px solid var(--admin-border) !important;
+  background-color: var(--admin-surface) !important;
+  color: var(--admin-text) !important;
+}
+
+@media (max-width: 767px) {
+  body.admin-dashboard-page .admin-sidebar {
+    box-shadow: 12px 0 28px rgba(15, 23, 42, 0.22);
+  }
+
+  html.dark body.admin-dashboard-page.dark-mode .admin-sidebar {
+    box-shadow: 12px 0 28px rgba(2, 6, 23, 0.38);
+  }
+
+  body.admin-dashboard-page .admin-sidebar-backdrop {
+    backdrop-filter: none;
+  }
+
+  body.admin-dashboard-page :where(.dashboard-skeleton-icon, .dashboard-skeleton-line) {
+    animation: none !important;
+    background: var(--admin-border) !important;
+  }
+}
+
+/* Responsive text safety layer */
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+body :where(
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  p,
+  span,
+  small,
+  strong,
+  label,
+  a,
+  button,
+  input,
+  select,
+  textarea,
+  li,
+  th,
+  td,
+  .nav-links,
+  .nav-links li,
+  .nav-links a,
+  .logo,
+  .logo h1,
+  .btn-login,
+  .btn-logout,
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger,
+  .btn-success,
+  .feature-card,
+  .dashboard-card,
+  .auth-card,
+  .admin-sidebar,
+  .admin-sidebar *,
+  .admin-dashboard-page *,
+  .admin-status-badge,
+  .dashboard-inline-loading,
+  .dashboard-loading-state,
+  .dashboard-loading-title,
+  .dashboard-loading-copy
+) {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+body :where(.grid, .flex, [class~="grid"], [class~="flex"]) > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-dashboard-page :where(.justify-between, [class~="sm:justify-between"], [class~="md:justify-between"]) {
+  flex-wrap: wrap;
+}
+
+.admin-dashboard-page :where([class~="sm:items-end"], [class~="md:items-end"]) {
+  min-width: fit-content;
+}
+
+body :where(
+  .feature-card,
+  .dashboard-card,
+  .auth-card,
+  .admin-dashboard-page section,
+  .admin-dashboard-page [class~="bg-white"],
+  .admin-dashboard-page [class~="bg-slate-50"],
+  .admin-dashboard-page [class~="bg-orange-50"],
+  .admin-dashboard-page [class~="bg-blue-50"],
+  .admin-dashboard-page [class~="bg-yellow-50"],
+  .admin-dashboard-page [class~="bg-green-50"],
+  .admin-dashboard-page [class~="bg-emerald-50"],
+  .admin-dashboard-page [class~="bg-red-50"]
+) {
+  overflow: hidden;
+}
+
+body :where(
+  .feature-card i,
+  .dashboard-card i,
+  .admin-dashboard-page i,
+  .admin-dashboard-page [class~="flex-shrink-0"],
+  .admin-dashboard-page [class~="h-10"][class~="w-10"],
+  .admin-dashboard-page [class~="h-12"][class~="w-12"],
+  .admin-dashboard-page [class~="h-16"][class~="w-16"],
+  .admin-dashboard-page [class~="rounded-2xl"][class~="p-3"],
+  .admin-dashboard-page [class~="rounded-xl"][class~="bg-white"]
+) {
+  flex: 0 0 auto;
+}
+
+body :where(button, [role="button"], .btn-login, .btn-logout, .btn-primary, .btn-secondary, .btn-danger, .btn-success, .admin-panel-button, .admin-status-badge) {
+  align-items: center;
+  justify-content: center;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.25;
+}
+
+body :where(button, [role="button"], .btn-login, .btn-logout, .btn-primary, .btn-secondary, .btn-danger, .btn-success, .admin-panel-button, .admin-status-badge) > :not(i) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.nav-links a {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.dashboard-inline-loading {
+  max-width: 100%;
+  white-space: normal;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.dashboard-inline-loading span:last-child,
+.button-loading-content span:last-child {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.dashboard-loading-state {
+  align-items: flex-start;
+}
+
+.dashboard-loading-state > div:last-child {
+  min-width: 0;
+  max-width: 100%;
+}
+
+table {
+  max-width: 100%;
+}
+
+th,
+td {
+  min-width: 0;
+  max-width: min(28rem, 100vw);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+  vertical-align: top;
+}
+
+.overflow-x-auto {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.overflow-x-auto table {
+  width: max-content;
+  max-width: none;
+}
+
+.overflow-x-auto th,
+.overflow-x-auto td {
+  max-width: 22rem;
+}
+
+body > :not(.overflow-x-auto),
+main,
+section,
+header,
+footer,
+nav,
+.admin-dashboard-shell,
+.admin-dashboard-content,
+.admin-dashboard-main {
+  max-width: 100%;
+}
+
+@media (max-width: 900px) {
+  .text-7xl,
+  .md\:text-7xl {
+    font-size: 3.25rem;
+    line-height: 1.05;
+  }
+
+  .text-6xl,
+  .md\:text-6xl {
+    font-size: 3rem;
+    line-height: 1.08;
+  }
+
+  .text-5xl {
+    font-size: 2.5rem;
+    line-height: 1.12;
+  }
+}
+
+@media (max-width: 640px) {
+  .text-7xl,
+  .md\:text-7xl {
+    font-size: 2.5rem;
+    line-height: 1.08;
+  }
+
+  .text-6xl,
+  .md\:text-6xl {
+    font-size: 2.35rem;
+    line-height: 1.1;
+  }
+
+  .text-5xl {
+    font-size: 2rem;
+    line-height: 1.15;
+  }
+
+  .text-4xl {
+    font-size: 1.75rem;
+    line-height: 1.2;
+  }
+
+  .dashboard-inline-loading {
+    font-size: 0.82rem;
+  }
+
+  .dashboard-loading-state {
+    gap: 0.625rem;
+    padding: 0.75rem;
+  }
+
+  .dashboard-loading-title {
+    font-size: 0.95rem;
+    line-height: 1.25;
+  }
+
+  .dashboard-loading-copy {
+    font-size: 0.8rem;
+    line-height: 1.35;
+  }
+
+  .admin-status-badge {
+    min-height: 1.5rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.7rem;
+  }
+
+  .overflow-x-auto th,
+  .overflow-x-auto td {
+    max-width: 14rem;
+  }
+}
+
+/* Keep fixed floating controls from covering low page content. */
+:root {
+  --pethub-floating-safe-bottom: 5.75rem;
+}
+
+body main.flex-grow,
+body.admin-dashboard-page .admin-dashboard-main {
+  padding-bottom: max(var(--pethub-floating-safe-bottom), env(safe-area-inset-bottom));
+}
+
+.footer {
+  padding-bottom: max(5.5rem, calc(2rem + env(safe-area-inset-bottom)));
+}
+
+.pet-species-emoji {
+  display: inline-flex;
+  width: 1.5em;
+  min-width: 1.5em;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+@media (max-width: 640px) {
+  .auth-section {
+    align-items: flex-start;
+    padding-bottom: var(--pethub-floating-safe-bottom);
+  }
+}
+
+@media (max-width: 480px) {
+  :root {
+    --pethub-floating-safe-bottom: 5.25rem;
+  }
+
+  .dark-mode-toggle {
+    right: 1rem;
+    bottom: 1rem;
+    width: 3rem;
+    height: 3rem;
+  }
+}
+
+/* Auth pages: align mobile navbar like other public pages */
+@media (max-width: 480px) {
+ .nav-container {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+  }
+
+  .nav-links {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    width: 100% !important;
+    gap: 0.75rem 1rem !important;
+  }
+
+  .nav-links li {
+    width: 100% !important;
+    text-align: center !important;
+  }
+
+  .nav-links li a {
+    display: block !important;
+    width: 100% !important;
+    text-align: center !important;
+  }
+
+  .nav-links li:nth-child(1) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .nav-links li:nth-child(2) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .nav-links li:nth-child(3) {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .nav-links li:nth-child(4) {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .nav-links li:nth-child(5) {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+}
+
+/* Force auth navbar alignment at very small mobile widths */
+@media (max-width: 360px) {
+  .nav-container {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+  }
+
+  .nav-links {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    width: 100% !important;
+    gap: 0.75rem 1rem !important;
+  }
+
+  .nav-links li {
+    width: 100% !important;
+    text-align: center !important;
+  }
+
+  .nav-links li a {
+    display: block !important;
+    width: 100% !important;
+    text-align: center !important;
+  }
+
+  .nav-links li:nth-child(1) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .nav-links li:nth-child(2) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .nav-links li:nth-child(3) {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .nav-links li:nth-child(4) {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .nav-links li:nth-child(5) {
+    grid-column: 1 / -1;
+    grid-row: 3;
   }
 }
