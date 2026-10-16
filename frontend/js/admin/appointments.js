@@ -735,7 +735,7 @@ async function submitMedicalRecordForm(event) {
 function getStatusBadgeClass(status) {
   const classes = {
     'Pending': 'bg-yellow-50 text-yellow-600',
-    'Approved': 'bg-green-50 text-green-700',
+    'Approved': 'bg-blue-50 text-blue-600',
     'Completed': 'bg-green-50 text-green-700',
     'Cancelled': 'bg-red-50 text-red-700'
   };

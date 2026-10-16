@@ -34,7 +34,28 @@ const corsOptions = {
   credentials: true
 };
 
-app.use(cors(corsOptions));
+// The frontend is also served by this server (static files below), so requests from this
+// server's own host are same-origin and always allowed; every other origin uses the rules above.
+function isOwnOrigin(req, origin) {
+  try {
+    return new URL(origin).host === req.headers.host;
+  } catch (error) {
+    return false;
+  }
+}
+
+const corsOptionsDelegate = (req, callback) => {
+  callback(null, {
+    ...corsOptions,
+    origin: (origin, originCallback) => (
+      origin && isOwnOrigin(req, origin)
+        ? originCallback(null, true)
+        : corsOptions.origin(origin, originCallback)
+    )
+  });
+};
+
+app.use(cors(corsOptionsDelegate));
 app.use(express.json());
 
 // Routes
@@ -47,7 +68,7 @@ const contactRoutes = require('./routes/contact');
 
 // Explicitly handle OPTIONS for API routes using regex (Express 5 compatible)
 API_PREFIXES.forEach(prefix => {
-  app.options(new RegExp(`^\\${prefix}`), cors(corsOptions));
+  app.options(new RegExp(`^\\${prefix}`), cors(corsOptionsDelegate));
 });
 
 // API routes

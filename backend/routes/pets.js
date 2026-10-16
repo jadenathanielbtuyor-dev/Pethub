@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const { createPet, getUserPets, deletePet, getUserMedicalRecords, createMedicalRecord } = require('../controllers/petsController');
+const { requireAuth } = require('../middleware/requireAuth');
+
+router.use(requireAuth);
 
 router.post('/create', createPet);
 router.get('/userPets', getUserPets);

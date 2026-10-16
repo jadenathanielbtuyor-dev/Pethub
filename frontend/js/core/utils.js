@@ -14,7 +14,11 @@ function getApiBaseUrl() {
 function formatDate(dateString) {
   if (!dateString) return 'N/A';
   try {
-    const date = new Date(dateString);
+    // Date-only values (YYYY-MM-DD) are calendar dates; parse them as local dates so they don't shift by timezone
+    const dateOnlyMatch = String(dateString).trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const date = dateOnlyMatch
+      ? new Date(Number(dateOnlyMatch[1]), Number(dateOnlyMatch[2]) - 1, Number(dateOnlyMatch[3]))
+      : new Date(dateString);
     return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   } catch (error) {
     console.error('Date formatting error:', error);

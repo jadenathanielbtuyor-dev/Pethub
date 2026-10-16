@@ -6,12 +6,13 @@ const { isAdminVerified } = require('../utils/accountVerification');
 const apiResponse = require('../utils/apiResponse');
 const logger = require('../utils/logger');
 const asyncHandler = require('../middleware/asyncHandler');
+const { requireAuth } = require('../middleware/requireAuth');
 
 const router = express.Router();
 
 const validateAdminAccess = asyncHandler(async (req, res, next) => {
-  const rawUserId = req.query.user_id || req.headers['x-user-id'];
-  const userId = rawUserId ? String(rawUserId).trim() : '';
+  // Identity comes only from the verified token (requireAuth); the role is checked against the database
+  const userId = req.authUserId ? String(req.authUserId).trim() : '';
   if (!userId) {
     logger.adminAction('access.missing_user_id', logger.getRequestDetails(req));
     return apiResponse.error(res, 'Admin user ID is required', 400);
@@ -37,6 +38,7 @@ const validateAdminAccess = asyncHandler(async (req, res, next) => {
   next();
 });
 
+router.use(requireAuth);
 router.use(validateAdminAccess);
 
 /**

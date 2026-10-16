@@ -9,13 +9,14 @@ const {
   getUserStatus,
   getActivityLogs
 } = require('../controllers/authController');
+const { requireAuth } = require('../middleware/requireAuth');
 
 router.post('/login', login);
 router.post('/register', register);
 router.post('/verify-email', verifyEmail);
 router.post('/resend-code', resendVerificationCode);
-router.post('/logout', logout);
-router.get('/user-status', getUserStatus);
-router.get('/activity-logs', getActivityLogs);
+router.post('/logout', requireAuth, logout);
+router.get('/user-status', requireAuth, getUserStatus);
+router.get('/activity-logs', requireAuth, getActivityLogs);
 
 module.exports = router;

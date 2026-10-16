@@ -180,7 +180,7 @@ function startResendCooldown(button) {
       clearInterval(interval);
       resendCooldownActive = false;
       button.disabled = false;
-      button.textContent = 'Resend Code';
+      button.textContent = 'Resend code';
       return;
     }
     button.textContent = `Resend in ${remaining}s`;

@@ -64,6 +64,9 @@ const env = {
     apiKey: readEnv('GEMINI_API_KEY'),
     model: readEnv('GEMINI_MODEL', 'gemini-2.5-flash')
   },
+  auth: {
+    tokenSecret: readEnv('AUTH_TOKEN_SECRET')
+  },
   cors: {
     allowedOrigins: uniqueValues([
       ...DEFAULT_ALLOWED_ORIGINS,

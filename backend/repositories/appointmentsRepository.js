@@ -32,6 +32,12 @@ function countUpcomingBookings(today) {
     .neq('status', 'Cancelled');
 }
 
+function listSchedule() {
+  return supabase
+    .from('appointments')
+    .select('id, appointment_date, appointment_time, estimated_duration_minutes, status');
+}
+
 function listScheduleByDate(appointmentDate) {
   return supabase
     .from('appointments')
@@ -120,6 +126,7 @@ module.exports = {
   countByStatus,
   countVaccinationsDueSoon,
   countUpcomingBookings,
+  listSchedule,
   listScheduleByDate,
   createAppointment,
   listByUserId,

@@ -3,7 +3,8 @@ const { generateVerificationCode, getExpiryTimestamp } = require('../utils/otp')
 const env = require('../config/env');
 const { buildVerificationEmail } = require('../templates/email/verificationEmail');
 const { logUserActivity } = require('../utils/activityLogger');
-const { VERIFICATION_RESEND_COOLDOWN_SECONDS } = require('../constants/email');
+const { createAuthToken } = require('../utils/authToken');
+const { VERIFICATION_CODE_TTL_MINUTES, VERIFICATION_RESEND_COOLDOWN_SECONDS } = require('../constants/email');
 const usersRepository = require('../repositories/usersRepository');
 const emailVerificationsRepository = require('../repositories/emailVerificationsRepository');
 const activityLogsRepository = require('../repositories/activityLogsRepository');
@@ -83,9 +84,17 @@ const login = async (req) => {
       created_at: user.created_at
     };
 
+    let token;
+    try {
+      token = createAuthToken(user.id);
+    } catch (tokenError) {
+      console.error('Auth token error:', tokenError.message);
+      return { statusCode: 500, body: { success: false, error: 'Login is temporarily unavailable. Please try again later.' } };
+    }
+
     await logUserActivity(user.id, 'user_logged_in', 'User logged in successfully');
 
-    return { statusCode: 200, body: { success: true, message: 'Login successful', user: userResponse } };
+    return { statusCode: 200, body: { success: true, message: 'Login successful', user: userResponse, token } };
   } catch (error) {
     console.error('Login error:', error);
     return { statusCode: 500, body: { success: false, error: 'Server error during login' } };
@@ -301,7 +310,12 @@ const resendVerificationCode = async (req) => {
 
     if (existingRows && existingRows.length > 0) {
       const latestRow = existingRows[0];
-      const secondsSinceLastSend = (Date.now() - new Date(latestRow.created_at).getTime()) / 1000;
+      // A reused code keeps its created_at, but expires_at is reset to send time + TTL on every send
+      const lastSentAt = Math.max(
+        new Date(latestRow.created_at).getTime(),
+        new Date(latestRow.expires_at).getTime() - VERIFICATION_CODE_TTL_MINUTES * 60 * 1000
+      );
+      const secondsSinceLastSend = (Date.now() - lastSentAt) / 1000;
 
       if (secondsSinceLastSend < VERIFICATION_RESEND_COOLDOWN_SECONDS) {
         return { statusCode: 429, body: { success: false, error: `Please wait at least ${VERIFICATION_RESEND_COOLDOWN_SECONDS} seconds before requesting a new verification code.` } };

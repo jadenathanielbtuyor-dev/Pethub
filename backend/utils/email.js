@@ -8,6 +8,10 @@ if (!apiKey) {
   logger.warn('email.sendgrid_api_key_missing');
 }
 
+if (!fromEmail) {
+  logger.warn('email.sendgrid_from_email_missing');
+}
+
 if (apiKey) {
   sgMail.setApiKey(apiKey);
 }

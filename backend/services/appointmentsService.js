@@ -6,10 +6,12 @@ const { logAdminActivity } = require('../utils/activityLogger');
 const {
   hasValue
 } = require('../validators/commonValidator');
+const { INVALID_APPOINTMENT_DATE_MESSAGE } = require('../constants/appointments');
 const {
   SCHEDULE_CONFLICT_MESSAGE,
   OCCUPIED_APPOINTMENT_STATUSES,
   getAppointmentTimeRange,
+  normalizeAppointmentDate,
   validateCreateAppointment,
   validateUserAppointmentsQuery,
   validateUpdateStatusRequest
@@ -243,19 +245,34 @@ const getUserAppointments = async (req) => {
 };
 
 /**
- * Get all appointments (admin only)
+ * Get the booked schedule (used by the booking page to show slot availability).
+ * Returns schedule fields only so other users' ids, pets, and handlers are not exposed;
+ * admins use /admin/dashboard/appointments for full records.
  */
 const getAllAppointments = async (req) => {
   try {
-    const { data: appointments, error } = await appointmentsRepository.listAllAppointments();
+    const hasDateFilter = hasValue(req.query?.appointment_date);
+    const appointmentDate = hasDateFilter ? normalizeAppointmentDate(req.query.appointment_date) : '';
+    if (hasDateFilter && !appointmentDate) {
+      return { statusCode: 400, body: { error: INVALID_APPOINTMENT_DATE_MESSAGE } };
+    }
+
+    const { data: appointments, error } = appointmentDate
+      ? await appointmentsRepository.listScheduleByDate(appointmentDate)
+      : await appointmentsRepository.listSchedule();
 
     if (error) {
       console.error('Error fetching all appointments:', error);
       return { statusCode: 500, body: { error: 'Failed to fetch appointments' } };
     }
 
-    const appointmentsWithHandlers = await attachHandledByNames(appointments || []);
-    return { statusCode: 200, body: { success: true, appointments: appointmentsWithHandlers } };
+    const schedule = (appointments || []).map(appointment => ({
+      appointment_date: appointment.appointment_date,
+      appointment_time: appointment.appointment_time,
+      estimated_duration_minutes: appointment.estimated_duration_minutes,
+      status: appointment.status
+    }));
+    return { statusCode: 200, body: { success: true, appointments: schedule } };
   } catch (error) {
     console.error('Get all appointments error:', error);
     return { statusCode: 500, body: { error: 'Server error' } };

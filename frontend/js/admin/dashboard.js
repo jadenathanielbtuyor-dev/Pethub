@@ -1216,7 +1216,7 @@ function displayMedicalRecordsSection(records) {
         <td class="px-4 py-4 align-top text-slate-700">${escapeHtml(valueOrFallback(record.vaccination_status))}</td>
         <td class="max-w-xs break-words px-4 py-4 align-top text-slate-700">${escapeHtml(valueOrFallback(record.treatment))}</td>
         <td class="max-w-sm break-words px-4 py-4 align-top text-slate-700">${escapeHtml(valueOrFallback(record.medical_notes))}</td>
-        <td class="px-4 py-4 align-top text-slate-700">${escapeHtml(`Recorded by: ${recordedBy}`)}</td>
+        <td class="px-4 py-4 align-top text-slate-700">${escapeHtml(recordedBy)}</td>
       </tr>
     `;
   }).join('');

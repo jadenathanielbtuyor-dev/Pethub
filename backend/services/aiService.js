@@ -4,9 +4,14 @@
  */
 
 const env = require('../config/env');
+const logger = require('../utils/logger');
 
 const GEMINI_API_KEY = env.gemini.apiKey;
 const GEMINI_MODEL = env.gemini.model;
+
+if (!GEMINI_API_KEY) {
+  logger.warn('ai.gemini_api_key_missing');
+}
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 const UNKNOWN_PETHUB_RESPONSE = "I'm not sure based on the current PetHub system.";
 
@@ -582,7 +587,9 @@ const chat = async (req) => {
     // ==================== MINI FAQ ENGINE ====================
     // Check for instant FAQ matches (faster response, better UX)
     const faqMatch = Object.keys(MINI_FAQ).find(question => {
-      if (question.length <= 3) {
+      // Short and single-word keys (hi, help, hello, thanks) must match the whole message,
+      // otherwise any question containing them gets the canned reply
+      if (question.length <= 3 || !question.includes(' ')) {
         return lowerMessage.trim() === question;
       }
       return lowerMessage.includes(question) || question.includes(lowerMessage);
@@ -674,6 +681,11 @@ function generateFollowUpSuggestions(topic, response) {
  * Call Gemini API generateContent endpoint
  */
 async function callGeminiAPI(userMessage, systemPrompt = SYSTEM_PROMPT) {
+  // Fail locally (handled by chat() as a configuration error) instead of calling Gemini with an empty key
+  if (!GEMINI_API_KEY) {
+    throw new Error('Gemini API key is not configured');
+  }
+
   const endpoint = `${GEMINI_BASE_URL}/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
 
   const requestBody = {

@@ -30,6 +30,18 @@ function setupPasswordToggles() {
 let registerRequestInProgress = false;
 let loginRequestInProgress = false;
 
+// Backend messages (services/authService.js) for an account that exists but still needs email verification
+const UNVERIFIED_LOGIN_MESSAGE = 'Please verify your email first before logging in.';
+const ACCOUNT_CREATED_REGISTRATION_ERRORS = [
+  'Registration created, but failed to send verification email.',
+  'Email delivery is delayed.',
+  'Failed to initialize email verification'
+];
+
+function isAccountCreatedRegistrationError(message) {
+  return ACCOUNT_CREATED_REGISTRATION_ERRORS.some(prefix => String(message || '').startsWith(prefix));
+}
+
 function savePendingVerificationEmail(email) {
   if (!email) return;
   sessionStorage.setItem('pendingVerificationEmail', email);
@@ -104,6 +116,7 @@ function setupRegisterForm() {
     }
 
     setFormSubmitting(registerForm, true, 'Sending code...', 'Register');
+    let redirecting = false;
 
     try {
       const response = await fetch(`${getApiBaseUrl()}/auth/register`, {
@@ -124,20 +137,32 @@ function setupRegisterForm() {
       } else {
         displayMessage(messageContainer, 'Registration successful. Check your email for the verification code.', 'success');
       }
+      redirecting = true;
       setTimeout(() => {
         window.location.replace(PATHS.verifyEmail || './pages/auth/verify-email.html');
       }, 1100);
     } catch (error) {
       console.error('Registration failed:', error);
       const errorMessage = error.message || 'Unable to register. Please try again.';
-      if (errorMessage === 'Email is already registered') {
+      if (errorMessage === 'Email already registered') {
         setFieldError('emailErrorMessage', errorMessage);
+      } else if (isAccountCreatedRegistrationError(errorMessage)) {
+        // The account exists but the code email failed; the verification page can resend it
+        savePendingVerificationEmail(email);
+        displayMessage(messageContainer, `${errorMessage} Redirecting to verification...`, 'error');
+        redirecting = true;
+        setTimeout(() => {
+          window.location.replace(PATHS.verifyEmail);
+        }, 2500);
       } else {
         displayMessage(messageContainer, errorMessage, 'error');
       }
     } finally {
-      registerRequestInProgress = false;
-      setFormSubmitting(registerForm, false, 'Sending code...', 'Register');
+      // Keep the form locked while redirecting so a second click can't resubmit
+      if (!redirecting) {
+        registerRequestInProgress = false;
+        setFormSubmitting(registerForm, false, 'Sending code...', 'Register');
+      }
     }
   });
 }
@@ -168,6 +193,7 @@ function setupLoginForm() {
     }
 
     setFormSubmitting(loginForm, true, 'Logging in...', 'Login');
+    let redirecting = false;
 
     try {
       const response = await fetch(`${getApiBaseUrl()}/auth/login`, {
@@ -181,17 +207,37 @@ function setupLoginForm() {
         throw new Error(data.error || `Login failed (${response.status})`);
       }
 
+      if (!data.token) {
+        throw new Error('Login failed: no session was returned. Please try again.');
+      }
+
       setUser(data.user);
+      setAuthToken(data.token);
       displayMessage(messageContainer, 'Login successful! Redirecting...', 'success');
+      redirecting = true;
       setTimeout(() => {
         redirectToDashboardForRole(String(data.user?.role || 'user').toLowerCase());
       }, 400);
     } catch (error) {
       console.error('Login failed:', error);
-      displayMessage(messageContainer, error.message || 'Unable to login. Please try again.', 'error');
+      const errorMessage = error.message || 'Unable to login. Please try again.';
+      if (errorMessage === UNVERIFIED_LOGIN_MESSAGE) {
+        // Unverified accounts can only finish setup on the verification page
+        savePendingVerificationEmail(email);
+        displayMessage(messageContainer, `${errorMessage} Redirecting to verification...`, 'error');
+        redirecting = true;
+        setTimeout(() => {
+          window.location.replace(PATHS.verifyEmail);
+        }, 2000);
+      } else {
+        displayMessage(messageContainer, errorMessage, 'error');
+      }
     } finally {
-      loginRequestInProgress = false;
-      setFormSubmitting(loginForm, false, 'Logging in...', 'Login');
+      // Keep the form locked while redirecting so a second click can't resubmit
+      if (!redirecting) {
+        loginRequestInProgress = false;
+        setFormSubmitting(loginForm, false, 'Logging in...', 'Login');
+      }
     }
   });
 }

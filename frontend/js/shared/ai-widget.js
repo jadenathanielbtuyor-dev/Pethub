@@ -784,9 +784,11 @@
       'ex', 'cheating', 'breakup', 'divorce'
     ];
 
-    // Check for blocked terms
+    // Check for blocked terms as whole words so normal words that contain them
+    // (e.g. "exercise", "appetite", "grass") are not rejected
     for (let term of blockedTerms) {
-      if (lowerMessage.includes(term)) {
+      const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (new RegExp(`(^|[^a-z0-9])${escapedTerm}($|[^a-z0-9])`).test(lowerMessage)) {
         return {
           allowed: false,
           response: "I'm here to help with PetHub features and pet wellness only 🐾"

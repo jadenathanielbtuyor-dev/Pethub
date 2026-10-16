@@ -3,7 +3,7 @@ const { hasValue } = require('../validators/commonValidator');
 const logger = require('./logger');
 
 function getAdminActorId(req = {}) {
-  return req.query?.user_id || req.headers?.['x-user-id'] || req.body?.user_id;
+  return req.authUserId || req.query?.user_id || req.headers?.['x-user-id'] || req.body?.user_id;
 }
 
 async function logUserActivity(userId, action, details = '') {

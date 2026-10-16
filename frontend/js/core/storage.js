@@ -32,8 +32,21 @@ function getUser() {
   }
 }
 
+// Signed session token from /auth/login; core/api.js attaches it to every API request
+function setAuthToken(token) {
+  if (!token) {
+    sessionStorage.removeItem('authToken');
+    return;
+  }
+  sessionStorage.setItem('authToken', String(token));
+}
+
+function getAuthToken() {
+  return sessionStorage.getItem('authToken') || '';
+}
+
 function isLoggedIn() {
-  return !!sessionStorage.getItem('user');
+  return !!sessionStorage.getItem('user') && !!getAuthToken();
 }
 
 function getSiteRoot() {
@@ -95,6 +108,7 @@ async function logout() {
     console.warn('Logout request failed; clearing local session:', error);
   } finally {
     sessionStorage.removeItem('user');
+    setAuthToken(null);
     window.location.replace(PATHS.login);
   }
 }

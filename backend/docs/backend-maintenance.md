@@ -14,6 +14,7 @@ Environment variables are centralized in `config/env.js`. Railway should continu
 - `SENDGRID_FROM_NAME`
 - `GEMINI_API_KEY`
 - `GEMINI_MODEL`
+- `AUTH_TOKEN_SECRET` (at least 32 random characters; signs login session tokens. Without it, login is refused. Changing it signs every user out.)
 
 Optional frontend origin settings:
 

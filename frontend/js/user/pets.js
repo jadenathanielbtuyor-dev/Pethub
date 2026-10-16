@@ -36,9 +36,11 @@ async function initializePets() {
 
   currentUser = user;
 
+  // Bind the form before loading data so an early submit is handled instead of reloading the page.
+  setupFormHandler();
+
   // Load pet profiles and read-only medical records.
   await Promise.all([loadPets(currentUser.id), loadMedicalRecords(currentUser.id)]);
-  setupFormHandler();
 }
 
 /**
@@ -101,7 +103,7 @@ function displayPetsList(pets) {
       <div class="text-center py-12 text-gray-500">
         <p class="text-4xl mb-3">🐾</p>
         <p class="font-medium">No pets yet</p>
-        <p class="text-sm">Add your first pet using the form on the left</p>
+        <p class="text-sm">Add your first pet using the Add New Pet form</p>
       </div>
     `;
     return;
@@ -128,8 +130,8 @@ function displayPetsList(pets) {
           <div class="grid grid-cols-2 gap-3 mt-3 text-sm">
             <p class="text-gray-600"><strong>Species:</strong> ${escapeHtml(pet.species || 'N/A')}</p>
             <p class="text-gray-600"><strong>Breed:</strong> ${escapeHtml(pet.breed || 'N/A')}</p>
-            <p class="text-gray-600"><strong>Age:</strong> ${pet.age || pet.age === 0 ? escapeHtml(`${pet.age} years`) : 'N/A'}</p>
-            <p class="text-gray-500 text-xs"><strong>Added:</strong> ${pet.created_at ? new Date(pet.created_at).toLocaleDateString() : 'Unknown'}</p>
+            <p class="text-gray-600"><strong>Age:</strong> ${pet.age || pet.age === 0 ? escapeHtml(`${pet.age} year${Number(pet.age) === 1 ? '' : 's'}`) : 'N/A'}</p>
+            <p class="text-gray-500 text-xs"><strong>Added:</strong> ${pet.created_at ? escapeHtml(formatDate(pet.created_at)) : 'Unknown'}</p>
           </div>
         </div>
         <div class="flex flex-col items-end gap-2">
@@ -145,7 +147,7 @@ function displayPetsList(pets) {
           <p><strong>Medical records:</strong> ${pet.medical_record_count || 0}</p>
           <p><strong>Latest medical record:</strong> ${escapeHtml(latestRecordSummary)}</p>
           ${latestRecordDate ? `<p><strong>Latest record date:</strong> ${escapeHtml(latestRecordDate)}</p>` : ''}
-          <p><strong>Profile created:</strong> ${pet.created_at ? new Date(pet.created_at).toLocaleDateString() : 'Unknown'}</p>
+          <p><strong>Profile created:</strong> ${pet.created_at ? escapeHtml(formatDate(pet.created_at)) : 'Unknown'}</p>
         </div>
       </details>
     </div>
@@ -231,9 +233,10 @@ function setupFormHandler() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: currentUser.id,
-          name: escapeHtml(petName),
-          species: escapeHtml(petSpecies),
-          breed: petBreed ? escapeHtml(petBreed) : null,
+          // Send plain text; every pet view escapes on render, so pre-escaping stored "&amp;" etc.
+          name: petName,
+          species: petSpecies,
+          breed: petBreed || null,
           age: petAge ? parseInt(petAge) : null
         })
       });
@@ -459,7 +462,7 @@ function displayMedicalRecords(records) {
           </div>
           <div>
             <dt class="font-semibold text-gray-500">Recorded by</dt>
-            <dd class="mt-1 text-gray-800">${escapeHtml(`Recorded by: ${recordedBy}`)}</dd>
+            <dd class="mt-1 text-gray-800">${escapeHtml(recordedBy)}</dd>
           </div>
           <div class="sm:col-span-2">
             <dt class="font-semibold text-gray-500">Notes</dt>

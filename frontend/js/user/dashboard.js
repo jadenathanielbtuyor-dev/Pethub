@@ -600,7 +600,7 @@ function displayRecentMedicalRecords(records) {
           </div>
           <div>
             <dt class="font-semibold text-gray-500">Recorded by</dt>
-            <dd class="mt-1 text-gray-800">${escapeHtml(`Recorded by: ${recordedBy}`)}</dd>
+            <dd class="mt-1 text-gray-800">${escapeHtml(recordedBy)}</dd>
           </div>
           <div class="sm:col-span-2">
             <dt class="font-semibold text-gray-500">Notes</dt>
