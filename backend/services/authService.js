@@ -58,11 +58,9 @@ const login = async (req) => {
       return { statusCode: 403, body: { success: false, error: 'Invalid email or password' } };
     }
 
-    if (Object.prototype.hasOwnProperty.call(user, 'is_verified')) {
-      if (!isVerifiedValue(user.is_verified)) {
-        return { statusCode: 403, body: { success: false, error: 'Please verify your email first before logging in.' } };
-      }
-    } else {
+    // Same rule as user-status and isUserVerified(): verified if the users flag is set OR the account
+    // has a completed email verification record (only written after a correct, unexpired code).
+    if (!isVerifiedValue(user.is_verified)) {
       const { data: verifiedRows, error: verificationError } = await emailVerificationsRepository.findVerifiedByUserId(user.id);
 
       if (verificationError) {
@@ -240,18 +238,30 @@ const verifyEmail = async (req) => {
       return { statusCode: 400, body: { success: false, error: 'Verification code has expired. Please request a new code.' } };
     }
 
-    const { error: updateError } = await emailVerificationsRepository.updateById(verification.id, { is_verified: true });
+    const { data: verifiedRecordRows, error: updateError } = await emailVerificationsRepository.updateById(verification.id, { is_verified: true });
 
     if (updateError) {
       console.error('Verification update error:', updateError);
       return { statusCode: 500, body: { success: false, error: 'Could not verify email' } };
     }
 
-    const { error: userUpdateError } = await usersRepository.updateVerificationStatus(user.id, true);
+    const { data: verifiedUserRows, error: userUpdateError } = await usersRepository.updateVerificationStatus(user.id, true);
 
     if (userUpdateError) {
       console.error('User is_verified update error:', userUpdateError);
       return { statusCode: 500, body: { success: false, error: 'Could not update user verification status' } };
+    }
+
+    // Supabase returns no error when a policy/permission blocks an update (0 rows changed),
+    // so only report success if at least one verification marker was actually saved.
+    const recordSaved = Array.isArray(verifiedRecordRows) && verifiedRecordRows.length > 0;
+    const userFlagSaved = Array.isArray(verifiedUserRows) && verifiedUserRows.length > 0;
+    if (!recordSaved && !userFlagSaved) {
+      console.error('Email verification was not saved: 0 rows updated', { user_id: user.id });
+      return { statusCode: 500, body: { success: false, error: 'Could not verify email' } };
+    }
+    if (!recordSaved || !userFlagSaved) {
+      console.warn('Email verification partially saved', { user_id: user.id, record_saved: recordSaved, user_flag_saved: userFlagSaved });
     }
 
     await logUserActivity(user.id, 'email_verified', 'Email verification completed successfully');

@@ -52,7 +52,8 @@ function updateById(id, values) {
   return supabase
     .from('email_verifications')
     .update(values)
-    .eq('id', id);
+    .eq('id', id)
+    .select('id');
 }
 
 module.exports = {

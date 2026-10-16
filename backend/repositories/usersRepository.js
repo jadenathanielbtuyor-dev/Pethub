@@ -39,7 +39,8 @@ function updateVerificationStatus(userId, isVerified = true) {
   return supabase
     .from('users')
     .update({ is_verified: isVerified })
-    .eq('id', userId);
+    .eq('id', userId)
+    .select('id');
 }
 
 function findStatusById(userId) {
