@@ -55,8 +55,9 @@ const env = {
     key: supabaseKey.value,
     keyName: supabaseKey.name
   },
-  sendgrid: {
-    apiKey: readEnv('SENDGRID_API_KEY'),
+  brevo: {
+    apiKey: readEnv('BREVO_API_KEY'),
+    // Sender settings keep their existing variable names for now
     fromEmail: readEnv('SENDGRID_FROM_EMAIL'),
     fromName: readEnv('SENDGRID_FROM_NAME', 'PetHub')
   },

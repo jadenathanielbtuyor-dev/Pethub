@@ -9,9 +9,9 @@ Environment variables are centralized in `config/env.js`. Railway should continu
 - `PORT`
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY` or `SUPABASE_SERVICE_KEY`
-- `SENDGRID_API_KEY`
-- `SENDGRID_FROM_EMAIL`
-- `SENDGRID_FROM_NAME`
+- `BREVO_API_KEY` (Brevo transactional email API key; verification emails are sent through Brevo)
+- `SENDGRID_FROM_EMAIL` (sender address for Brevo emails; the name is kept from the earlier SendGrid setup and must be a sender verified in Brevo)
+- `SENDGRID_FROM_NAME` (sender display name for Brevo emails; defaults to `PetHub`)
 - `GEMINI_API_KEY`
 - `GEMINI_MODEL`
 - `AUTH_TOKEN_SECRET` (at least 32 random characters; signs login session tokens. Without it, login is refused. Changing it signs every user out.)
