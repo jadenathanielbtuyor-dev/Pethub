@@ -642,8 +642,16 @@
    */
   function formatMessageContent(text) {
     const div = document.createElement('div');
-    
-    let html = text
+
+    // Escape the reply first so AI output can only produce the formatting below, never raw HTML
+    const safeText = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+    let html = safeText
       .replace(/\*\*(.*?)\*\*/g, '<strong style="font-weight: 600; color: #FF8C42;">$1</strong>')
       .replace(/^(\d+\.\s)/gm, '<span style="font-weight: 600;">$1</span>')
       .split('\n')

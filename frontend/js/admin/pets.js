@@ -13,7 +13,8 @@ function initializePetsManagement() {
   const user = getUser();
 
   if (!isLoggedIn() || !user || String(user.role || '').toLowerCase() !== 'admin') {
-    redirectToLogin();
+    // Signed-in non-admins go to their own dashboard; everyone else signs in first
+    if (isLoggedIn() && user) redirectToDashboardForRole(user.role); else redirectToLogin();
     return;
   }
 

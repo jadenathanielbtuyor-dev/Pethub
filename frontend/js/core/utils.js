@@ -265,7 +265,9 @@ async function getJsonFromResponse(response) {
   try {
     return JSON.parse(text);
   } catch (error) {
-    throw new Error(`Invalid server response: ${text.substring(0, 100)}`);
+    // Keep raw server output (e.g. a proxy's HTML error page) in the console, not in the UI
+    console.warn('Non-JSON server response:', text.substring(0, 100));
+    throw new Error(`Unexpected server response (HTTP ${response.status}). Please try again later.`);
   }
 }
 

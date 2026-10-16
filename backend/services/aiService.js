@@ -38,7 +38,7 @@ const MINI_FAQ = {
   // ==================== GETTING STARTED ====================
   'how do i sign up': "Visit **Register**, enter the required account details, then log in to access your **Dashboard**.",
   'how do i login': "Go to **Login**, enter your registered email and password, click Login. You'll land on your personalized **Dashboard** with all your pets and appointments! 🔐",
-  'how do i logout': "Click **Logout** in the top-right navigation bar. You'll be safely logged out and returned to the homepage. Simple!",
+  'how do i logout': "Click **Logout** in the top-right navigation bar. You'll be safely logged out and taken to the **Login** page. Simple!",
   'what happens after i sign up': "After registration: 1️⃣ Verify email if needed 2️⃣ Log in 3️⃣ Land on Dashboard 4️⃣ Click **Pets** to add your first pet 5️⃣ Click **Appointments** to book a vet visit 6️⃣ Start managing! 🚀",
   'can i have multiple accounts': "We recommend one account per person. Use that one account to manage all your pets! If needed, create a new email and sign up separately.",
   'is my account secure': "I'm not sure based on the current PetHub system.",
@@ -47,9 +47,9 @@ const MINI_FAQ = {
   'how do i add a pet': "Go to **Pets** page → Click **Add New Pet** form → Enter: Name, Species (Dog/Cat/Bird/Rabbit/Other), Breed, Age (optional) → Click **Add Pet**. Done! 🎉",
   'what info should i add for my pet': "Add the pet details PetHub asks for, such as pet name, species, breed, and age when available. Use **medical records** for medical notes when that feature is available to you.",
   'can i add multiple pets': "I'm not sure based on the current PetHub system.",
-  'how do i edit a pets profile': "Go to the **Pets** page, find your pet profile, use the available edit option, update the details, and save.",
+  'how do i edit a pets profile': "PetHub doesn't have an edit option for pet profiles yet. To fix details, add the pet again with the correct information on the **Pets** page, then delete the old profile. If the old profile already has appointments or medical records, use the **Contact** page so the clinic can help.",
   'how do i delete a pet': "Go to the **Pets** page, find the pet profile, use the available delete option, and confirm.",
-  'what if i add my pet by wrong name': "Go to the **Pets** page, find the pet profile, use the available edit option, correct the name, and save.",
+  'what if i add my pet by wrong name': "PetHub doesn't have an edit option for pet profiles yet. Add the pet again with the correct name on the **Pets** page, then delete the old profile. If the old profile already has appointments or medical records, use the **Contact** page so the clinic can help.",
   'the species options are limited': "We support: 🐕 Dog, 🐈 Cat, 🦜 Bird, 🐰 Rabbit, 🐾 Other (for exotic pets, fish, reptiles, etc). If you need a specific type under 'Other', note it in your pet profile!",
   'how do i track my pets health': "Use **pet profiles** and available **medical records** to keep pet information organized. You can also use **appointment booking** when a vet visit is needed.",
   'can i share pet profiles with my vet': "I'm not sure based on the current PetHub system.",
@@ -203,7 +203,7 @@ FILIPINO/TAGALOG EXAMPLES TO UNDERSTAND AND MATCH:
   Pets Page
     - Manage all pet profiles
     - Add new pets
-    - Edit pet information
+    - Delete pet profiles (there is no edit option)
     - Link pet profiles with available medical records
 
   Appointments Page
