@@ -31,8 +31,8 @@
 
         <form id="loginForm" class="space-y-5">
           <div class="form-group" id="emailGroup">
-            <label class="flex items-center gap-2 font-semibold text-gray-700 mb-2">
-              <i class="ri-mail-line text-orange-500"></i>
+            <label for="email" class="flex items-center gap-2 font-semibold text-gray-700 mb-2">
+              <i class="ri-mail-line text-orange-500" aria-hidden="true"></i>
               Email
             </label>
             <input type="email" id="email" placeholder="Enter your email" required
@@ -40,8 +40,8 @@
           </div>
 
           <div class="form-group" id="passwordGroup">
-            <label class="flex items-center gap-2 font-semibold text-gray-700 mb-2">
-              <i class="ri-lock-line text-orange-500"></i>
+            <label for="password" class="flex items-center gap-2 font-semibold text-gray-700 mb-2">
+              <i class="ri-lock-line text-orange-500" aria-hidden="true"></i>
               Password
             </label>
             <div class="relative">
@@ -54,6 +54,8 @@
               <button
                 type="button"
                 id="togglePassword"
+                aria-label="Show password"
+                aria-pressed="false"
                 class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-orange-500 transition-colors duration-150">
                 <i class="ri-eye-line"></i>
               </button>

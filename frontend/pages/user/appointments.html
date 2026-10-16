@@ -12,7 +12,7 @@
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet">
 </head>
 
-<body class="flex flex-col min-h-screen"
+<body class="flex flex-col min-h-screen user-page"
   style="background-image: url('../../assets/images/bgpaws.jpg'); background-repeat: repeat; background-attachment: fixed;">
 
   <!-- ================= NAVIGATION ================= -->
@@ -58,7 +58,7 @@
 
           <form id="appointmentForm" class="space-y-4">
             <div>
-              <label class="block text-gray-700 font-semibold text-sm mb-2">Pet</label>
+              <label for="petSelect" class="block text-gray-700 font-semibold text-sm mb-2">Pet</label>
               <select id="petSelect" required
                 class="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-colors">
                 <option value="">Loading pets...</option>
@@ -67,7 +67,7 @@
             </div>
 
             <div>
-              <label class="block text-gray-700 font-semibold text-sm mb-2">Service Type</label>
+              <label for="serviceType" class="block text-gray-700 font-semibold text-sm mb-2">Service Type</label>
               <select id="serviceType" required
                 class="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-colors">
                 <option value="">Select Service</option>
@@ -82,14 +82,14 @@
             </div>
 
             <div>
-              <label class="block text-gray-700 font-semibold text-sm mb-2">Date</label>
+              <label for="appointmentDate" class="block text-gray-700 font-semibold text-sm mb-2">Date</label>
               <input type="date" id="appointmentDate" required aria-describedby="appointmentDateError"
                 class="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-colors">
               <p id="appointmentDateError" class="mt-2 hidden text-sm font-medium text-red-600" aria-live="polite"></p>
             </div>
 
             <div>
-              <label class="block text-gray-700 font-semibold text-sm mb-2">Time</label>
+              <label for="appointmentTime" class="block text-gray-700 font-semibold text-sm mb-2">Time</label>
               <input type="time" id="appointmentTime" required aria-describedby="appointmentTimeError"
                 class="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-colors">
               <p id="appointmentTimeError" class="mt-2 hidden text-sm font-medium text-red-600" aria-live="polite"></p>

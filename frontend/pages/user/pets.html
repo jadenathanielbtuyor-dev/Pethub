@@ -12,7 +12,7 @@
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet">
 </head>
 
-<body class="flex flex-col min-h-screen" style="background-image: url('../../assets/images/bgpaws.jpg'); background-repeat: repeat; background-attachment: fixed;">
+<body class="flex flex-col min-h-screen user-page" style="background-image: url('../../assets/images/bgpaws.jpg'); background-repeat: repeat; background-attachment: fixed;">
 
   <!-- ================= NAVIGATION ================= -->
   <nav class="nav sticky top-0 z-50 bg-white shadow-md border-b-2 border-orange-100">
@@ -58,13 +58,13 @@
 
           <form id="petForm" class="space-y-4">
             <div>
-              <label class="block text-gray-700 font-semibold text-sm mb-2">Pet Name</label>
+              <label for="petName" class="block text-gray-700 font-semibold text-sm mb-2">Pet Name</label>
               <input type="text" id="petName" placeholder="e.g., Max" required
                 class="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-colors">
             </div>
 
             <div>
-              <label class="block text-gray-700 font-semibold text-sm mb-2">Species</label>
+              <label for="petType" class="block text-gray-700 font-semibold text-sm mb-2">Species</label>
               <select id="petType" required
                 class="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-colors">
                 <option value="">Select Species</option>
@@ -77,13 +77,13 @@
             </div>
 
             <div>
-              <label class="block text-gray-700 font-semibold text-sm mb-2">Breed</label>
+              <label for="petBreed" class="block text-gray-700 font-semibold text-sm mb-2">Breed</label>
               <input type="text" id="petBreed" placeholder="e.g., Golden Retriever"
                 class="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-colors">
             </div>
 
             <div>
-              <label class="block text-gray-700 font-semibold text-sm mb-2">Age (years)</label>
+              <label for="petAge" class="block text-gray-700 font-semibold text-sm mb-2">Age (years)</label>
               <input type="number" id="petAge" placeholder="e.g., 3" min="0"
                 class="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-colors">
               <p id="petAgeWarning" class="mt-2 text-sm font-medium text-amber-700 hidden" aria-live="polite">This age is uncommon. Please confirm.</p>

@@ -31,8 +31,8 @@
 
         <form id="registerForm" class="space-y-5">
           <div class="form-group" id="fullnameGroup">
-            <label class="flex items-center gap-2 font-semibold text-gray-700 mb-2">
-              <i class="ri-user-line text-orange-500"></i>
+            <label for="fullname" class="flex items-center gap-2 font-semibold text-gray-700 mb-2">
+              <i class="ri-user-line text-orange-500" aria-hidden="true"></i>
               Full Name
             </label>
             <input type="text" id="fullname" placeholder="Enter your full name" required
@@ -40,8 +40,8 @@
           </div>
 
           <div class="form-group" id="emailGroup">
-            <label class="flex items-center gap-2 font-semibold text-gray-700 mb-2">
-              <i class="ri-mail-line text-orange-500"></i>
+            <label for="email" class="flex items-center gap-2 font-semibold text-gray-700 mb-2">
+              <i class="ri-mail-line text-orange-500" aria-hidden="true"></i>
               Email
             </label>
             <input type="email" id="email" placeholder="Enter your email" required
@@ -50,14 +50,14 @@
           </div>
 
           <div class="form-group" id="passwordGroup">
-            <label class="flex items-center gap-2 font-semibold text-gray-700 mb-2">
-              <i class="ri-lock-line text-orange-500"></i>
+            <label for="password" class="flex items-center gap-2 font-semibold text-gray-700 mb-2">
+              <i class="ri-lock-line text-orange-500" aria-hidden="true"></i>
               Password
             </label>
             <div class="relative">
               <input type="password" id="password" placeholder="Create a password" required
                 class="w-full px-4 py-3 pr-12 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-100 focus:outline-none transition-all duration-200 bg-white hover:border-orange-300">
-              <button type="button" id="togglePassword" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-orange-500 transition-colors duration-150">
+              <button type="button" id="togglePassword" aria-label="Show password" aria-pressed="false" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-orange-500 transition-colors duration-150">
                 <i class="ri-eye-line"></i>
               </button>
             </div>
@@ -65,14 +65,14 @@
           </div>
 
           <div class="form-group" id="confirmPasswordGroup">
-            <label class="flex items-center gap-2 font-semibold text-gray-700 mb-2">
-              <i class="ri-shield-check-line text-orange-500"></i>
+            <label for="confirmPassword" class="flex items-center gap-2 font-semibold text-gray-700 mb-2">
+              <i class="ri-shield-check-line text-orange-500" aria-hidden="true"></i>
               Confirm Password
             </label>
             <div class="relative">
               <input type="password" id="confirmPassword" placeholder="Confirm your password" required
                 class="w-full px-4 py-3 pr-12 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-100 focus:outline-none transition-all duration-200 bg-white hover:border-orange-300">
-              <button type="button" id="togglePasswordConfirm" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-orange-500 transition-colors duration-150">
+              <button type="button" id="togglePasswordConfirm" aria-label="Show password confirmation" aria-pressed="false" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-orange-500 transition-colors duration-150">
                 <i class="ri-eye-line"></i>
               </button>
             </div>

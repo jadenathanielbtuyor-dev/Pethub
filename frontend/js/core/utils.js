@@ -406,7 +406,7 @@ function showError(message, duration = 4000) {
  */
 function showSuccess(message, duration = 4000) {
   const successDiv = document.createElement('div');
-  successDiv.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50';
+  successDiv.className = 'fixed top-4 right-4 bg-green-700 text-white px-6 py-3 rounded-lg shadow-lg z-50';
   successDiv.textContent = message;
   document.body.appendChild(successDiv);
   

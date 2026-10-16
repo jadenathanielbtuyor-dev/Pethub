@@ -23,6 +23,7 @@ function setupPasswordToggles() {
       const isPassword = field.type === 'password';
       field.type = isPassword ? 'text' : 'password';
       button.innerHTML = isPassword ? '<i class="ri-eye-off-line"></i>' : '<i class="ri-eye-line"></i>';
+      button.setAttribute('aria-pressed', String(isPassword));
     });
   });
 }

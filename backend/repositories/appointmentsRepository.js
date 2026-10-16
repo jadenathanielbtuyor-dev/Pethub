@@ -15,13 +15,14 @@ function countByStatus(status) {
     .eq('status', status);
 }
 
-function countVaccinationsDueSoon(today) {
+function countVaccinationsDueSoon(today, endDate, statuses) {
   return supabase
     .from('appointments')
     .select('id', { count: 'exact', head: true })
     .ilike('service_type', '%Vaccination%')
     .gte('appointment_date', today)
-    .neq('status', 'Cancelled');
+    .lte('appointment_date', endDate)
+    .in('status', statuses);
 }
 
 function countUpcomingBookings(today) {

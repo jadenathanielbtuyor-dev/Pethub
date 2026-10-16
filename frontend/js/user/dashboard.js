@@ -3,6 +3,10 @@
 // Connection retry configuration
 const MAX_RETRIES = 2;
 const RETRY_DELAY = 500; // milliseconds
+const DASHBOARD_PET_PREVIEW_LIMIT = 3;
+const DASHBOARD_RECORD_PREVIEW_LIMIT = 3;
+// Pending and Approved bookings can still take place; Completed and Cancelled ones cannot
+const UPCOMING_APPOINTMENT_STATUSES = ['Pending', 'Approved'];
 
 document.addEventListener('DOMContentLoaded', () => {
   initializeUserDashboard();
@@ -221,7 +225,8 @@ function displayPets(pets) {
     return;
   }
 
-  petsContainer.innerHTML = petList.map(pet => `
+  const previewPets = petList.slice(0, DASHBOARD_PET_PREVIEW_LIMIT);
+  petsContainer.innerHTML = previewPets.map(pet => `
     <div class="flex items-center justify-between rounded-2xl border border-gray-100 bg-white p-4 shadow-sm hover:shadow-md transition-shadow">
       <div class="flex items-center gap-4 flex-1">
         <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
@@ -238,7 +243,12 @@ function displayPets(pets) {
         </a>
       </div>
     </div>
-  `).join('');
+  `).join('') + getPreviewFooterHtml(previewPets.length, petList.length, 'pets', 'pets.html', 'View all pets', 'text-orange-500');
+}
+
+function getPreviewFooterHtml(shownCount, totalCount, noun, href, linkLabel, linkClass) {
+  if (totalCount <= shownCount) return '';
+  return `<p class="mt-3 text-center text-sm text-gray-500">Showing ${shownCount} of ${totalCount} ${noun}. <a href="${href}" class="${linkClass} hover:underline">${escapeHtml(linkLabel)}</a></p>`;
 }
 
 function getPetSummary(pet) {
@@ -347,6 +357,30 @@ function getAppointmentTimeRangeDisplay(appointment) {
   return `${startTime.toLocaleTimeString('en-US', formatOptions)} - ${endTime.toLocaleTimeString('en-US', formatOptions)}`;
 }
 
+// Next relevant appointments: Pending or Approved and not yet finished (start + duration, browser-local time
+// like the times shown on this page), soonest first. The API orders by date only, so time is sorted here.
+function getUpcomingAppointments(appointments, now = new Date()) {
+  return appointments
+    .map(appointment => ({
+      appointment,
+      startTime: parseAppointmentDateTime(appointment?.appointment_date, appointment?.appointment_time)
+    }))
+    .filter(({ appointment, startTime }) => {
+      if (!startTime || !UPCOMING_APPOINTMENT_STATUSES.includes(getAppointmentStatusLabel(appointment.status))) return false;
+      const durationMinutes = getAppointmentDurationMinutes(appointment);
+      const endTime = Number.isFinite(durationMinutes) ? new Date(startTime.getTime() + durationMinutes * 60000) : startTime;
+      return endTime > now;
+    })
+    .sort((a, b) => a.startTime - b.startTime)
+    .map(({ appointment }) => appointment);
+}
+
+function getAppointmentStatusNote(status) {
+  if (status === 'Pending') return 'Awaiting clinic approval';
+  if (status === 'Approved') return 'Approved by the clinic';
+  return '';
+}
+
 function loadUserAppointments() {
   const userData = getUser();
   if (!userData) {
@@ -446,38 +480,58 @@ function displayAppointments(appointments) {
     return;
   }
 
-  appointmentsContainer.innerHTML = appointmentList.map(apt => {
-    const handledBy = getHandledByLabel(apt);
-    const status = getAppointmentStatusLabel(apt.status);
-    const handledByRow = handledBy
-      ? `<p><span class="font-semibold text-slate-500">Handled by:</span> ${escapeHtml(handledBy)}</p>`
-      : '';
-    return `
-      <div class="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm hover:shadow-md transition-shadow">
-        <div class="flex items-start gap-4">
-          <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 text-blue-500">
-            <i class="ri-calendar-check-line text-2xl"></i>
-          </div>
-          <div class="flex-1 min-w-0">
-            <div class="grid grid-cols-1 gap-x-5 gap-y-2 text-sm text-gray-600 sm:grid-cols-2">
-              <p><span class="font-semibold text-slate-500">Pet:</span> ${escapeHtml(hasRecordedValue(apt.pet_name) ? apt.pet_name : 'N/A')}</p>
-              <p><span class="font-semibold text-slate-500">Service:</span> ${escapeHtml(hasRecordedValue(apt.service_type) ? apt.service_type : 'N/A')}</p>
-              <p><span class="font-semibold text-slate-500">Duration:</span> ${escapeHtml(getAppointmentDurationLabel(apt))}</p>
-              <p><span class="font-semibold text-slate-500">Date:</span> ${escapeHtml(formatAppointmentDate(apt.appointment_date))}</p>
-              <p><span class="font-semibold text-slate-500">Time range:</span> ${escapeHtml(getAppointmentTimeRangeDisplay(apt))}</p>
-              <p>
-                <span class="font-semibold text-slate-500">Status:</span>
-                <span class="ml-1 inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ${getStatusBadgeClasses(status)}">
-                  ${escapeHtml(status)}
-                </span>
-              </p>
-              ${handledByRow}
-            </div>
-          </div>
+  const upcomingAppointments = getUpcomingAppointments(appointmentList);
+  if (upcomingAppointments.length === 0) {
+    appointmentsContainer.innerHTML = `
+      <div class="empty-state text-center py-8">
+        <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 text-blue-500">
+          <i class="ri-calendar-event-line text-2xl"></i>
         </div>
+        <p class="font-medium text-gray-700">No upcoming appointments</p>
+        <p class="text-sm text-gray-500 mt-2">Past, completed, and cancelled appointments are listed on the Appointments page.</p>
+        <p class="text-sm text-gray-500 mt-2"><a href="appointments.html" class="text-blue-500 hover:underline">Book an appointment</a></p>
       </div>
     `;
-  }).join('');
+    return;
+  }
+
+  const apt = upcomingAppointments[0];
+  const handledBy = getHandledByLabel(apt);
+  const status = getAppointmentStatusLabel(apt.status);
+  const handledByRow = handledBy
+    ? `<p><span class="font-semibold text-slate-500">Handled by:</span> ${escapeHtml(handledBy)}</p>`
+    : '';
+  const moreUpcomingCount = upcomingAppointments.length - 1;
+  const moreUpcomingRow = moreUpcomingCount > 0
+    ? `<p class="mt-3 text-center text-sm text-gray-500">You have ${moreUpcomingCount} more upcoming appointment${moreUpcomingCount === 1 ? '' : 's'}. <a href="appointments.html" class="text-blue-500 hover:underline">View all appointments</a></p>`
+    : '';
+
+  appointmentsContainer.innerHTML = `
+    <div class="rounded-2xl border border-blue-100 bg-blue-50 p-5 text-left">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div class="flex items-start gap-4">
+          <div class="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-white text-blue-500">
+            <i class="ri-calendar-check-line text-2xl"></i>
+          </div>
+          <div class="min-w-0">
+            <p class="text-lg font-bold text-gray-900">${escapeHtml(formatAppointmentDate(apt.appointment_date))}</p>
+            <p class="text-sm font-semibold text-blue-700">${escapeHtml(getAppointmentTimeRangeDisplay(apt))}</p>
+          </div>
+        </div>
+        <div>
+          <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ${getStatusBadgeClasses(status)}">${escapeHtml(status)}</span>
+          <p class="mt-1 text-xs text-gray-500">${escapeHtml(getAppointmentStatusNote(status))}</p>
+        </div>
+      </div>
+      <div class="mt-4 grid grid-cols-1 gap-x-5 gap-y-2 text-sm text-gray-600 sm:grid-cols-2">
+        <p><span class="font-semibold text-slate-500">Pet:</span> ${escapeHtml(hasRecordedValue(apt.pet_name) ? apt.pet_name : 'N/A')}</p>
+        <p><span class="font-semibold text-slate-500">Service:</span> ${escapeHtml(hasRecordedValue(apt.service_type) ? apt.service_type : 'N/A')}</p>
+        <p><span class="font-semibold text-slate-500">Duration:</span> ${escapeHtml(getAppointmentDurationLabel(apt))}</p>
+        ${handledByRow}
+      </div>
+    </div>
+    ${moreUpcomingRow}
+  `;
 }
 
 function getHandledByLabel(appointment) {
@@ -570,9 +624,11 @@ function displayRecentMedicalRecords(records) {
   }
 
   const sortedRecords = [...recordList]
-    .sort((a, b) => new Date(b.record_date || b.created_at || 0) - new Date(a.record_date || a.created_at || 0));
+    .sort((a, b) => (new Date(b.record_date || b.created_at || 0) - new Date(a.record_date || a.created_at || 0))
+      || (new Date(b.created_at || 0) - new Date(a.created_at || 0)));
+  const previewRecords = sortedRecords.slice(0, DASHBOARD_RECORD_PREVIEW_LIMIT);
 
-  recordsContainer.innerHTML = sortedRecords.map(record => {
+  recordsContainer.innerHTML = previewRecords.map(record => {
     const petName = getMedicalRecordPetLabel(record);
     const date = record.record_date ? formatDate(record.record_date) : 'Date not recorded';
     const recordedBy = getMedicalRecordRecorderLabel(record);
@@ -609,7 +665,7 @@ function displayRecentMedicalRecords(records) {
         </dl>
       </div>
     `;
-  }).join('');
+  }).join('') + getPreviewFooterHtml(previewRecords.length, sortedRecords.length, 'records', 'pets.html#medicalRecordsList', 'View full history', 'text-green-600');
 }
 
 function displayRecentActivity(logs) {
@@ -621,7 +677,7 @@ function displayRecentActivity(logs) {
     activityContainer.innerHTML = `
       <div class="text-center py-6">
         <p class="text-gray-600 font-medium">No recent activity yet</p>
-        <p class="text-sm text-gray-500 mt-2">Activity appears here after account actions like adding a pet or booking an appointment.</p>
+        <p class="text-sm text-gray-500 mt-2">Activity appears here after account actions like signing in or verifying your email.</p>
         <p class="text-sm text-gray-500 mt-2"><a href="pets.html" class="text-orange-500 hover:underline">Add a pet</a></p>
       </div>
     `;

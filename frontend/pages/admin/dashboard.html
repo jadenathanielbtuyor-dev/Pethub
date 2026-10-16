@@ -12,6 +12,8 @@
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet">
 </head>
 <body class="admin-dashboard-page">
+  <!-- Apply the saved theme before first paint; main.js still owns the toggle -->
+  <script>try { if (localStorage.getItem('darkMode') === 'true') { document.documentElement.classList.add('dark'); document.body.classList.add('dark-mode'); } } catch (e) {}</script>
   <div class="admin-dashboard-shell">
     <div id="adminSidebarRoot"></div>
 
@@ -159,7 +161,6 @@
                         </span>
                         <div>
                           <p class="text-sm font-semibold text-slate-700">Medical records</p>
-                          <p id="alertMedicalRecords" class="text-xl font-bold text-emerald-700"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
                           <p class="text-sm text-slate-500">Open records center</p>
                         </div>
                       </div>
@@ -243,7 +244,7 @@
           <p id="insightBookings" class="text-xl font-semibold text-slate-800 dark:text-slate-100 mt-4"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
         </div>
         <div class="bg-white border border-gray-200 rounded-3xl shadow-sm p-6">
-          <p class="text-sm uppercase tracking-wide text-slate-500 dark:text-slate-400 font-semibold">Completed Rate</p>
+          <p class="text-sm uppercase tracking-wide text-slate-500 dark:text-slate-400 font-semibold">% of Bookings Completed</p>
           <p id="insightCompletion" class="text-xl font-semibold text-slate-800 dark:text-slate-100 mt-4"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
         </div>
       </div>
@@ -302,7 +303,7 @@
           <div id="usersTabPanel">
           <div class="admin-filter-row flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
             <div class="admin-filter-control w-full sm:max-w-xs">
-              <label class="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Search users</label>
+              <label for="userSearchInput" class="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Search users</label>
               <input id="userSearchInput" type="search" placeholder="Name or email" class="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 shadow-sm focus:border-orange-400 focus:outline-none dark-safe-input" />
             </div>
           </div>
@@ -327,7 +328,7 @@
           <div id="petsTabPanel" class="hidden">
           <div class="admin-filter-row flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
             <div class="admin-filter-control w-full sm:max-w-xs">
-              <label class="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Search pets</label>
+              <label for="petSearchInput" class="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Search pets</label>
               <input id="petSearchInput" type="search" placeholder="Pet, species, breed, owner" class="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 shadow-sm focus:border-orange-400 focus:outline-none dark-safe-input" />
             </div>
           </div>
@@ -354,11 +355,11 @@
           <div id="appointmentsTabPanel" class="hidden">
           <div class="admin-filter-row grid grid-cols-1 gap-3 md:grid-cols-2 mb-6">
             <div class="admin-filter-control w-full sm:max-w-xs">
-              <label class="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Search appointments</label>
+              <label for="appointmentSearchInput" class="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Search appointments</label>
               <input id="appointmentSearchInput" type="search" placeholder="Pet or service" class="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 shadow-sm focus:border-orange-400 focus:outline-none dark-safe-input" />
             </div>
             <div class="admin-filter-control w-full sm:max-w-xs">
-              <label class="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Status filter</label>
+              <label for="appointmentStatusFilter" class="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Status filter</label>
               <select id="appointmentStatusFilter" class="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-slate-800 dark:text-slate-100 shadow-sm focus:border-orange-400 focus:outline-none dark-safe-select">
                 <option value="all">All statuses</option>
                 <option value="Pending">Pending</option>

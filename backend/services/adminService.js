@@ -31,6 +31,16 @@ const medicalRecordsRepository = require('../repositories/medicalRecordsReposito
 const activityLogsRepository = require('../repositories/activityLogsRepository');
 const contactRepository = require('../repositories/contactRepository');
 
+// "Due soon" = Pending or Approved vaccination appointments from today through today + 7 days (inclusive)
+const VACCINATIONS_DUE_SOON_WINDOW_DAYS = 7;
+const VACCINATIONS_DUE_SOON_STATUSES = ['Pending', 'Approved'];
+
+function getVaccinationsDueSoonEndDate(today) {
+  const endDate = new Date(`${today}T00:00:00.000Z`);
+  endDate.setUTCDate(endDate.getUTCDate() + VACCINATIONS_DUE_SOON_WINDOW_DAYS);
+  return endDate.toISOString().split('T')[0];
+}
+
 function buildUserNameMap(users) {
   return (Array.isArray(users) ? users : []).reduce((map, user) => {
     if (user && user.id != null) {
@@ -279,7 +289,11 @@ const getDashboardStats = async (req) => {
     const totalMedicalRecords = medicalRecordsResult.count || 0;
 
     const today = new Date().toISOString().split('T')[0];
-    const { count: vaccinationsDueSoon, error: vaccinationsError } = await appointmentsRepository.countVaccinationsDueSoon(today);
+    const { count: vaccinationsDueSoon, error: vaccinationsError } = await appointmentsRepository.countVaccinationsDueSoon(
+      today,
+      getVaccinationsDueSoonEndDate(today),
+      VACCINATIONS_DUE_SOON_STATUSES
+    );
 
     if (vaccinationsError) throw vaccinationsError;
 
@@ -348,7 +362,11 @@ const getAnalyticsSummary = async (req) => {
     if (completedError) throw completedError;
 
     const today = new Date().toISOString().split('T')[0];
-    const { count: vaccinationsDueSoon, error: vaccinationsError } = await appointmentsRepository.countVaccinationsDueSoon(today);
+    const { count: vaccinationsDueSoon, error: vaccinationsError } = await appointmentsRepository.countVaccinationsDueSoon(
+      today,
+      getVaccinationsDueSoonEndDate(today),
+      VACCINATIONS_DUE_SOON_STATUSES
+    );
 
     if (vaccinationsError) throw vaccinationsError;
 
@@ -490,9 +508,12 @@ const getDashboardOverview = async (req) => {
     const pendingVerifications = pendingVerificationsResult.count;
     const activityLogCount = activityLogsResult.count;
 
+    const vaccinationsDueSoonEndDate = getVaccinationsDueSoonEndDate(today);
     const vaccinationsDueSoon = appointments.filter(apt => {
       const service = (apt.service_type || '').toString().toLowerCase();
-      return service.includes('vaccination') && apt.appointment_date && apt.status !== 'Cancelled' && apt.appointment_date >= today;
+      const dateKey = apt.appointment_date ? apt.appointment_date.toString().split('T')[0] : null;
+      return service.includes('vaccination') && dateKey && VACCINATIONS_DUE_SOON_STATUSES.includes(apt.status) &&
+        dateKey >= today && dateKey <= vaccinationsDueSoonEndDate;
     }).length;
     const upcomingBookings = appointments.filter(apt => apt.appointment_date && apt.status !== 'Cancelled' && apt.appointment_date >= today).length;
 

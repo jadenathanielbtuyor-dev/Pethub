@@ -443,59 +443,57 @@
         }
       }
 
-      /* Dark Mode Support - CLEAN */
-      @media (prefers-color-scheme: dark) {
-        .pethub-ai-popup {
+      /* Dark Mode Support - follows the PetHub toggle (body.dark-mode), not the OS; :where() keeps the original specificity */
+        :where(body.dark-mode) .pethub-ai-popup {
           background: #1e1e1e;
           color: #e0e0e0;
         }
 
-        .pethub-ai-messages {
+        :where(body.dark-mode) .pethub-ai-messages {
           background: #1e1e1e;
         }
 
-        .pethub-ai-message.ai .bubble {
+        :where(body.dark-mode) .pethub-ai-message.ai .bubble {
           background: #2a2a2a;
           color: #e0e0e0;
           box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
         }
 
-        .pethub-ai-starters {
+        :where(body.dark-mode) .pethub-ai-starters {
           border-top-color: #333;
         }
 
-        .pethub-ai-starter-chip {
+        :where(body.dark-mode) .pethub-ai-starter-chip {
           background: #2a2a2a;
           border-color: #333;
           color: #aaa;
         }
 
-        .pethub-ai-starter-chip:hover {
+        :where(body.dark-mode) .pethub-ai-starter-chip:hover {
           border-color: #FF8C42;
           color: #FF8C42;
           background: rgba(255, 140, 66, 0.1);
         }
 
-        .pethub-ai-input-area {
+        :where(body.dark-mode) .pethub-ai-input-area {
           border-top-color: #333;
         }
 
-        .pethub-ai-input-area input {
+        :where(body.dark-mode) .pethub-ai-input-area input {
           background: #2a2a2a;
           color: #e0e0e0;
           border-color: #333;
         }
 
-        .pethub-ai-input-area input:focus {
+        :where(body.dark-mode) .pethub-ai-input-area input:focus {
           border-color: #FF8C42;
           box-shadow: 0 0 0 2px rgba(255, 140, 66, 0.15);
         }
 
-        .pethub-ai-footer {
+        :where(body.dark-mode) .pethub-ai-footer {
           color: #666;
           border-top-color: #333;
         }
-      }
     `;
     document.head.appendChild(styles);
   }
@@ -511,12 +509,12 @@
     widget.className = 'pethub-ai-widget';
     widget.innerHTML = `
       <!-- Floating Button -->
-      <button class="pethub-ai-button" id="pethub-ai-toggle" title="Chat with PetHub AI" aria-label="Open PetHub AI Assistant">
+      <button class="pethub-ai-button" id="pethub-ai-toggle" title="Chat with PetHub AI" aria-label="PetHub AI Assistant" aria-expanded="false" aria-controls="pethub-ai-popup">
         <i class="ri-robot-line"></i>
       </button>
 
       <!-- Chat Popup -->
-      <div class="pethub-ai-popup" id="pethub-ai-popup">
+      <div class="pethub-ai-popup" id="pethub-ai-popup" inert>
         <!-- Header -->
         <div class="pethub-ai-header">
           <h3>PetHub AI</h3>
@@ -564,6 +562,14 @@
 
   // ==================== EVENT LISTENERS ====================
 
+  // Keeps visibility, keyboard reachability (inert while hidden) and the toggle's expanded state in sync
+  function setPopupOpen(popup, isOpen) {
+    popup.classList.toggle('active', isOpen);
+    popup.inert = !isOpen;
+    const toggleBtn = document.getElementById('pethub-ai-toggle');
+    if (toggleBtn) toggleBtn.setAttribute('aria-expanded', String(isOpen));
+  }
+
   function setupEventListeners() {
     const toggleBtn = document.getElementById('pethub-ai-toggle');
     const closeBtn = document.getElementById('pethub-ai-close');
@@ -576,21 +582,30 @@
     // Toggle chat
     if (toggleBtn) {
       toggleBtn.addEventListener('click', () => {
-        popup.classList.toggle('active');
+        setPopupOpen(popup, !popup.classList.contains('active'));
         if (popup.classList.contains('active')) {
           input.focus();
-          saveChatState();
         }
+        saveChatState();
       });
     }
 
     // Close chat
     if (closeBtn) {
       closeBtn.addEventListener('click', () => {
-        popup.classList.remove('active');
+        setPopupOpen(popup, false);
         saveChatState();
+        if (toggleBtn) toggleBtn.focus();
       });
     }
+
+    // Escape closes the open chat the same way as the close button
+    popup.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && closeBtn) {
+        e.preventDefault();
+        closeBtn.click();
+      }
+    });
 
     // Send message on button click
     if (sendBtn) {
@@ -972,7 +987,7 @@
         const chatState = JSON.parse(state);
         const popup = document.getElementById('pethub-ai-popup');
         if (chatState.isOpen && popup) {
-          popup.classList.add('active');
+          setPopupOpen(popup, true);
         }
       } catch (error) {
         try {

@@ -641,7 +641,7 @@ table tr:hover {
 /* Dark Mode Toggle */
 .dark-mode-toggle {
   @apply fixed bottom-6 right-6 w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-all duration-300 z-40 text-white font-semibold;
-  background-color: #FF8C42;
+  background-color: #EA580C;
   font-size: 1.25rem;
 }
 
@@ -654,7 +654,7 @@ table tr:hover {
 }
 
 .dark-mode-toggle:hover {
-  background-color: #E67E2D;
+  background-color: #C2410C;
   box-shadow: 0 8px 18px rgba(255, 140, 66, 0.24);
   transform: translateY(-1px);
 }
@@ -982,7 +982,7 @@ body.admin-sidebar-open {
 
 .admin-nav-link:hover,
 .admin-nav-link.is-active {
-  background: #f97316;
+  background: #c2410c;
   color: #fff;
   box-shadow: 0 8px 18px rgba(249, 115, 22, 0.18);
 }
@@ -1232,7 +1232,7 @@ body.dark-mode .admin-nav-link {
 
 body.dark-mode .admin-nav-link:hover,
 body.dark-mode .admin-nav-link.is-active {
-  background: #f97316;
+  background: #c2410c;
   color: #fff;
 }
 
@@ -1343,142 +1343,536 @@ body.dark-mode.admin-dashboard-page .admin-status-neutral {
   color: #cbd5e1;
 }
 
-@media (prefers-color-scheme: dark) {
-  body.admin-dashboard-page {
-    background: #0f172a;
-    color: #e2e8f0;
-  }
+/* Admin dashboard overview and activity log dark mode */
+body.dark-mode.admin-dashboard-page #queuePendingAppointments {
+  border-color: #9a3412 !important;
+  background: #431407 !important;
+}
 
-  body.admin-dashboard-page section,
-  body.admin-dashboard-page #systemLogs,
-  body.admin-dashboard-page :where([class~="bg-white"]) {
-    border-color: #334155 !important;
-    background: #1e293b !important;
-  }
+body.dark-mode.admin-dashboard-page #queuePendingAppointments:hover {
+  border-color: #fb923c !important;
+  background: #7c2d12 !important;
+}
 
-  body.admin-dashboard-page :where([class~="bg-slate-50"], [class~="bg-slate-100"]) {
-    background: #0f172a !important;
-  }
+body.dark-mode.admin-dashboard-page #queuePendingAppointments [class~="bg-white"] {
+  background: #7c2d12 !important;
+  color: #fed7aa !important;
+}
 
-  body.admin-dashboard-page :where(
-    [class~="text-slate-800"],
-    [class~="text-slate-900"],
-    [class~="text-gray-900"],
-    [class~="text-slate-700"],
-    [class~="text-gray-700"]
-  ) {
-    color: #e2e8f0 !important;
-  }
+body.dark-mode.admin-dashboard-page #queuePendingAppointments [class~="text-orange-700"] {
+  color: #fdba74 !important;
+}
 
-  body.admin-dashboard-page :where(
-    [class~="text-slate-600"],
-    [class~="text-gray-600"],
-    [class~="text-slate-500"],
-    [class~="text-gray-500"]
-  ) {
-    color: #cbd5e1 !important;
-  }
+body.dark-mode.admin-dashboard-page #queueUnreadMessages {
+  border-color: #1d4ed8 !important;
+  background: #172554 !important;
+}
 
-  body.admin-dashboard-page .dark-safe-input,
-  body.admin-dashboard-page .dark-safe-select {
-    border-color: #475569 !important;
-    background: #0f172a !important;
-    color: #e2e8f0 !important;
-  }
+body.dark-mode.admin-dashboard-page #queueUnreadMessages:hover {
+  border-color: #60a5fa !important;
+  background: #1e3a8a !important;
+}
 
-  body.admin-dashboard-page .admin-panel-secondary-button {
-    border-color: #475569 !important;
-    background: #0f172a !important;
-    color: #e2e8f0 !important;
-  }
+body.dark-mode.admin-dashboard-page #queueUnreadMessages [class~="bg-white"] {
+  background: #1e3a8a !important;
+  color: #bfdbfe !important;
+}
 
-  body.admin-dashboard-page table th {
-    border-color: #334155 !important;
-    background: #0f172a !important;
-    color: #e2e8f0 !important;
-  }
+body.dark-mode.admin-dashboard-page #queueUnreadMessages [class~="text-blue-700"] {
+  color: #93c5fd !important;
+}
 
-  body.admin-dashboard-page table td {
-    border-color: #334155 !important;
-    color: #cbd5e1 !important;
-  }
+body.dark-mode.admin-dashboard-page #queueNewUsers {
+  border-color: #475569 !important;
+  background: #1e293b !important;
+}
 
-  body.admin-dashboard-page table tr:hover,
-  body.admin-dashboard-page :where([class~="hover:bg-gray-50"]):hover {
-    background: #334155 !important;
-  }
+body.dark-mode.admin-dashboard-page #queueNewUsers:hover {
+  border-color: #64748b !important;
+  background: #334155 !important;
+}
 
-  body.admin-dashboard-page .admin-status-success {
-    border-color: #166534;
-    background: #052e16;
-    color: #bbf7d0;
-  }
+body.dark-mode.admin-dashboard-page #queueNewUsers [class~="bg-white"] {
+  background: #334155 !important;
+  color: #cbd5e1 !important;
+}
 
-  body.admin-dashboard-page .admin-status-warning {
-    border-color: #92400e;
-    background: #451a03;
-    color: #fde68a;
-  }
+body.dark-mode.admin-dashboard-page #queueMedicalRecords {
+  border-color: #166534 !important;
+  background: #052e16 !important;
+}
 
-  body.admin-dashboard-page .admin-status-info {
-    border-color: #1d4ed8;
-    background: #172554;
-    color: #bfdbfe;
-  }
+body.dark-mode.admin-dashboard-page #queueMedicalRecords:hover {
+  border-color: #4ade80 !important;
+  background: #14532d !important;
+}
 
-  body.admin-dashboard-page .admin-status-danger {
-    border-color: #b91c1c;
-    background: #450a0a;
-    color: #fecaca;
-  }
+body.dark-mode.admin-dashboard-page #queueMedicalRecords [class~="bg-white"] {
+  background: #14532d !important;
+  color: #bbf7d0 !important;
+}
 
-  body.admin-dashboard-page .admin-status-neutral {
-    border-color: #475569;
-    background: #0f172a;
-    color: #cbd5e1;
-  }
+body.dark-mode.admin-dashboard-page #adminAlertsCard button:focus-visible {
+  outline: 2px solid #e2e8f0;
+  outline-offset: 2px;
+}
 
-  body.admin-dashboard-page .admin-sidebar {
-    border-right-color: #334155;
-    background: rgba(15, 23, 42, 0.98);
-  }
+body.dark-mode.admin-dashboard-page #analyticsTotalAppointments {
+  color: #93c5fd !important;
+}
 
-  body.admin-dashboard-page .admin-sidebar-close {
-    color: #cbd5e1;
-  }
+body.dark-mode.admin-dashboard-page [class~="bg-blue-50"][class~="text-blue-600"] {
+  background: #1e3a8a !important;
+  color: #bfdbfe !important;
+}
 
-  body.admin-dashboard-page .admin-sidebar-close:hover {
-    background: #1e293b;
-    color: #ffb088;
-  }
+body.dark-mode.admin-dashboard-page #refreshDashboard,
+body.dark-mode.admin-dashboard-page .btn-logout {
+  background-color: #c2410c !important;
+  color: #fff !important;
+}
 
-  body.admin-dashboard-page .admin-nav-link {
-    color: #cbd5e1;
-  }
+body.dark-mode.admin-dashboard-page #refreshDashboard:hover,
+body.dark-mode.admin-dashboard-page .btn-logout:hover {
+  background-color: #9a3412 !important;
+}
 
-  body.admin-dashboard-page .admin-nav-link:hover,
-  body.admin-dashboard-page .admin-nav-link.is-active {
-    background: #f97316;
-    color: #fff;
-  }
+body.dark-mode.admin-dashboard-page #adminDashboardStatus[class~="bg-green-50"] {
+  border-color: #166534 !important;
+  background: #052e16 !important;
+  color: #bbf7d0 !important;
+}
 
-  body.admin-dashboard-page .admin-sidebar-label {
-    color: #94a3b8;
-  }
+body.dark-mode.admin-dashboard-page #adminDashboardStatus[class~="bg-orange-50"] {
+  border-color: #92400e !important;
+  background: #451a03 !important;
+  color: #fde68a !important;
+}
 
-  body.admin-dashboard-page .admin-sidebar-stats {
-    border-color: #7c2d12;
-    background: #1e293b;
-  }
+body.dark-mode.admin-dashboard-page #adminDashboardStatus[class~="bg-red-50"] {
+  border-color: #b91c1c !important;
+  background: #450a0a !important;
+  color: #fecaca !important;
+}
 
-  body.admin-dashboard-page .admin-sidebar-stat {
-    border-bottom-color: rgba(251, 146, 60, 0.22);
-    color: #cbd5e1;
-  }
+body.dark-mode.admin-dashboard-page #systemLogsContainer > div[class~="rounded-xl"] {
+  border-color: #334155 !important;
+  background: #0f172a !important;
+}
 
-  body.admin-dashboard-page .admin-sidebar-stat-value {
-    color: #ffb088;
-  }
+body.dark-mode.admin-dashboard-page #systemLogsContainer > div[class~="rounded-xl"]:hover {
+  border-color: #475569 !important;
+  background: #1e293b !important;
+}
+
+body.dark-mode.admin-dashboard-page #systemLogsContainer > div[class~="rounded-xl"] > div:first-child {
+  border-color: #475569 !important;
+  background: #1e293b !important;
+}
+
+body.dark-mode.admin-dashboard-page #systemLogsContainer [class~="text-gray-900"] {
+  color: #e2e8f0 !important;
+}
+
+body.dark-mode.admin-dashboard-page #systemLogsContainer [class~="text-gray-400"] {
+  color: #94a3b8 !important;
+}
+
+body.dark-mode.admin-dashboard-page #systemLogsContainer [class~="text-blue-500"] {
+  color: #93c5fd !important;
+}
+
+body.dark-mode.admin-dashboard-page #systemLogsContainer [class~="text-green-500"] {
+  color: #86efac !important;
+}
+
+body.dark-mode.admin-dashboard-page #systemLogsContainer [class~="text-teal-500"] {
+  color: #5eead4 !important;
+}
+
+body.dark-mode.admin-dashboard-page #systemLogsContainer [class~="text-orange-500"] {
+  color: #fdba74 !important;
+}
+
+body.dark-mode.admin-dashboard-page #systemLogsContainer [class~="text-purple-500"] {
+  color: #c4b5fd !important;
+}
+
+body.dark-mode.admin-dashboard-page #systemLogsContainer [class~="text-red-500"] {
+  color: #fca5a5 !important;
+}
+
+body.dark-mode.admin-dashboard-page #systemLogsContainer [class~="text-gray-500"] {
+  color: #cbd5e1 !important;
+}
+
+body.dark-mode.admin-dashboard-page #systemLogsContainer .dashboard-loading-state {
+  border-color: #334155 !important;
+  background: #0f172a !important;
+  color: #cbd5e1 !important;
+}
+
+body.dark-mode.admin-dashboard-page #systemLogsContainer .dashboard-loading-title {
+  color: #e2e8f0 !important;
+}
+
+body.dark-mode.admin-dashboard-page #systemLogsContainer .dashboard-loading-copy {
+  color: #94a3b8 !important;
+}
+
+body.dark-mode.admin-dashboard-page #systemLogsContainer .dashboard-skeleton-row {
+  background: #1e293b;
+}
+
+body.dark-mode.admin-dashboard-page #systemLogsContainer .dashboard-skeleton-icon,
+body.dark-mode.admin-dashboard-page #systemLogsContainer .dashboard-skeleton-line {
+  background: linear-gradient(90deg, #334155 25%, #475569 50%, #334155 75%);
+}
+
+/* User pages (body.user-page) dark mode: page, cards, tints, text, form controls, feedback and navigation */
+body.dark-mode.user-page {
+  background-image: none !important;
+}
+
+body.dark-mode.user-page :where([class~="bg-white"]) {
+  border-color: #374151 !important;
+  background: #1f2937 !important;
+}
+
+body.dark-mode.user-page :where([class~="bg-slate-50"], [class~="bg-gray-50"]) {
+  background: #111827 !important;
+}
+
+body.dark-mode.user-page :where([class~="bg-slate-100"], [class~="bg-gray-100"]) {
+  background: #374151 !important;
+}
+
+body.dark-mode.user-page :where([class~="bg-orange-50"], [class~="bg-orange-100"]):not(.nav img) {
+  background: #431407 !important;
+}
+
+body.dark-mode.user-page :where([class~="bg-blue-50"], [class~="bg-blue-100"]) {
+  background: #172554 !important;
+}
+
+body.dark-mode.user-page :where([class~="bg-green-50"], [class~="bg-green-100"]) {
+  background: #052e16 !important;
+}
+
+body.dark-mode.user-page :where([class~="bg-red-50"], [class~="bg-red-100"]) {
+  background: #450a0a !important;
+}
+
+body.dark-mode.user-page :where([class~="bg-yellow-50"], [class~="bg-yellow-100"]) {
+  background: #422006 !important;
+}
+
+body.dark-mode.user-page :where([class~="hover:bg-gray-100"]):hover {
+  background: #374151 !important;
+}
+
+body.dark-mode.user-page :where([class~="hover:bg-orange-100"]):hover {
+  background: #7c2d12 !important;
+}
+
+body.dark-mode.user-page :where([class~="hover:bg-blue-100"]):hover {
+  background: #1e3a8a !important;
+}
+
+body.dark-mode.user-page :where([class~="hover:bg-green-100"]):hover {
+  background: #14532d !important;
+}
+
+body.dark-mode.user-page :where([class~="hover:bg-red-200"]):hover {
+  background: #7f1d1d !important;
+}
+
+body.dark-mode.user-page :where([class~="border-gray-100"], [class~="border-gray-200"]) {
+  border-color: #374151 !important;
+}
+
+body.dark-mode.user-page :where([class~="border-orange-100"]) {
+  border-color: #9a3412 !important;
+}
+
+body.dark-mode.user-page :where([class~="border-blue-100"]) {
+  border-color: #1e3a8a !important;
+}
+
+body.dark-mode.user-page :where([class~="border-green-100"]) {
+  border-color: #14532d !important;
+}
+
+body.dark-mode.user-page :where([class~="border-red-200"], [class~="border-red-300"]) {
+  border-color: #7f1d1d !important;
+}
+
+body.dark-mode.user-page :where(
+  [class~="text-gray-900"],
+  [class~="text-gray-800"],
+  [class~="text-slate-900"],
+  [class~="text-slate-800"],
+  [class~="text-black"]
+) {
+  color: #f3f4f6 !important;
+}
+
+body.dark-mode.user-page :where(
+  [class~="text-gray-700"],
+  [class~="text-gray-600"],
+  [class~="text-slate-700"],
+  [class~="text-slate-600"]
+) {
+  color: #d1d5db !important;
+}
+
+body.dark-mode.user-page :where([class~="text-gray-500"], [class~="text-gray-400"], [class~="text-slate-500"]) {
+  color: #9ca3af !important;
+}
+
+body.dark-mode.user-page :where(
+  [class~="text-orange-500"],
+  [class~="text-orange-600"],
+  [class~="text-orange-700"],
+  [class~="text-amber-700"]
+) {
+  color: #ffb088 !important;
+}
+
+body.dark-mode.user-page :where([class~="text-blue-500"], [class~="text-blue-600"], [class~="text-blue-700"]) {
+  color: #93c5fd !important;
+}
+
+body.dark-mode.user-page :where([class~="text-green-500"], [class~="text-green-600"], [class~="text-green-700"]) {
+  color: #86efac !important;
+}
+
+body.dark-mode.user-page :where([class~="text-red-600"], [class~="text-red-700"]) {
+  color: #fca5a5 !important;
+}
+
+body.dark-mode.user-page :where([class~="text-yellow-600"], [class~="text-yellow-700"]) {
+  color: #fcd34d !important;
+}
+
+body.dark-mode.user-page :where([class~="hover:text-orange-600"], [class~="hover:text-orange-700"]):hover {
+  color: #ffb088 !important;
+}
+
+body.dark-mode.user-page :where([class~="hover:text-blue-700"]):hover {
+  color: #bfdbfe !important;
+}
+
+body.dark-mode.user-page :where([class~="hover:text-green-700"]):hover {
+  color: #bbf7d0 !important;
+}
+
+body.dark-mode.user-page main :where(input, select, textarea) {
+  border-color: #4b5563 !important;
+  background-color: #111827 !important;
+  color: #f3f4f6 !important;
+  color-scheme: dark;
+}
+
+body.dark-mode.user-page main :where(input, textarea)::placeholder {
+  color: #9ca3af;
+}
+
+body.dark-mode.user-page :where([class~="focus:border-orange-500"]):focus {
+  border-color: #fb923c !important;
+}
+
+body.dark-mode.user-page :where([class~="focus:border-blue-500"]):focus {
+  border-color: #60a5fa !important;
+}
+
+body.dark-mode.user-page :where(#petError, #petSuccess, #messageContainer, #appointmentDateError, #appointmentTimeError)[role="alert"] {
+  border-color: #7f1d1d !important;
+  background-color: #450a0a !important;
+  color: #fca5a5 !important;
+}
+
+body.dark-mode.user-page :where(#petError, #petSuccess, #messageContainer, #appointmentDateError, #appointmentTimeError)[role="status"] {
+  border-color: #14532d !important;
+  background-color: #052e16 !important;
+  color: #86efac !important;
+}
+
+body.dark-mode.user-page .nav {
+  border-bottom-color: #ff8c42 !important;
+}
+
+body.dark-mode.user-page .nav-links a.btn-logout,
+body.dark-mode.user-page .nav-links a.btn-logout:hover {
+  color: #111827;
+}
+
+body.dark-mode.user-page .dashboard-loading-state {
+  border-color: #374151;
+  background: #1f2937;
+  color: #d1d5db;
+}
+
+body.dark-mode.user-page .dashboard-loading-title {
+  color: #f3f4f6;
+}
+
+body.dark-mode.user-page .dashboard-loading-copy {
+  color: #9ca3af;
+}
+
+body.dark-mode.user-page .dashboard-skeleton-row {
+  background: #111827;
+}
+
+body.dark-mode.user-page .dashboard-skeleton-icon,
+body.dark-mode.user-page .dashboard-skeleton-line {
+  background-image: linear-gradient(90deg, #374151 25%, #4b5563 50%, #374151 75%);
+}
+
+/* Admin users, pets and appointments pages (body.admin-subpage) dark mode: page, cards, table, text, record modal, Logout and badges */
+body.dark-mode.admin-subpage {
+  background: #0f172a;
+}
+
+body.dark-mode.admin-subpage :where(main, #adminMedicalRecordModal) :where([class~="bg-white"]) {
+  border-color: #334155 !important;
+  background: #1e293b !important;
+}
+
+body.dark-mode.admin-subpage :where(main, #adminMedicalRecordModal) :where([class~="bg-slate-50"], [class~="bg-slate-100"], [class~="bg-gray-50"]) {
+  background: #0f172a !important;
+}
+
+body.dark-mode.admin-subpage #adminMedicalRecordModal :where([class~="hover:bg-slate-200"]):hover {
+  background: #334155 !important;
+}
+
+body.dark-mode.admin-subpage :where(main, .admin-sidebar-header, #adminMedicalRecordModal) :where(
+  [class~="text-slate-900"],
+  [class~="text-gray-900"],
+  [class~="text-slate-700"],
+  [class~="text-gray-700"]
+) {
+  color: #e2e8f0 !important;
+}
+
+body.dark-mode.admin-subpage :where(main, .admin-sidebar-header, #adminMedicalRecordModal) :where(
+  [class~="text-slate-600"],
+  [class~="text-gray-600"],
+  [class~="text-slate-500"],
+  [class~="text-gray-500"]
+) {
+  color: #cbd5e1 !important;
+}
+
+body.dark-mode.admin-subpage main :where([class~="text-red-500"]) {
+  color: #fca5a5 !important;
+}
+
+body.dark-mode.admin-subpage table th {
+  border-color: #334155;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+body.dark-mode.admin-subpage table td {
+  border-color: #334155;
+  color: #cbd5e1;
+}
+
+body.dark-mode.admin-subpage table tr:hover {
+  background: #334155 !important;
+}
+
+body.dark-mode.admin-subpage #adminMedicalRecordModal :where(input, select, textarea) {
+  border-color: #475569;
+  background-color: #0f172a;
+  color: #e2e8f0;
+  color-scheme: dark;
+}
+
+body.dark-mode.admin-subpage #adminMedicalRecordModal :where(input, select, textarea):focus {
+  border-color: #fb923c;
+}
+
+body.dark-mode.admin-subpage .btn-logout {
+  background-color: #c2410c !important;
+  color: #fff !important;
+}
+
+body.dark-mode.admin-subpage .btn-logout:hover {
+  background-color: #9a3412 !important;
+}
+
+body.dark-mode.admin-subpage #appointmentsTable span:where([class~="bg-yellow-50"]) {
+  background: #451a03 !important;
+  color: #fde68a !important;
+}
+
+body.dark-mode.admin-subpage #appointmentsTable span:where([class~="bg-blue-50"]),
+body.dark-mode.admin-subpage #usersTable span:where([class~="bg-blue-100"]) {
+  background: #172554 !important;
+  color: #bfdbfe !important;
+}
+
+body.dark-mode.admin-subpage #appointmentsTable span:where([class~="bg-green-50"]),
+body.dark-mode.admin-subpage .admin-status-success {
+  border-color: #166534;
+  background: #052e16 !important;
+  color: #bbf7d0 !important;
+}
+
+body.dark-mode.admin-subpage #appointmentsTable span:where([class~="bg-red-50"]) {
+  background: #450a0a !important;
+  color: #fecaca !important;
+}
+
+body.dark-mode.admin-subpage #usersTable span:where([class~="bg-purple-100"]) {
+  background: #3b0764 !important;
+  color: #e9d5ff !important;
+}
+
+body.dark-mode.admin-subpage #adminMedicalRecordError {
+  border-color: #b91c1c !important;
+  background: #450a0a !important;
+  color: #fecaca !important;
+}
+
+/* Add Medical Record dialog (dashboard and appointments): stay above the fixed admin sidebar (z-index 60), scroll on short screens */
+#adminMedicalRecordModal {
+  z-index: 70;
+  align-items: flex-start;
+  overflow-y: auto;
+}
+
+#adminMedicalRecordModal > div {
+  margin-block: auto;
+}
+
+#adminMedicalRecordForm button[type="submit"] {
+  background-color: #c2410c;
+}
+
+#adminMedicalRecordForm button[type="submit"]:hover {
+  background-color: #9a3412;
+}
+
+/* Admin users, pets and appointments pages: let main shrink so wide tables scroll inside their wrapper, consistent field focus, readable eyebrows */
+body.admin-subpage main {
+  min-width: 0;
+}
+
+body.admin-subpage #adminMedicalRecordModal textarea:focus {
+  box-shadow: none;
+}
+
+body.admin-subpage main :where([class~="text-orange-600"]) {
+  color: #c2410c;
+}
+
+body.dark-mode.admin-subpage main :where([class~="text-orange-600"]) {
+  color: #fb923c;
 }
 
 /* Page Header */

@@ -132,7 +132,7 @@ function displayAppointmentsTable(appointments) {
             ${escapeHtml(status)}
           </span>
         </td>
-        <td class="p-4 text-slate-700">${handledBy ? escapeHtml(handledBy) : '<span class="text-slate-400">-</span>'}</td>
+        <td class="p-4 text-slate-700">${handledBy ? escapeHtml(handledBy) : '<span class="text-slate-500">-</span>'}</td>
         <td class="p-4">
           <div class="admin-medical-record-action-cell">${renderAppointmentActions(status, apt)}</div>
         </td>

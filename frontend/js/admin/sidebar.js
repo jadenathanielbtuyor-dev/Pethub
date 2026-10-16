@@ -8,6 +8,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize sidebar
   renderAdminSidebar();
   setupSidebarToggle();
+  // dashboard.js fills Quick Stats on the dashboard; the Users, Pets and Appointments pages load them here
+  if (!document.body.classList.contains('admin-dashboard-page')) {
+    loadAdminSidebarStats();
+  }
   
   // Call main.js functions if available
   if (getCurrentAdminPage() !== 'dashboard.html' && typeof highlightSidebarLinks === 'function') {
@@ -47,9 +51,12 @@ function setupSidebarToggle() {
 
   const setSidebarOpen = (isOpen) => {
     const shouldOpen = Boolean(isOpen) && isMobileSidebar();
+    const focusWasInSidebar = adminSidebar.contains(document.activeElement);
 
     adminSidebar.classList.toggle('is-open', shouldOpen);
     adminSidebar.setAttribute('aria-hidden', isMobileSidebar() ? String(!shouldOpen) : 'false');
+    // The closed mobile sidebar is only moved off-screen, so also take it out of the Tab order
+    adminSidebar.inert = isMobileSidebar() && !shouldOpen;
     document.body.classList.toggle('admin-sidebar-open', shouldOpen);
     if (sidebarBackdrop) {
       sidebarBackdrop.classList.toggle('hidden', !shouldOpen);
@@ -62,11 +69,19 @@ function setupSidebarToggle() {
       adminSidebarToggle.setAttribute('aria-expanded', String(shouldOpen));
       adminSidebarToggle.setAttribute('aria-label', 'Close sidebar');
     }
+
+    // Closing must not strand keyboard focus inside the now-inert sidebar
+    if (!shouldOpen && focusWasInSidebar && isMobileSidebar()) {
+      const visibleToggle = sidebarToggles.find((toggle) => toggle.offsetParent !== null);
+      if (visibleToggle) visibleToggle.focus();
+    }
   };
 
   const openSidebar = (e) => {
     e?.preventDefault?.();
     setSidebarOpen(true);
+    // Move keyboard focus into the opened mobile sidebar (its close button)
+    if (isMobileSidebar() && adminSidebarToggle) adminSidebarToggle.focus();
   };
 
   const closeSidebar = (e) => {
@@ -352,6 +367,61 @@ function getAdminSidebarLoadingHtml() {
 }
 
 /**
+ * Load Quick Stats on admin pages without dashboard.js, from the existing stats and contact-message endpoints.
+ * Shows the same "Unavailable" / "-" states the dashboard uses when a request fails.
+ */
+async function loadAdminSidebarStats() {
+  const user = typeof getUser === 'function' ? getUser() : null;
+  const isSignedIn = typeof isLoggedIn === 'function' ? isLoggedIn() : Boolean(user);
+  // Signed-out and non-admin visitors are redirected by the page script, so only admins request stats
+  if (!isSignedIn || !user || String(user.role || '').toLowerCase() !== 'admin') return;
+
+  const query = user.id ? `?user_id=${encodeURIComponent(user.id)}` : '';
+  const [statsResult, messagesResult] = await Promise.allSettled([
+    getAdminSidebarJson(`/admin/dashboard/stats${query}`),
+    getAdminSidebarJson(`/admin/dashboard/contact-messages${query}`)
+  ]);
+
+  const summary = statsResult.status === 'fulfilled' ? statsResult.value.summary || {} : null;
+  if (!summary) console.error('Error loading Quick Stats:', statsResult.reason);
+  [
+    ['sidebarTotalUsers', 'totalUsers'],
+    ['sidebarTotalPets', 'totalPets'],
+    ['sidebarPendingAppointments', 'pendingAppointments'],
+    ['sidebarVerifiedUsers', 'verifiedUsers'],
+    ['sidebarMedicalRecords', 'totalMedicalRecords']
+  ].forEach(([id, key]) => setAdminSidebarStat(id, summary ? formatAdminSidebarStat(summary[key]) : 'Unavailable'));
+
+  const messages = messagesResult.status === 'fulfilled' ? messagesResult.value.messages : null;
+  if (messagesResult.status === 'rejected') console.error('Error loading Quick Stats contact messages:', messagesResult.reason);
+  setAdminSidebarStat('sidebarContactMessages', Array.isArray(messages) ? formatAdminSidebarStat(messages.length) : '-');
+}
+
+async function getAdminSidebarJson(path) {
+  if (typeof window.API_BASE_URL === 'undefined') {
+    throw new Error('API_BASE_URL not found. Ensure core/api.js is loaded first.');
+  }
+
+  const response = await fetch(`${window.API_BASE_URL}${path}`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || `Request failed (${response.status})`);
+  }
+  return data;
+}
+
+function formatAdminSidebarStat(value) {
+  const numericValue = Number(value);
+  const isCount = value !== null && value !== undefined && value !== '' && Number.isInteger(numericValue) && numericValue >= 0;
+  return isCount ? String(numericValue) : '-';
+}
+
+function setAdminSidebarStat(id, text) {
+  const element = document.getElementById(id);
+  if (element) element.textContent = text;
+}
+
+/**
  * Get current admin page name
  */
 function getCurrentAdminPage() {
@@ -395,7 +465,7 @@ function createSidebarLink(item, currentView) {
   const ariaCurrent = isActive ? 'aria-current="page"' : '';
 
   return `
-    <a href="${hrefValue}" ${dataAttribute} ${ariaCurrent} class="${baseClass}${activeClass}">
+    <a href="${hrefValue}" ${dataAttribute} ${ariaCurrent} aria-label="${item.label}" class="${baseClass}${activeClass}">
       <i class="${item.icon}"></i>
       <span class="truncate">${item.label}</span>
     </a>

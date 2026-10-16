@@ -12,7 +12,9 @@
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet">
 </head>
 
-<body class="min-h-screen">
+<body class="min-h-screen admin-subpage">
+  <!-- Apply the saved theme before first paint; main.js still owns the toggle -->
+  <script>try { if (localStorage.getItem('darkMode') === 'true') { document.documentElement.classList.add('dark'); document.body.classList.add('dark-mode'); } } catch (e) {}</script>
   <div class="flex min-h-screen">
     <div id="adminSidebarRoot"></div>
 

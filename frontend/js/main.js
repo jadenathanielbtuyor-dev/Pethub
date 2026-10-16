@@ -89,8 +89,10 @@ function updateDarkModeIcon() {
   const btn = getDarkModeToggle();
   if (btn) {
     btn.innerHTML = isDarkMode() 
-      ? '<i class="ri-sun-line"></i>' 
-      : '<i class="ri-moon-line"></i>';
+      ? '<i class="ri-sun-line" aria-hidden="true"></i>' 
+      : '<i class="ri-moon-line" aria-hidden="true"></i>';
+    // The button's title is its name once the icon is hidden; also expose whether dark mode is on
+    btn.setAttribute('aria-pressed', String(isDarkMode()));
   }
 }
 

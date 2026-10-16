@@ -4,6 +4,8 @@
 const MAX_RETRIES = 2;
 const RETRY_DELAY = 500; // milliseconds
 const NEW_USER_WINDOW_DAYS = 7;
+const VACCINATIONS_DUE_SOON_WINDOW_DAYS = 7;
+const VACCINATIONS_DUE_SOON_STATUSES = ['Pending', 'Approved'];
 const CONTACT_MESSAGE_ACTIONABLE_STATUS = 'Unread';
 const CONTACT_MESSAGE_READ_STATUS = 'Read';
 const ADMIN_MANAGEMENT_TAB_STORAGE_KEY = 'pethubAdminDashboardManagementTab';
@@ -410,7 +412,6 @@ function showAdminDashboardLoadingStates() {
     'alertPendingAppointments',
     'alertUnreadMessages',
     'alertNewUsers',
-    'alertMedicalRecords',
     'sidebarTotalUsers',
     'sidebarTotalPets',
     'sidebarPendingAppointments',
@@ -721,10 +722,14 @@ function countUpcomingBookings() {
 
 function countVaccinationsDueSoon() {
   const today = getTodayDateKey();
+  const windowEndDate = new Date();
+  windowEndDate.setDate(windowEndDate.getDate() + VACCINATIONS_DUE_SOON_WINDOW_DAYS);
+  const windowEnd = new Date(windowEndDate.getTime() - windowEndDate.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   return asArray(adminDashboardData.appointments).filter(appointment => {
     const service = String(appointment.service_type || '').toLowerCase();
     const dateKey = normalizeDashboardDateValue(appointment.appointment_date);
-    return service.includes('vaccination') && dateKey && dateKey >= today && getAppointmentStatus(appointment.status) !== 'Cancelled';
+    return service.includes('vaccination') && dateKey && dateKey >= today && dateKey <= windowEnd &&
+      VACCINATIONS_DUE_SOON_STATUSES.includes(getAppointmentStatus(appointment.status));
   }).length;
 }
 
@@ -747,6 +752,7 @@ function buildRealDashboardSummary(summary = {}) {
   const unverifiedSummaryCount = getDashboardCount(summary?.unverifiedUsers);
   const pendingVerificationsCount = getDashboardCount(summary?.pendingVerifications);
   const activityLogCount = getDashboardCount(summary?.activityLogCount);
+  const vaccinationsDueSoonSummaryCount = getDashboardCount(summary?.vaccinationsDueSoon);
 
   return {
     ...summary,
@@ -755,7 +761,7 @@ function buildRealDashboardSummary(summary = {}) {
     totalAppointments,
     pendingAppointments: countAppointmentsByStatus('Pending'),
     completedAppointments,
-    vaccinationsDueSoon: countVaccinationsDueSoon(),
+    vaccinationsDueSoon: vaccinationsDueSoonSummaryCount !== null ? vaccinationsDueSoonSummaryCount : countVaccinationsDueSoon(),
     upcomingBookings: countUpcomingBookings(),
     completedAppointmentPercentage: totalAppointments > 0
       ? Math.round((completedAppointments / totalAppointments) * 100)
@@ -918,16 +924,6 @@ function getUnreadMessagesAlertValue() {
   return messages.filter(message => String(message.status || '').toLowerCase() === 'unread').length;
 }
 
-function getMedicalRecordsAlertValue(summary) {
-  const recordsCount = Array.isArray(adminDashboardData.medicalRecords)
-    ? adminDashboardData.medicalRecords.length
-    : getDashboardCount(summary?.totalMedicalRecords);
-
-  if (adminDashboardData.overviewError && !adminDashboardData.medicalRecords.length) return 'Unavailable';
-  if (recordsCount === null) return 'Unavailable';
-  return String(recordsCount);
-}
-
 function getNewUsersAlertValue() {
   const users = Array.isArray(adminDashboardData.users) ? adminDashboardData.users : [];
   if (adminDashboardData.overviewError && !users.length) return 'Unavailable';
@@ -955,7 +951,6 @@ function displayDashboardAlerts(summary = adminDashboardData.summary || {}) {
   const pendingAppointments = document.getElementById('alertPendingAppointments');
   const unreadMessages = document.getElementById('alertUnreadMessages');
   const newUsers = document.getElementById('alertNewUsers');
-  const medicalRecords = document.getElementById('alertMedicalRecords');
 
   if (pendingAppointments) pendingAppointments.textContent = String(getPendingAppointmentsAlertCount(summary));
   if (unreadMessages) {
@@ -967,7 +962,6 @@ function displayDashboardAlerts(summary = adminDashboardData.summary || {}) {
     }
   }
   if (newUsers) newUsers.textContent = String(getNewUsersAlertValue());
-  if (medicalRecords) medicalRecords.textContent = getMedicalRecordsAlertValue(summary);
 }
 
 function bindDashboardCardAction(elementId, handler) {
@@ -1780,7 +1774,7 @@ function displayAnalyticsInsights() {
   const service = getTopLabel(adminDashboardData.services);
   const summary = buildRealDashboardSummary(adminDashboardData.summary || {});
   const bookings = summary.upcomingBookings;
-  const completion = summary.completedAppointmentPercentage;
+  const completion = summary.totalAppointments > 0 ? summary.completedAppointmentPercentage : null;
 
   if (petTypeEl) petTypeEl.textContent = petType || 'No data';
   if (serviceEl) serviceEl.textContent = service || 'No data';
