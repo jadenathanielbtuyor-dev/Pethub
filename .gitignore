@@ -11,6 +11,8 @@ frontend/.env
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+backend/logs/*
+!backend/logs/.gitkeep
 
 # Runtime smoke/error files
 backend-runtime-smoke-*.err

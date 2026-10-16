@@ -1,67 +1,41 @@
 // ==================== ADMIN ROUTES ====================
 
 const express = require('express');
-const supabase = require('../config/supabase');
 const adminController = require('../controllers/adminController');
+const { isAdminVerified } = require('../utils/accountVerification');
+const apiResponse = require('../utils/apiResponse');
+const logger = require('../utils/logger');
+const asyncHandler = require('../middleware/asyncHandler');
 
 const router = express.Router();
 
-function isVerifiedValue(value) {
-  return value === true || value === 'true' || value === 1 || value === '1';
-}
-
-async function isAdminVerified(userId) {
-  if (!userId) return false;
-
-  const { data: users, error } = await supabase
-    .from('users')
-    .select('role, is_verified')
-    .eq('id', userId)
-    .limit(1);
-
-  if (error) {
-    throw error;
-  }
-
-  if (!users || users.length === 0) return false;
-
-  const user = users[0];
-  if (String(user.role || '').toLowerCase() !== 'admin') return false;
-  if (isVerifiedValue(user.is_verified)) return true;
-
-  const { data: verifiedRows, error: verifiedError } = await supabase
-    .from('email_verifications')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('is_verified', true)
-    .limit(1);
-
-  if (verifiedError) {
-    throw verifiedError;
-  }
-
-  return Array.isArray(verifiedRows) && verifiedRows.length > 0;
-}
-
-async function validateAdminAccess(req, res, next) {
+const validateAdminAccess = asyncHandler(async (req, res, next) => {
   const rawUserId = req.query.user_id || req.headers['x-user-id'];
   const userId = rawUserId ? String(rawUserId).trim() : '';
   if (!userId) {
-    return res.status(400).json({ success: false, error: 'Admin user ID is required' });
+    logger.adminAction('access.missing_user_id', logger.getRequestDetails(req));
+    return apiResponse.error(res, 'Admin user ID is required', 400);
   }
 
   try {
     const verified = await isAdminVerified(userId);
     if (!verified) {
-      return res.status(403).json({ success: false, error: 'Admin access denied' });
+      logger.adminAction('access.denied', {
+        ...logger.getRequestDetails(req),
+        user_id: userId
+      });
+      return apiResponse.error(res, 'Admin access denied', 403);
     }
   } catch (error) {
-    console.error('Admin access validation error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to validate admin access' });
+    logger.error('admin.access.validation_error', {
+      ...logger.getRequestDetails(req),
+      error: error.message || 'Failed to validate admin access'
+    });
+    return apiResponse.error(res, 'Failed to validate admin access', 500);
   }
 
   next();
-}
+});
 
 router.use(validateAdminAccess);
 

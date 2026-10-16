@@ -1,22 +1,22 @@
 const sgMail = require('@sendgrid/mail');
+const env = require('../config/env');
+const logger = require('./logger');
 
-const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
-const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL;
-const SENDGRID_FROM_NAME = process.env.SENDGRID_FROM_NAME || 'PetHub';
+const { apiKey, fromEmail, fromName } = env.sendgrid;
 
-if (!SENDGRID_API_KEY) {
-  console.error('SendGrid API key is not configured');
+if (!apiKey) {
+  logger.warn('email.sendgrid_api_key_missing');
 }
 
-if (SENDGRID_API_KEY) {
-  sgMail.setApiKey(SENDGRID_API_KEY);
+if (apiKey) {
+  sgMail.setApiKey(apiKey);
 }
 
 async function sendEmail({ to, subject, text, html }) {
-  if (!SENDGRID_API_KEY) {
+  if (!apiKey) {
     throw new Error('SendGrid API key is not configured');
   }
-  if (!SENDGRID_FROM_EMAIL) {
+  if (!fromEmail) {
     throw new Error('SendGrid sender email is not configured');
   }
   if (!to || !subject || (!text && !html)) {
@@ -26,8 +26,8 @@ async function sendEmail({ to, subject, text, html }) {
   const msg = {
     to,
     from: {
-      email: SENDGRID_FROM_EMAIL,
-      name: SENDGRID_FROM_NAME
+      email: fromEmail,
+      name: fromName
     },
     subject,
     text,
@@ -38,12 +38,14 @@ async function sendEmail({ to, subject, text, html }) {
     const [response] = await sgMail.send(msg);
     const statusCode = response && response.statusCode;
     if (statusCode < 200 || statusCode >= 300) {
-      console.error('SendGrid returned non-success status:', statusCode, response);
+      logger.error('email.sendgrid_non_success_status', { statusCode, response });
       throw new Error(`SendGrid error: ${statusCode}`);
     }
 
   } catch (error) {
-    console.error('SendGrid send error:', error.response ? error.response.body || error.response : error.message || error);
+    logger.error('email.sendgrid_send_error', {
+      error: error.response ? error.response.body || error.response : error.message || error
+    });
     throw error;
   }
 }

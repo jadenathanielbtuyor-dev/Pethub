@@ -1,18 +1,17 @@
-require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const env = require('./config/env');
+const { API_PREFIXES } = require('./constants/apiRoutes');
+const apiNotFoundHandler = require('./middleware/apiNotFoundHandler');
+const errorHandler = require('./middleware/errorHandler');
+const logger = require('./utils/logger');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = env.port;
 
 // Middleware
-const allowedOrigins = [
-  'https://pethub-beige.vercel.app',
-  'https://pethub-zzz-duke1-s-projects.vercel.app',
-  'https://pethub-git-main-zzz-duke1-s-projects.vercel.app',
-  'https://pethub-jxb3zsszt-zzz-duke1-s-projects.vercel.app'
-];
+const allowedOrigins = env.cors.allowedOrigins;
 
 const corsOptions = {
   origin: (origin, callback) => {
@@ -47,12 +46,9 @@ const adminRoutes = require('./routes/admin');
 const contactRoutes = require('./routes/contact');
 
 // Explicitly handle OPTIONS for API routes using regex (Express 5 compatible)
-app.options(/^\/auth/, cors(corsOptions));
-app.options(/^\/pets/, cors(corsOptions));
-app.options(/^\/appointments/, cors(corsOptions));
-app.options(/^\/ai/, cors(corsOptions));
-app.options(/^\/admin/, cors(corsOptions));
-app.options(/^\/contact/, cors(corsOptions));
+API_PREFIXES.forEach(prefix => {
+  app.options(new RegExp(`^\\${prefix}`), cors(corsOptions));
+});
 
 // API routes
 app.use('/auth', authRoutes);
@@ -62,18 +58,8 @@ app.use('/ai', aiRoutes);
 app.use('/admin', adminRoutes);
 app.use('/contact', contactRoutes);
 
-app.listen(PORT, () => {
-  console.log(`PetHub backend running on port ${PORT}`);
-});
-
 // API fallback for unknown API routes (404 for unmatched API calls)
-app.use((req, res, next) => {
-  const apiPrefixes = ['/auth', '/pets', '/appointments', '/ai', '/admin'];
-  if (apiPrefixes.some(prefix => req.path.startsWith(prefix))) {
-    return res.status(404).json({ success: false, error: 'API endpoint not found' });
-  }
-  next();
-});
+app.use(apiNotFoundHandler);
 
 // Serve static frontend files
 app.use(express.static(path.join(__dirname, '../frontend')));
@@ -90,16 +76,9 @@ app.use((req, res) => {
 });
 
 // Error handling middleware - MUST be last
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  
-  // Ensure we always return JSON
-  if (!res.headersSent) {
-    res.status(err.status || 500).json({
-      success: false,
-      error: err.message || 'Internal Server Error'
-    });
-  }
-});
+app.use(errorHandler);
 
+app.listen(PORT, () => {
+  logger.info('server.started', { port: PORT });
+});
 
