@@ -9,6 +9,7 @@ Environment variables are centralized in `config/env.js`. Railway should continu
 - `PORT`
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY` or `SUPABASE_SERVICE_KEY`
+- `SUPABASE_SERVICE_KEY` (also required by password reset, which reads it only in `config/supabaseAdmin.js` and never falls back to the anon key; without it, password reset is unavailable but the rest of the backend still runs. Server-side only: never put it in frontend code or Vercel.)
 - `BREVO_API_KEY` (Brevo transactional email API key; verification emails are sent through Brevo)
 - `SENDGRID_FROM_EMAIL` (sender address for Brevo emails; the name is kept from the earlier SendGrid setup and must be a sender verified in Brevo)
 - `SENDGRID_FROM_NAME` (sender display name for Brevo emails; defaults to `PetHub`)

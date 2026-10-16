@@ -43,6 +43,15 @@ function updateVerificationStatus(userId, isVerified = true) {
     .select('id');
 }
 
+// Stores the password the same way registration does (createUser); .select lets callers confirm a row changed
+function updatePassword(userId, password) {
+  return supabase
+    .from('users')
+    .update({ password })
+    .eq('id', userId)
+    .select('id');
+}
+
 function findStatusById(userId) {
   return supabase
     .from('users')
@@ -109,6 +118,7 @@ module.exports = {
   createUser,
   findByEmailForVerification,
   updateVerificationStatus,
+  updatePassword,
   findStatusById,
   listVerificationStatusesWithCount,
   listForDashboardOverview,

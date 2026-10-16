@@ -1,4 +1,5 @@
 const authService = require('../services/authService');
+const passwordResetService = require('../services/passwordResetService');
 const { createControllerHandler } = require('../utils/controllerFactory');
 
 const login = createControllerHandler(authService.login, 'login', 'auth');
@@ -8,6 +9,8 @@ const resendVerificationCode = createControllerHandler(authService.resendVerific
 const logout = createControllerHandler(authService.logout, 'logout', 'auth');
 const getUserStatus = createControllerHandler(authService.getUserStatus, 'getUserStatus', 'auth');
 const getActivityLogs = createControllerHandler(authService.getActivityLogs, 'getActivityLogs', 'auth');
+const requestPasswordReset = createControllerHandler(passwordResetService.requestPasswordReset, 'requestPasswordReset', 'auth');
+const resetPassword = createControllerHandler(passwordResetService.resetPassword, 'resetPassword', 'auth');
 
 module.exports = {
   login,
@@ -16,5 +19,7 @@ module.exports = {
   resendVerificationCode,
   logout,
   getUserStatus,
-  getActivityLogs
+  getActivityLogs,
+  requestPasswordReset,
+  resetPassword
 };
