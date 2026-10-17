@@ -40,6 +40,7 @@ describe('payments switched off (default)', () => {
     const userList = await t.api('GET', `/appointments/userAppointments?user_id=${user.id}`, { token: user.token });
     assert.equal(userList.status, 200);
     assert.equal(userList.body.appointments[0].deposit, undefined);
+    assert.equal(userList.body.deposit_policy, undefined, 'the booking form shows no deposit');
 
     const adminList = await t.api('GET', `/admin/dashboard/appointments?user_id=${admin.id}`, { token: admin.token });
     assert.equal(adminList.status, 200);
@@ -67,6 +68,8 @@ describe('payments switched off (default)', () => {
 
     assert.equal(t.db.log.filter(entry => entry.table === 'payments').length, 0);
     assert.equal(t.paymongo.requests.length, 0);
+    await t.settleEmails();
+    assert.equal(t.emails.length, 0, 'no new appointment emails while deposits are off');
   });
 
   it('keeps the payment endpoints closed', async () => {

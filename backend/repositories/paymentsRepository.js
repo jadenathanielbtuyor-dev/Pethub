@@ -88,6 +88,39 @@ function updateStatusFrom(paymentId, fromStatuses, values) {
     .select(PAYMENT_SELECT);
 }
 
+// receipt_email_sent_at (same migration) records that the deposit confirmation email was handed to Brevo.
+// It is claimed before sending, so only one request, webhook delivery or sweep sends the email for a payment;
+// a send that fails releases the claim again (only while it still holds the same timestamp) so it can be retried.
+function claimReceiptEmail(paymentId, claimedAt) {
+  return getSupabaseAdmin()
+    .from('payments')
+    .update({ receipt_email_sent_at: claimedAt })
+    .eq('id', paymentId)
+    .eq('payment_status', PAYMENT_STATUSES.PAID)
+    .is('receipt_email_sent_at', null)
+    .select('id');
+}
+
+function releaseReceiptEmail(paymentId, claimedAt) {
+  return getSupabaseAdmin()
+    .from('payments')
+    .update({ receipt_email_sent_at: null })
+    .eq('id', paymentId)
+    .eq('receipt_email_sent_at', claimedAt)
+    .select('id');
+}
+
+function listPaidWithoutReceipt(paidSinceIso, limit) {
+  return getSupabaseAdmin()
+    .from('payments')
+    .select(PAYMENT_SELECT)
+    .eq('payment_status', PAYMENT_STATUSES.PAID)
+    .is('receipt_email_sent_at', null)
+    .gte('paid_at', paidSinceIso)
+    .order('paid_at', { ascending: true })
+    .limit(limit);
+}
+
 // Closes a Pending row whose checkout session was never saved (its URL never reached the customer)
 function markUnlinkedFailed(paymentId) {
   return getSupabaseAdmin()
@@ -111,5 +144,8 @@ module.exports = {
   listOverduePending,
   attachCheckoutSession,
   updateStatusFrom,
+  claimReceiptEmail,
+  releaseReceiptEmail,
+  listPaidWithoutReceipt,
   markUnlinkedFailed
 };

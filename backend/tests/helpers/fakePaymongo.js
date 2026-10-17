@@ -1,6 +1,7 @@
 // Fake PayMongo API for automated tests (no real charges, no network). It follows the documented behaviour the
 // payment code relies on: v1 checkout create/retrieve/expire, expire refusing a paid or ongoing payment (400),
-// Idempotency-Key replay, and the webhook event envelope { data: { id, type: 'event', attributes: { type, livemode, data } } }.
+// Idempotency-Key replay, the payment method capabilities list (a plain JSON array), and the webhook event
+// envelope { data: { id, type: 'event', attributes: { type, livemode, data } } }.
 
 function jsonResponse(status, body) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -18,6 +19,8 @@ class FakePayMongo {
     this.requests = [];
     this.failures = [];
     this.counter = 0;
+    // What GET /v1/merchants/capabilities/payment_methods answers (the real test account answered ["qrph"])
+    this.paymentMethods = ['card', 'gcash', 'qrph', 'grab_pay', 'paymaya'];
   }
 
   nextId(prefix) {
@@ -61,6 +64,10 @@ class FakePayMongo {
 
     if (method === 'POST' && pathname === '/v1/checkout_sessions') {
       return this.createSession(body, headers.get('Idempotency-Key'));
+    }
+
+    if (method === 'GET' && pathname === '/v1/merchants/capabilities/payment_methods') {
+      return jsonResponse(200, [...this.paymentMethods]);
     }
 
     const match = pathname.match(/^\/v1\/checkout_sessions\/([^/]+)(\/expire)?$/);
@@ -188,6 +195,32 @@ class FakePayMongo {
     const resource = JSON.parse(JSON.stringify(this.sessionResource(this.sessions.get(sessionId))));
     if (mutate) mutate(resource);
     return this.event('checkout_session.payment.paid', resource, { livemode });
+  }
+
+  // payment.refunded / payment.refund.updated (documented event names) carry the payment with its refunds
+  paymentRefundedEvent(paymentId, { refunds = [{ amount: 10000, status: 'succeeded' }], type = 'payment.refunded', createdAt = new Date() } = {}) {
+    return this.event(type, {
+      id: paymentId,
+      type: 'payment',
+      attributes: {
+        amount: 10000,
+        currency: 'PHP',
+        status: 'paid',
+        livemode: false,
+        refunds: refunds.map(refund => ({
+          id: this.nextId('ref_'),
+          type: 'refund',
+          attributes: {
+            amount: refund.amount,
+            currency: 'PHP',
+            livemode: false,
+            payment_id: paymentId,
+            status: refund.status,
+            created_at: unixSeconds(createdAt)
+          }
+        }))
+      }
+    }, { createdAt });
   }
 
   refundSucceededEvent(paymentId, { amount = 10000, createdAt = new Date() } = {}) {

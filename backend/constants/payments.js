@@ -15,8 +15,12 @@ const PAYMENT_STATUSES = Object.freeze({
   REFUNDED: 'Refunded'
 });
 
-// Requested methods. PayMongo only offers the ones enabled on the account, so confirm them in the Dashboard.
+// Methods PetHub offers, in this order. Each checkout only requests the ones PayMongo reports as configured on the
+// account (GET /v1/merchants/capabilities/payment_methods), so a method that is not activated yet is left out.
 const CHECKOUT_PAYMENT_METHOD_TYPES = Object.freeze(['gcash', 'qrph', 'card']);
+const PAYMENT_METHODS_CACHE_MS = 10 * 60 * 1000;
+// After a failed capabilities lookup, the fallback list is reused for this long before PayMongo is asked again
+const PAYMENT_METHODS_RETRY_MS = 60 * 1000;
 const CHECKOUT_LINE_ITEM_NAME = 'Appointment deposit';
 const CHECKOUT_DESCRIPTION = 'PetHub appointment deposit';
 const CHECKOUT_RETURN_PATH = '/pages/user/appointments.html';
@@ -36,6 +40,9 @@ const UNLINKED_CHECKOUT_FAILURE_AFTER_MS = 2 * 60 * 1000;
 const PROVIDER_RECHECK_INTERVAL_MS = 10 * 1000;
 // A refund event for a payment PetHub has not linked yet is retried (non-2xx) for this long, then acknowledged
 const UNMATCHED_REFUND_RETRY_WINDOW_MS = 6 * 60 * 60 * 1000;
+// A deposit confirmation email that could not be sent is retried by the expiry sweep for this long after payment
+const RECEIPT_EMAIL_RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
+const RECEIPT_EMAIL_RETRY_BATCH_SIZE = 10;
 
 const PAYMENTS_UNAVAILABLE_MESSAGE = 'Online deposit payments are not available right now. Please try again later or contact the clinic.';
 const DEPOSIT_STATUS_UNAVAILABLE_MESSAGE = 'The deposit status could not be checked. Please try again in a moment.';
@@ -57,6 +64,8 @@ module.exports = {
   CHECKOUT_WINDOW_MINUTES,
   PAYMENT_STATUSES,
   CHECKOUT_PAYMENT_METHOD_TYPES,
+  PAYMENT_METHODS_CACHE_MS,
+  PAYMENT_METHODS_RETRY_MS,
   CHECKOUT_LINE_ITEM_NAME,
   CHECKOUT_DESCRIPTION,
   CHECKOUT_RETURN_PATH,
@@ -69,6 +78,8 @@ module.exports = {
   UNLINKED_CHECKOUT_FAILURE_AFTER_MS,
   PROVIDER_RECHECK_INTERVAL_MS,
   UNMATCHED_REFUND_RETRY_WINDOW_MS,
+  RECEIPT_EMAIL_RETRY_WINDOW_MS,
+  RECEIPT_EMAIL_RETRY_BATCH_SIZE,
   PAYMENTS_UNAVAILABLE_MESSAGE,
   DEPOSIT_STATUS_UNAVAILABLE_MESSAGE,
   DEPOSIT_NOT_REQUIRED_MESSAGE,

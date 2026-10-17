@@ -5,13 +5,18 @@
 //   never from the checkout redirect.
 // - Payment state is derived from the payments table; appointments.payment_status is not used.
 // - Paying never approves an appointment; an admin still approves it, and only admin approval reserves the slot.
+// - Emails (deposit confirmation, admin decision) go out after the state change and never change payment or appointment state.
 
 const crypto = require('crypto');
 const env = require('../config/env');
 const logger = require('../utils/logger');
 const paymongo = require('../utils/paymongoClient');
+const { sendEmail } = require('../utils/email');
 const paymentsRepository = require('../repositories/paymentsRepository');
 const appointmentsRepository = require('../repositories/appointmentsRepository');
+const usersRepository = require('../repositories/usersRepository');
+const { buildDepositReceiptEmail } = require('../templates/email/depositReceiptEmail');
+const { buildAppointmentDecisionEmail } = require('../templates/email/appointmentDecisionEmail');
 const { isUserVerified } = require('../utils/accountVerification');
 const { getAppointmentTimeRange } = require('../validators/appointmentsValidator');
 const { validateCheckoutRequest, validatePaymentStatusRequest } = require('../validators/paymentsValidator');
@@ -23,6 +28,8 @@ const {
   CHECKOUT_WINDOW_MINUTES,
   PAYMENT_STATUSES,
   CHECKOUT_PAYMENT_METHOD_TYPES,
+  PAYMENT_METHODS_CACHE_MS,
+  PAYMENT_METHODS_RETRY_MS,
   CHECKOUT_LINE_ITEM_NAME,
   CHECKOUT_DESCRIPTION,
   CHECKOUT_RETURN_PATH,
@@ -34,6 +41,8 @@ const {
   UNLINKED_CHECKOUT_FAILURE_AFTER_MS,
   PROVIDER_RECHECK_INTERVAL_MS,
   UNMATCHED_REFUND_RETRY_WINDOW_MS,
+  RECEIPT_EMAIL_RETRY_WINDOW_MS,
+  RECEIPT_EMAIL_RETRY_BATCH_SIZE,
   PAYMENTS_UNAVAILABLE_MESSAGE,
   DEPOSIT_STATUS_UNAVAILABLE_MESSAGE,
   DEPOSIT_NOT_REQUIRED_MESSAGE,
@@ -425,6 +434,159 @@ function getNewAppointmentDepositNotice() {
   return createDepositSummary({ required: true, status: 'unpaid', can_pay: isCheckoutAvailable() });
 }
 
+// Added to the user's appointment list so the booking form can show the deposit before submitting ({} while deposits are off)
+function getDepositPolicy() {
+  if (!isDepositPolicyEnabled()) return {};
+  return {
+    deposit_policy: {
+      required: true,
+      amount: DEPOSIT_AMOUNT_PHP,
+      currency: DEPOSIT_CURRENCY,
+      checkout_available: isCheckoutAvailable()
+    }
+  };
+}
+
+// ==================== EMAIL NOTIFICATIONS ====================
+// Emails run in the background after the payment or appointment change is stored, so a slow or failing
+// Brevo request never delays a webhook answer and never changes payment or appointment state.
+
+const backgroundTasks = new Set();
+
+function runInBackground(event, details, task) {
+  const promise = Promise.resolve()
+    .then(task)
+    .catch(error => logger.error(event, { ...details, ...describeError(error) }))
+    .finally(() => backgroundTasks.delete(promise));
+  backgroundTasks.add(promise);
+}
+
+// Resolves once every email started so far has finished (used by the automated tests)
+async function waitForBackgroundTasks() {
+  while (backgroundTasks.size > 0) {
+    await Promise.allSettled([...backgroundTasks]);
+  }
+}
+
+function getAppointmentsPageUrl() {
+  const base = toReturnOrigin(env.payments.frontendUrl);
+  return base ? new URL(CHECKOUT_RETURN_PATH, base).toString() : '';
+}
+
+async function loadCustomer(userId) {
+  const { data, error } = await usersRepository.findStatusById(userId);
+  if (error) throw error;
+  const user = Array.isArray(data) ? data[0] : data;
+  return user && user.email ? user : null;
+}
+
+// Another Paid row created earlier means this payment is a duplicate (the first payment is the deposit)
+function isDuplicatePayment(row, rows) {
+  const createdAt = Date.parse(row.created_at) || 0;
+  return rows.some(other => (
+    String(other.id) !== String(row.id) &&
+    other.payment_status === PAID &&
+    (Date.parse(other.created_at) || 0) < createdAt
+  ));
+}
+
+/**
+ * Sends the "deposit payment confirmed" email at most once per payment row: receipt_email_sent_at is claimed first,
+ * so duplicate webhooks, status checks and the sweep cannot send it twice. A failed send releases the claim, and the
+ * expiry sweep retries it (RECEIPT_EMAIL_RETRY_WINDOW_MS). Returns 'sent' | 'already_sent' | 'skipped' | 'failed'.
+ */
+async function sendDepositReceipt(row) {
+  if (!row || row.payment_status !== PAID) return 'skipped';
+
+  const claimedAt = new Date().toISOString();
+  const { data: claimed, error: claimError } = await paymentsRepository.claimReceiptEmail(row.id, claimedAt);
+  if (claimError) {
+    if (isMissingColumnError(claimError)) {
+      reportMissingSchema('payments.receipt_email_sent_at', claimError);
+      return 'skipped';
+    }
+    throw claimError;
+  }
+  if (!Array.isArray(claimed) || claimed.length === 0) return 'already_sent';
+
+  const context = { payment_row_id: row.id, appointment_id: row.appointment_id };
+  try {
+    const { data: appointment, error: appointmentError } = await appointmentsRepository.findById(row.appointment_id);
+    if (appointmentError) throw appointmentError;
+    const customer = appointment ? await loadCustomer(appointment.user_id) : null;
+    if (!appointment || !customer) {
+      // Nothing can ever be sent, so the claim stays and the sweep does not retry it
+      logger.error('payments.receipt_email_skipped', { ...context, reason: appointment ? 'no_customer_email' : 'appointment_missing' });
+      return 'skipped';
+    }
+
+    const rows = await loadPaymentRows(row.appointment_id);
+    const email = buildDepositReceiptEmail({
+      name: customer.fullname,
+      appointment,
+      payment: row,
+      refundDue: appointment.status === 'Cancelled' || isDuplicatePayment(row, rows),
+      appointmentsUrl: getAppointmentsPageUrl()
+    });
+    await sendEmail({ to: customer.email, ...email });
+    logger.info('payments.receipt_email_sent', context);
+    return 'sent';
+  } catch (error) {
+    const { error: releaseError } = await paymentsRepository.releaseReceiptEmail(row.id, claimedAt);
+    if (releaseError) logDatabaseError('payments.receipt_email_release_failed', releaseError, context);
+    logger.warn('payments.receipt_email_failed', { ...context, ...describeError(error) });
+    return 'failed';
+  }
+}
+
+// Retries confirmation emails that could not be sent (called by the expiry sweep)
+async function retryReceiptEmails(now = Date.now()) {
+  if (!paymentsRepository.isConfigured()) return 0;
+
+  const paidSince = new Date(now - RECEIPT_EMAIL_RETRY_WINDOW_MS).toISOString();
+  const { data, error } = await paymentsRepository.listPaidWithoutReceipt(paidSince, RECEIPT_EMAIL_RETRY_BATCH_SIZE);
+  if (error) {
+    if (isMissingColumnError(error)) reportMissingSchema('payments.receipt_email_sent_at', error);
+    else logDatabaseError('payments.receipt_email_retry_failed', error);
+    return 0;
+  }
+
+  let sent = 0;
+  for (const row of data || []) {
+    if ((await sendDepositReceipt(row)) === 'sent') sent += 1;
+  }
+  return sent;
+}
+
+// decision: 'approved' | 'cancelled'; depositStatus: 'paid' | 'refunded' | 'none'
+async function sendAppointmentDecision(appointment, { decision, previousStatus, depositStatus }) {
+  const context = { appointment_id: appointment.id, decision };
+  const customer = await loadCustomer(appointment.user_id);
+  if (!customer) {
+    logger.warn('appointments.decision_email_skipped', { ...context, reason: 'no_customer_email' });
+    return 'skipped';
+  }
+
+  const email = buildAppointmentDecisionEmail({
+    name: customer.fullname,
+    appointment,
+    decision,
+    previousStatus,
+    depositStatus,
+    appointmentsUrl: getAppointmentsPageUrl()
+  });
+  await sendEmail({ to: customer.email, ...email });
+  logger.info('appointments.decision_email_sent', context);
+  return 'sent';
+}
+
+// Status changes are conditional updates, so each decision is stored, and therefore emailed, only once
+function queueDecisionEmail(appointment, options) {
+  runInBackground('appointments.decision_email_failed', { appointment_id: appointment.id, decision: options.decision }, () => (
+    sendAppointmentDecision(appointment, options)
+  ));
+}
+
 // ==================== PAYMONGO RECONCILIATION ====================
 
 async function reloadPayment(row) {
@@ -497,6 +659,9 @@ async function recordPaid(row, payment, { sessionId, source }) {
   } else if (isLatePayment(updated)) {
     logger.warn('payments.paid_after_window', { payment_row_id: updated.id, source });
   }
+
+  // Only the request that moved the row to Paid gets here, so duplicate deliveries never queue a second email
+  runInBackground('payments.receipt_email_failed', { payment_row_id: updated.id }, () => sendDepositReceipt(updated));
   return updated;
 }
 
@@ -575,6 +740,38 @@ function shouldAskProvider(paymentRowId, now = Date.now()) {
   if (recentProviderChecks.size > 500) recentProviderChecks.clear();
   recentProviderChecks.set(paymentRowId, now);
   return true;
+}
+
+// ==================== PAYMENT METHODS ====================
+
+let paymentMethodsCache = { methods: null, expiresAt: 0 };
+
+/**
+ * The methods a new checkout requests: PetHub's list, limited to the ones PayMongo reports as configured on the
+ * account. An empty list means none of them can be used. If PayMongo cannot be asked, the last known list is used
+ * (or PetHub's full list, which PayMongo then filters), so a failed lookup alone never blocks checkout.
+ */
+async function getCheckoutPaymentMethodTypes(client, now = Date.now()) {
+  if (paymentMethodsCache.methods && now < paymentMethodsCache.expiresAt) return paymentMethodsCache.methods;
+
+  try {
+    const configured = await client.listPaymentMethodCapabilities();
+    const methods = CHECKOUT_PAYMENT_METHOD_TYPES.filter(type => configured.includes(type));
+    paymentMethodsCache = { methods, expiresAt: now + PAYMENT_METHODS_CACHE_MS };
+    if (methods.length === 0) {
+      logger.error('payments.no_supported_payment_methods', { configured: configured.slice(0, 20) });
+    }
+    return methods;
+  } catch (error) {
+    const methods = paymentMethodsCache.methods || [...CHECKOUT_PAYMENT_METHOD_TYPES];
+    paymentMethodsCache = { methods, expiresAt: now + PAYMENT_METHODS_RETRY_MS };
+    logger.warn('payments.payment_methods_check_failed', describeError(error));
+    return methods;
+  }
+}
+
+function clearPaymentMethodsCache() {
+  paymentMethodsCache = { methods: null, expiresAt: 0 };
 }
 
 // ==================== CHECKOUT ====================
@@ -684,6 +881,9 @@ async function startCheckout(appointment, userId, originHeader) {
     return serviceUnavailable(PAYMENTS_UNAVAILABLE_MESSAGE);
   }
 
+  const paymentMethodTypes = await getCheckoutPaymentMethodTypes(getProviderClient());
+  if (paymentMethodTypes.length === 0) return serviceUnavailable(PAYMENTS_UNAVAILABLE_MESSAGE);
+
   const createdAt = new Date();
   const paymentRow = {
     id: crypto.randomUUID(),
@@ -713,7 +913,7 @@ async function startCheckout(appointment, userId, originHeader) {
       currency: DEPOSIT_CURRENCY,
       lineItemName: CHECKOUT_LINE_ITEM_NAME,
       description: CHECKOUT_DESCRIPTION,
-      paymentMethodTypes: CHECKOUT_PAYMENT_METHOD_TYPES,
+      paymentMethodTypes,
       referenceNumber: paymentRow.id,
       metadata: {
         [CHECKOUT_METADATA_PAYMENT_ID]: paymentRow.id,
@@ -938,17 +1138,19 @@ function addRefundRequiredToConflict(conflictBody, depositCheck) {
 }
 
 /**
- * Runs after an admin cancels an appointment: closes any open checkout at PayMongo so it can no longer be paid,
+ * After an admin cancels an appointment: closes any open checkout at PayMongo so it can no longer be paid,
  * and reports whether a paid deposit now needs a refund. It never undoes or blocks the cancellation.
+ * Returns { notice, depositRequired, depositStatus: 'paid' | 'refunded' | 'none' }.
  */
-async function handleAppointmentCancelled(appointment) {
-  if (!isDepositPolicyEnabled() || !paymentsRepository.isConfigured()) return {};
+async function settleCancelledAppointment(appointment) {
+  const exempt = { notice: {}, depositRequired: false, depositStatus: 'none' };
+  if (!isDepositPolicyEnabled() || !paymentsRepository.isConfigured()) return exempt;
 
   const appointmentId = String(appointment?.id || '');
   try {
     const { data: depositInfo, error: flagError } = await appointmentsRepository.findForDeposit(appointmentId);
     if (flagError) throw flagError;
-    if (!depositInfo || depositInfo.deposit_required !== true) return {};
+    if (!depositInfo || depositInfo.deposit_required !== true) return exempt;
 
     let rows = await loadPaymentRows(appointmentId);
     for (const row of rows.filter(item => item.payment_status === PENDING)) {
@@ -960,12 +1162,41 @@ async function handleAppointmentCancelled(appointment) {
       }
     }
 
-    return rows.some(row => row.payment_status === PAID) ? { refund_required: true, deposit_status: 'paid' } : {};
+    const paid = rows.some(row => row.payment_status === PAID);
+    return {
+      notice: paid ? { refund_required: true, deposit_status: 'paid' } : {},
+      depositRequired: true,
+      depositStatus: paid ? 'paid' : rows.some(row => row.payment_status === REFUNDED) ? 'refunded' : 'none'
+    };
   } catch (error) {
     if (isMissingColumnError(error)) reportMissingSchema('appointments.deposit_required', error);
     else logDatabaseError('payments.cancel_check_failed', error, { appointment_id: appointmentId });
+    return exempt;
+  }
+}
+
+/**
+ * Called by both admin status endpoints after a status change was stored. For appointments that need a deposit it
+ * settles open checkouts on cancellation and emails the customer the decision (approved / declined / cancelled).
+ * Returns extra response fields: {} or { refund_required, deposit_status }. It never undoes or blocks the change.
+ * Appointments booked before deposits were switched on (exempt) get no email, exactly as before.
+ */
+async function handleAppointmentStatusChanged(appointment, { previousStatus, newStatus, depositCheck } = {}) {
+  if (newStatus === 'Approved') {
+    // depositPaid is only true for an appointment that needs a deposit and has a verified payment
+    if (depositCheck && depositCheck.depositPaid) {
+      queueDecisionEmail(appointment, { decision: 'approved', previousStatus, depositStatus: 'paid' });
+    }
     return {};
   }
+
+  if (newStatus !== 'Cancelled') return {};
+
+  const { notice, depositRequired, depositStatus } = await settleCancelledAppointment(appointment);
+  if (depositRequired) {
+    queueDecisionEmail(appointment, { decision: 'cancelled', previousStatus, depositStatus });
+  }
+  return notice;
 }
 
 // ==================== WEBHOOK ====================
@@ -1036,9 +1267,9 @@ function isRecentEvent(event, now = Date.now()) {
   return !Number.isFinite(createdAt) || now - createdAt < UNMATCHED_REFUND_RETRY_WINDOW_MS;
 }
 
-// refund.succeeded carries a refund resource; payment.refunded / payment.refund.updated carry the payment.
-// PayMongo's docs list both naming schemes, so both are read, and nothing changes unless a succeeded
-// refund for the full deposit is present.
+// payment.refunded / payment.refund.updated (PayMongo's webhook event list) carry the payment with its refunds;
+// refund.succeeded (mentioned only in PayMongo's go-live checklist) carries a refund resource. Both are read, and
+// nothing changes unless a succeeded refund for the full deposit is present.
 async function processRefundEvent(event, context, resourceKind) {
   let providerPaymentId = '';
   let refunds = [];
@@ -1165,17 +1396,18 @@ let sweepRunning = false;
 
 // Closes checkouts whose 30-minute window has passed (PayMongo sessions never expire on their own)
 async function runExpirySweep(now = Date.now()) {
-  if (sweepRunning || !getProviderClient()) return { checked: 0, failed: 0 };
+  if (sweepRunning || !getProviderClient()) return { checked: 0, failed: 0, receiptsSent: 0 };
 
   sweepRunning = true;
   let checked = 0;
   let failed = 0;
+  let receiptsSent = 0;
   try {
     const { data, error } = await paymentsRepository.listOverduePending(new Date(now).toISOString(), PAYMENT_EXPIRY_SWEEP_BATCH_SIZE);
     if (error) {
       if (isMissingColumnError(error)) reportMissingSchema('payments', error);
       else logDatabaseError('payments.sweep_failed', error);
-      return { checked, failed };
+      return { checked, failed, receiptsSent };
     }
 
     for (const row of data || []) {
@@ -1187,12 +1419,19 @@ async function runExpirySweep(now = Date.now()) {
         logger.warn('payments.sweep_item_failed', { payment_row_id: row.id, ...describeError(error) });
       }
     }
+
+    // Confirmation emails that could not be sent earlier
+    try {
+      receiptsSent = await retryReceiptEmails(now);
+    } catch (error) {
+      logger.warn('payments.receipt_email_retry_failed', describeError(error));
+    }
   } finally {
     sweepRunning = false;
   }
 
-  if (checked > 0) logger.info('payments.sweep_completed', { checked, failed });
-  return { checked, failed };
+  if (checked > 0 || receiptsSent > 0) logger.info('payments.sweep_completed', { checked, failed, receipts_sent: receiptsSent });
+  return { checked, failed, receiptsSent };
 }
 
 // Called once by server.js after the server starts; the global marker stops a second timer if this module is loaded again
@@ -1227,14 +1466,17 @@ module.exports = {
   reportMissingSchema,
   getNewAppointmentDepositFields,
   getNewAppointmentDepositNotice,
+  getDepositPolicy,
   attachDepositSummaries,
   createCheckout,
   getAppointmentPaymentStatus,
   handleWebhook,
   checkDepositForApproval,
   addRefundRequiredToConflict,
-  handleAppointmentCancelled,
+  handleAppointmentStatusChanged,
   runExpirySweep,
   startExpirySweep,
-  stopExpirySweep
+  stopExpirySweep,
+  waitForBackgroundTasks,
+  clearPaymentMethodsCache
 };

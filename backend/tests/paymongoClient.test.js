@@ -140,6 +140,25 @@ describe('createPayMongoClient requests', () => {
     await assert.rejects(client.expireCheckoutSession('cs_1/../../x'), { code: 'invalid_session_id' });
     assert.equal(called, false);
   });
+
+  it('reads the payment method capabilities array with a GET, keeping only method identifiers', async () => {
+    const calls = [];
+    const client = paymongo.createPayMongoClient({
+      secretKey: TEST_KEY,
+      fetchImpl: async (url, init) => {
+        calls.push({ url, init });
+        return jsonResponse(200, ['qrph', 'card', 'qrph', 42, 'Bad Value', null]);
+      }
+    });
+
+    assert.deepEqual(await client.listPaymentMethodCapabilities(), ['qrph', 'card']);
+    assert.equal(calls[0].url, 'https://api.paymongo.com/v1/merchants/capabilities/payment_methods');
+    assert.equal(calls[0].init.method, 'GET');
+    assert.equal(calls[0].init.body, undefined);
+
+    const wrongShape = paymongo.createPayMongoClient({ secretKey: TEST_KEY, fetchImpl: async () => jsonResponse(200, { data: [] }) });
+    await assert.rejects(wrongShape.listPaymentMethodCapabilities(), { code: 'invalid_response' });
+  });
 });
 
 describe('event and resource parsing', () => {

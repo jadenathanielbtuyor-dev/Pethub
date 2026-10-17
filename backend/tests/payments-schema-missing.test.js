@@ -44,6 +44,15 @@ describe('payments switched on without the migration', () => {
       body: { id: booked.body.appointment.id, status: 'Approved' }
     });
     assert.equal(approved.status, 200);
+
+    const cancelled = await t.api('PUT', `/admin/dashboard/appointment-status?user_id=${admin.id}`, {
+      token: admin.token,
+      body: { id: booked.body.appointment.id, status: 'Cancelled' }
+    });
+    assert.equal(cancelled.status, 200);
+    // Without the migration no appointment needs a deposit, so no deposit or decision email goes out
+    await t.settleEmails();
+    assert.equal(t.emails.length, 0);
   });
 
   it('answers checkout with "unavailable" instead of failing unpredictably', async () => {

@@ -3,7 +3,8 @@
 -- Prepared 2026-10-17. NOT APPLIED. Run in the Supabase SQL Editor only after explicit approval,
 -- in a dev/test Supabase project first.
 --
---   P1  payments: provider_checkout_session_id, provider_payment_id, expires_at (+ unique indexes).  Required.
+--   P1  payments: provider_checkout_session_id, provider_payment_id, expires_at (+ unique indexes),
+--       receipt_email_sent_at (marks the "deposit payment confirmed" email as sent, so it goes out once).  Required.
 --   P2  payments: at most one Pending checkout per appointment (partial unique index).             Required.
 --   P3  appointments: deposit_required boolean NOT NULL DEFAULT false.                             Required.
 --       Every existing appointment becomes false (exempt); the backend inserts true for bookings
@@ -27,7 +28,7 @@
 -- ---------------------------------------------------------------------------------
 
 -- 1a. Columns. Expected: the payments columns listed above exist; none of provider_checkout_session_id,
---     provider_payment_id, expires_at or appointments.deposit_required exist yet.
+--     provider_payment_id, expires_at, receipt_email_sent_at or appointments.deposit_required exist yet.
 --     If one of them already exists (any type), stop and report it: ADD COLUMN IF NOT EXISTS would skip it silently.
 SELECT table_name, column_name, data_type, udt_name, is_nullable, column_default
 FROM information_schema.columns
@@ -72,7 +73,8 @@ BEGIN;
 ALTER TABLE public.payments
   ADD COLUMN IF NOT EXISTS provider_checkout_session_id text,
   ADD COLUMN IF NOT EXISTS provider_payment_id text,
-  ADD COLUMN IF NOT EXISTS expires_at timestamptz;
+  ADD COLUMN IF NOT EXISTS expires_at timestamptz,
+  ADD COLUMN IF NOT EXISTS receipt_email_sent_at timestamptz;
 
 -- NULLs stay allowed (older rows); a PayMongo session or payment can belong to only one PetHub row
 CREATE UNIQUE INDEX IF NOT EXISTS payments_provider_checkout_session_id_key
@@ -95,13 +97,13 @@ COMMIT;
 -- Lets the Supabase API see the new columns at once (it normally reloads on its own after DDL)
 NOTIFY pgrst, 'reload schema';
 
--- PART 2 check (read-only). Expected 4 rows:
+-- PART 2 check (read-only). Expected 5 rows:
 --   appointments.deposit_required boolean NO false
---   payments.expires_at / provider_checkout_session_id / provider_payment_id, all nullable, no default
+--   payments.expires_at / provider_checkout_session_id / provider_payment_id / receipt_email_sent_at, all nullable, no default
 SELECT table_name, column_name, data_type, is_nullable, column_default
 FROM information_schema.columns
 WHERE table_schema = 'public'
-  AND ((table_name = 'payments' AND column_name IN ('provider_checkout_session_id', 'provider_payment_id', 'expires_at'))
+  AND ((table_name = 'payments' AND column_name IN ('provider_checkout_session_id', 'provider_payment_id', 'expires_at', 'receipt_email_sent_at'))
     OR (table_name = 'appointments' AND column_name = 'deposit_required'))
 ORDER BY table_name, column_name;
 
@@ -129,7 +131,8 @@ ORDER BY table_name, column_name;
 --   DROP INDEX IF EXISTS public.payments_one_pending_per_appointment;
 --   DROP INDEX IF EXISTS public.payments_provider_payment_id_key;
 --   DROP INDEX IF EXISTS public.payments_provider_checkout_session_id_key;
---   ALTER TABLE public.payments DROP COLUMN IF EXISTS expires_at,
+--   ALTER TABLE public.payments DROP COLUMN IF EXISTS receipt_email_sent_at,
+--                               DROP COLUMN IF EXISTS expires_at,
 --                               DROP COLUMN IF EXISTS provider_payment_id,
 --                               DROP COLUMN IF EXISTS provider_checkout_session_id;
 -- Once real payments exist, never drop these columns; switch PAYMENTS_ENABLED off instead.

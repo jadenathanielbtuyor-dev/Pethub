@@ -1,7 +1,7 @@
 // Loads the real PetHub Express app (server.js) for tests, with:
 // - dotenv stubbed, so backend/.env (real keys) is never read;
 // - config/supabase.js and config/supabaseAdmin.js replaced by an in-memory database;
-// - PayMongo answered by a fake API, and every other outbound request refused.
+// - PayMongo and Brevo (email) answered by fakes, and every other outbound request refused.
 // Each test file runs in its own process (node --test), so module state never leaks between files.
 const path = require('path');
 const crypto = require('crypto');
@@ -30,7 +30,8 @@ async function startTestApp({ env = {}, migrated = true, adminClientConfigured =
   const secrets = {
     paymongoSecretKey: `sk_test_${crypto.randomBytes(12).toString('hex')}`,
     webhookSecret: `whsk_${crypto.randomBytes(12).toString('hex')}`,
-    authTokenSecret: crypto.randomBytes(32).toString('hex')
+    authTokenSecret: crypto.randomBytes(32).toString('hex'),
+    brevoApiKey: `xkeysib-fake-${crypto.randomBytes(12).toString('hex')}`
   };
 
   Object.assign(process.env, {
@@ -46,7 +47,9 @@ async function startTestApp({ env = {}, migrated = true, adminClientConfigured =
     PAYMONGO_WEBHOOK_SECRET: secrets.webhookSecret,
     FRONTEND_URL: 'https://pethub-frontend.test',
     CORS_ORIGINS: '',
-    BREVO_API_KEY: '',
+    BREVO_API_KEY: secrets.brevoApiKey,
+    SENDGRID_FROM_EMAIL: 'no-reply@pethub.test',
+    SENDGRID_FROM_NAME: 'PetHub',
     GEMINI_API_KEY: ''
   }, env);
 
@@ -70,10 +73,34 @@ async function startTestApp({ env = {}, migrated = true, adminClientConfigured =
   });
 
   const paymongo = new FakePayMongo({ secretKey: process.env.PAYMONGO_SECRET_KEY });
+
+  // Fake Brevo transactional email endpoint: records each accepted email; failNextEmail({ status } | { network: true })
+  const emails = [];
+  const emailFailures = [];
+  function brevo(init = {}) {
+    const headers = new Headers(init.headers || {});
+    if (headers.get('api-key') !== process.env.BREVO_API_KEY) {
+      return new Response(JSON.stringify({ code: 'unauthorized', message: 'Key not found' }), { status: 401 });
+    }
+    const failure = emailFailures.shift();
+    if (failure?.network) throw new TypeError('fetch failed');
+    if (failure) return new Response(JSON.stringify({ code: 'simulated_failure', message: 'Simulated Brevo failure' }), { status: failure.status || 500 });
+
+    const payload = JSON.parse(init.body);
+    emails.push({
+      to: payload.to.map(recipient => recipient.email),
+      subject: payload.subject,
+      text: payload.textContent || '',
+      html: payload.htmlContent || ''
+    });
+    return new Response(JSON.stringify({ messageId: `<fake-${emails.length}@pethub.test>` }), { status: 201 });
+  }
+
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
     const url = typeof input === 'string' ? input : String(input?.url || input);
     if (url.startsWith('https://api.paymongo.com/')) return paymongo.handle(url, init);
+    if (url === 'https://api.brevo.com/v3/smtp/email') return brevo(init);
     if (/^http:\/\/127\.0\.0\.1:\d+\//.test(url)) return realFetch(input, init);
     throw new Error(`Unexpected outbound request in tests: ${new URL(url).origin}`);
   };
@@ -130,6 +157,15 @@ async function startTestApp({ env = {}, migrated = true, adminClientConfigured =
     return { status: response.status, body: json };
   }
 
+  // Emails go out in the background; this waits for every one started so far
+  async function settleEmails() {
+    await paymentsService.waitForBackgroundTasks();
+  }
+
+  function emailsTo(address) {
+    return emails.filter(email => email.to.includes(address));
+  }
+
   function createUser({ role = 'user', verified = true, name = 'Test User' } = {}) {
     const user = db.seed('users', {
       fullname: name,
@@ -170,6 +206,7 @@ async function startTestApp({ env = {}, migrated = true, adminClientConfigured =
   }
 
   async function close() {
+    await paymentsService.waitForBackgroundTasks();
     paymentsService.stopExpirySweep();
     await new Promise(resolve => server.close(resolve));
     globalThis.fetch = realFetch;
@@ -187,6 +224,10 @@ async function startTestApp({ env = {}, migrated = true, adminClientConfigured =
     api,
     signWebhook,
     sendWebhook,
+    emails,
+    emailsTo,
+    failNextEmail: failure => emailFailures.push(failure),
+    settleEmails,
     createUser,
     createPet,
     createAppointment,

@@ -549,7 +549,8 @@ function getAdminActionButtonClass(type) {
   const classes = {
     danger: 'bg-red-50 text-red-700 hover:bg-red-100',
     success: 'bg-green-50 text-green-700 hover:bg-green-100',
-    neutral: 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+    neutral: 'bg-slate-100 text-slate-700 hover:bg-slate-200',
+    locked: 'bg-slate-100 text-slate-500 cursor-not-allowed'
   };
 
   return `${baseClasses} ${classes[type] || classes.neutral}`;
@@ -558,7 +559,8 @@ function getAdminActionButtonClass(type) {
 function setActionButtonGroupLoading(button, isLoading, loadingText, defaultText) {
   if (!button) return;
 
-  const actionButtons = Array.from(button.closest('div')?.querySelectorAll('button') || [button]);
+  // A locked Approve button (deposit not paid) stays disabled after another action finishes
+  const actionButtons = Array.from(button.closest('div')?.querySelectorAll('button:not([data-approval-locked])') || [button]);
   actionButtons.forEach(actionButton => {
     if (actionButton === button) {
       updateButtonState(actionButton, isLoading, loadingText, defaultText);
@@ -2332,9 +2334,13 @@ function renderAppointmentActions(status, appointment) {
   const appointmentIdValue = escapeInlineHandlerValue(appointmentId);
 
   if (status === 'Pending') {
+    const approvalLockReason = getApprovalLockReason(appointment);
+    const approveButton = approvalLockReason
+      ? `<button type="button" disabled data-approval-locked="true" title="${escapeHtml(approvalLockReason)}" aria-label="Approve: ${escapeHtml(approvalLockReason)}" class="${getAdminActionButtonClass('locked')}">Approve</button>`
+      : `<button onclick="updateAppointmentStatus(this, '${appointmentIdValue}', 'Approved')" class="${getAdminActionButtonClass('success')}">Approve</button>`;
     return `
       <div class="flex flex-wrap gap-2">
-        <button onclick="updateAppointmentStatus(this, '${appointmentIdValue}', 'Approved')" class="${getAdminActionButtonClass('success')}">Approve</button>
+        ${approveButton}
         <button onclick="updateAppointmentStatus(this, '${appointmentIdValue}', 'Cancelled')" class="${getAdminActionButtonClass('danger')}">Cancel</button>
       </div>
     `;
@@ -2946,22 +2952,32 @@ function getDepositBadges(deposit, appointmentStatus) {
   if (!deposit || deposit.required === false) return [];
 
   if (deposit.status === 'paid') {
-    const badges = [{ label: deposit.late_payment ? 'Deposit paid (late)' : 'Deposit paid', tone: 'success' }];
+    const paidLabel = appointmentStatus === 'Pending' && !deposit.refund_required ? 'Paid — awaiting approval' : 'Deposit paid';
+    const badges = [{ label: deposit.late_payment ? `${paidLabel} (late)` : paidLabel, tone: 'success' }];
     if (deposit.refund_required) {
       badges.push({ label: deposit.slot_conflict ? 'Slot taken: refund required' : 'Refund required', tone: 'danger' });
     }
     return badges;
   }
 
-  if (deposit.status === 'refunded') return [{ label: 'Deposit refunded', tone: 'neutral' }];
+  if (deposit.status === 'refunded') return [{ label: 'Refunded', tone: 'neutral' }];
   if (deposit.status === 'unavailable') return [{ label: 'Deposit status unavailable', tone: 'neutral' }];
   if (appointmentStatus !== 'Pending') return [{ label: 'No deposit paid', tone: 'neutral' }];
 
   const badges = deposit.status === 'pending'
-    ? [{ label: 'Deposit in checkout', tone: 'info' }]
-    : [{ label: 'Deposit unpaid', tone: 'warning' }];
+    ? [{ label: 'Payment pending', tone: 'info' }]
+    : [{ label: 'Awaiting payment', tone: 'warning' }];
   if (deposit.slot_conflict) badges.push({ label: 'Slot taken', tone: 'neutral' });
   return badges;
+}
+
+// Approval needs a verified deposit for appointments booked while deposits are on. The backend refuses it too;
+// this only explains why the Approve button cannot be used.
+function getApprovalLockReason(appointment) {
+  const deposit = appointment?.deposit;
+  if (!deposit || deposit.required === false || deposit.status === 'paid') return '';
+  if (deposit.status === 'unavailable') return 'Deposit status unavailable. Refresh and try again.';
+  return 'Approval needs a paid ₱100 deposit.';
 }
 
 function getDepositBadgesHtml(appointment, appointmentStatus) {

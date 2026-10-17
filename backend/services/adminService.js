@@ -1178,9 +1178,10 @@ const updateAppointmentStatus = async (req) => {
       } };
     }
 
+    let depositCheck = null;
     if (normalizedStatus === 'Approved') {
       // Appointments booked while deposits are on need a paid deposit first (same check in appointmentsService.updateStatus)
-      const depositCheck = await paymentsService.checkDepositForApproval(existingData);
+      depositCheck = await paymentsService.checkDepositForApproval(existingData);
       if (!depositCheck.allowed) return depositCheck.result;
 
       const conflict = await getAppointmentApprovalConflict(existingData, normalizedAppointmentId);
@@ -1219,10 +1220,13 @@ const updateAppointmentStatus = async (req) => {
       `Updated appointment status from ${currentStatus} to ${normalizedStatus}`
     );
 
-    // Cancelling closes any open deposit checkout and reports a paid deposit that now needs a refund
-    const depositNotice = normalizedStatus === 'Cancelled'
-      ? await paymentsService.handleAppointmentCancelled(existingData)
-      : {};
+    // Cancelling closes any open deposit checkout and reports a paid deposit that now needs a refund;
+    // customers of deposit appointments are emailed the decision
+    const depositNotice = await paymentsService.handleAppointmentStatusChanged(existingData, {
+      previousStatus: currentStatus,
+      newStatus: normalizedStatus,
+      depositCheck
+    });
 
     return { statusCode: 200, body: { success: true, appointment: data[0], ...depositNotice } };
   } catch (error) {

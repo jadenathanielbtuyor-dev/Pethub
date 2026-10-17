@@ -1,6 +1,9 @@
 // Opt-in checks against the real PayMongo TEST API. Skipped by default (npm test never calls PayMongo).
-// Nothing is paid: sessions are created, read and expired, so no money moves.
-//   PAYMONGO_SANDBOX_TESTS=1   v1 create -> retrieve -> expire, plus Idempotency-Key replay
+// Nothing is paid: sessions are created, read and expired, so no money moves. Every session created here is expired
+// again before the test ends, even when an assertion fails. Never scan a test-mode QR Ph code with a banking app.
+//   PAYMONGO_SANDBOX_TESTS=1   payment method capabilities, then v1 create -> retrieve -> expire with the methods the
+//                              account has; also reports (does not require) Idempotency-Key replay, which PayMongo
+//                              does not document
 //   PAYMONGO_SANDBOX_TESTS=v2  also checks whether the v1 retrieve/expire endpoints accept a v2-created session
 // The key comes from PAYMONGO_SECRET_KEY (environment, or backend/.env when opted in) and must be sk_test_...
 // Only ids and status codes are printed; keys and checkout URLs never are.
@@ -22,13 +25,13 @@ function loadTestSecretKey() {
   return secretKey;
 }
 
-function sessionInput(reference) {
+function sessionInput(reference, paymentMethodTypes = ['gcash', 'qrph', 'card']) {
   return {
     amountCentavos: 10000,
     currency: 'PHP',
     lineItemName: 'Appointment deposit',
     description: 'PetHub sandbox check (not a real booking)',
-    paymentMethodTypes: ['gcash', 'qrph', 'card'],
+    paymentMethodTypes,
     referenceNumber: reference,
     metadata: { pethub_payment_id: reference, pethub_appointment_id: 'sandbox-check' },
     successUrl: 'https://example.com/pethub-sandbox-return',
@@ -37,36 +40,53 @@ function sessionInput(reference) {
   };
 }
 
-test('PayMongo sandbox: v1 checkout create, idempotent replay, retrieve and expire', {
+test('PayMongo sandbox: payment methods, then v1 checkout create, retrieve and expire', {
   skip: runV1 ? false : 'set PAYMONGO_SANDBOX_TESTS=1 to run against the PayMongo test API'
 }, async () => {
   const paymongo = require('../utils/paymongoClient');
+  const { CHECKOUT_PAYMENT_METHOD_TYPES } = require('../constants/payments');
   const client = paymongo.createPayMongoClient({ secretKey: loadTestSecretKey() });
   const reference = `pethub-sandbox-${Date.now()}`;
 
-  let created;
+  // Same choice as the app: PetHub's methods that the account has configured
+  const configured = await client.listPaymentMethodCapabilities();
+  const methods = CHECKOUT_PAYMENT_METHOD_TYPES.filter(type => configured.includes(type));
+  console.log(`sandbox: account payment methods [${configured.join(', ')}] -> checkout requests [${methods.join(', ')}]`);
+  assert.ok(methods.length > 0, 'none of PetHub\'s payment methods is configured on this PayMongo account');
+
+  const sessionsToClose = new Set();
   try {
-    created = await client.createCheckoutSession(sessionInput(reference));
-  } catch (error) {
-    // A 400 here usually means a payment method in CHECKOUT_PAYMENT_METHOD_TYPES is not enabled on the account
-    throw new Error(`create failed: HTTP ${error.status} ${error.code}`);
+    let created;
+    try {
+      created = await client.createCheckoutSession(sessionInput(reference, methods));
+    } catch (error) {
+      throw new Error(`create failed: HTTP ${error.status} ${error.code}`);
+    }
+    sessionsToClose.add(created.id);
+
+    const replayed = await client.createCheckoutSession(sessionInput(reference, methods));
+    sessionsToClose.add(replayed.id);
+    console.log(`sandbox: Idempotency-Key replay ${replayed.id === created.id ? 'returned the same session' : 'created a second session (expired below)'}`);
+
+    const retrieved = await client.retrieveCheckoutSession(created.id);
+    assert.equal(retrieved.id, created.id);
+    assert.equal(retrieved.status, 'active');
+    assert.equal(retrieved.livemode, false);
+    assert.equal(retrieved.referenceNumber, reference);
+    assert.equal(retrieved.metadata.pethub_payment_id, reference);
+    assert.equal(retrieved.metadata.pethub_appointment_id, 'sandbox-check');
+
+    const expired = await client.expireCheckoutSession(created.id);
+    assert.equal(expired.status, 'expired');
+    sessionsToClose.delete(created.id);
+
+    await assert.rejects(client.expireCheckoutSession(created.id), error => error.status === 400);
+    console.log(`sandbox v1: ${created.id} created, retrieved (active, metadata intact), expired; second expire -> 400`);
+  } finally {
+    for (const sessionId of sessionsToClose) {
+      await client.expireCheckoutSession(sessionId).catch(error => console.log(`sandbox: could not expire ${sessionId}: HTTP ${error.status} ${error.code}`));
+    }
   }
-
-  const replayed = await client.createCheckoutSession(sessionInput(reference));
-  assert.equal(replayed.id, created.id, 'the same Idempotency-Key should return the same session');
-
-  const retrieved = await client.retrieveCheckoutSession(created.id);
-  assert.equal(retrieved.id, created.id);
-  assert.equal(retrieved.status, 'active');
-  assert.equal(retrieved.livemode, false);
-  assert.equal(retrieved.referenceNumber, reference);
-  assert.equal(retrieved.metadata.pethub_payment_id, reference);
-
-  const expired = await client.expireCheckoutSession(created.id);
-  assert.equal(expired.status, 'expired');
-
-  await assert.rejects(client.expireCheckoutSession(created.id), error => error.status === 400);
-  console.log(`sandbox v1: ${created.id} created, replayed, retrieved (active), expired; second expire -> 400`);
 });
 
 test('PayMongo sandbox: do v1 retrieve/expire accept a v2-created session?', {

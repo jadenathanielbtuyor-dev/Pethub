@@ -339,7 +339,7 @@ function createPetHubDatabase({ migrated = true } = {}) {
       columns: [
         'id', 'appointment_id', 'user_id', 'amount', 'payment_method', 'payment_reference', 'payment_status',
         'receipt_url', 'paid_at', 'created_at',
-        ...(migrated ? ['provider_checkout_session_id', 'provider_payment_id', 'expires_at'] : [])
+        ...(migrated ? ['provider_checkout_session_id', 'provider_payment_id', 'expires_at', 'receipt_email_sent_at'] : [])
       ],
       uuidColumns: ['id', 'appointment_id', 'user_id'],
       defaults: { id: uuid, created_at: now, payment_status: () => 'Pending' },

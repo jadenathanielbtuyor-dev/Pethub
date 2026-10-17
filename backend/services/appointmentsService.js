@@ -255,7 +255,7 @@ const getUserAppointments = async (req) => {
 
     const appointmentsWithHandlers = await attachHandledByNames(appointments || []);
     const appointmentsWithDeposits = await paymentsService.attachDepositSummaries(appointmentsWithHandlers, { audience: 'user' });
-    return { statusCode: 200, body: { success: true, appointments: appointmentsWithDeposits } };
+    return { statusCode: 200, body: { success: true, appointments: appointmentsWithDeposits, ...paymentsService.getDepositPolicy() } };
   } catch (error) {
     console.error('Get user appointments error:', error);
     return { statusCode: 500, body: { error: 'Server error' } };
@@ -341,9 +341,10 @@ const updateStatus = async (req) => {
       } };
     }
 
+    let depositCheck = null;
     if (normalizedStatus === 'Approved') {
       // Same deposit check as PUT /admin/dashboard/appointment-status, so this legacy route cannot bypass it
-      const depositCheck = await paymentsService.checkDepositForApproval(existingAppointment);
+      depositCheck = await paymentsService.checkDepositForApproval(existingAppointment);
       if (!depositCheck.allowed) return depositCheck.result;
 
       const conflict = await getScheduleConflict(
@@ -378,10 +379,13 @@ const updateStatus = async (req) => {
 
     await logAdminActivity(normalizedAdminId, 'appointments', normalizedAppointmentId, `Updated appointment status to ${normalizedStatus}`);
 
-    // Cancelling closes any open deposit checkout and reports a paid deposit that now needs a refund
-    const depositNotice = normalizedStatus === 'Cancelled'
-      ? await paymentsService.handleAppointmentCancelled(existingAppointment)
-      : {};
+    // Cancelling closes any open deposit checkout and reports a paid deposit that now needs a refund;
+    // customers of deposit appointments are emailed the decision
+    const depositNotice = await paymentsService.handleAppointmentStatusChanged(existingAppointment, {
+      previousStatus: currentStatus,
+      newStatus: normalizedStatus,
+      depositCheck
+    });
 
     return { statusCode: 200, body: { success: true, message: 'Status updated', appointment: data[0], ...depositNotice } };
   } catch (error) {
