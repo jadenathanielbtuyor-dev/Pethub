@@ -45,6 +45,7 @@ const RECEIPT_EMAIL_RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const RECEIPT_EMAIL_RETRY_BATCH_SIZE = 10;
 
 const PAYMENTS_UNAVAILABLE_MESSAGE = 'Online deposit payments are not available right now. Please try again later or contact the clinic.';
+const DEPOSIT_BOOKING_UNAVAILABLE_MESSAGE = 'Bookings need a ₱100 deposit, and online payment is not available right now, so the booking was not made. Please try again later or contact the clinic.';
 const DEPOSIT_STATUS_UNAVAILABLE_MESSAGE = 'The deposit status could not be checked. Please try again in a moment.';
 const DEPOSIT_NOT_REQUIRED_MESSAGE = 'This appointment does not need a deposit.';
 const DEPOSIT_ALREADY_PAID_MESSAGE = 'The deposit for this appointment is already paid.';
@@ -81,6 +82,7 @@ module.exports = {
   RECEIPT_EMAIL_RETRY_WINDOW_MS,
   RECEIPT_EMAIL_RETRY_BATCH_SIZE,
   PAYMENTS_UNAVAILABLE_MESSAGE,
+  DEPOSIT_BOOKING_UNAVAILABLE_MESSAGE,
   DEPOSIT_STATUS_UNAVAILABLE_MESSAGE,
   DEPOSIT_NOT_REQUIRED_MESSAGE,
   DEPOSIT_ALREADY_PAID_MESSAGE,

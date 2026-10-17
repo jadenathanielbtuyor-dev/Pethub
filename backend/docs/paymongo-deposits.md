@@ -8,8 +8,9 @@ still approves it, and only an approved appointment holds its time slot.
 
 | Step | Code |
 |---|---|
-| The booking form shows "₱100 deposit required" (from `deposit_policy` in `GET /appointments/userAppointments`). "Book" opens a summary (pet, service, date, time, deposit, "Not paid yet", "paying does not approve"); "Pay Deposit and Continue" books and opens the checkout. | `frontend/js/user/appointments.js` |
-| Booking (`POST /appointments/create`) sets `deposit_required = true` while `PAYMENTS_ENABLED=true` | `services/appointmentsService.js` |
+| The booking form shows "₱100 deposit required" (from `deposit_policy` in `GET /appointments/userAppointments`) and a live summary (pet, service, date and time, deposit, payment status). "Continue to Secure Payment" is enabled once the details are valid and online payment is available; it books and opens the checkout. Until the deposit is verified, the booking is shown as "Booking incomplete", with its payment status shown apart. | `frontend/js/user/appointments.js` |
+| The user dashboard leaves unverified deposit bookings out of the upcoming appointments and shows them as "not complete", with a link to finish the payment. | `frontend/js/user/dashboard.js` |
+| Booking (`POST /appointments/create`) sets `deposit_required = true` while `PAYMENTS_ENABLED=true`. While deposits are on but none can be paid (PayMongo or `SUPABASE_SERVICE_KEY` not configured, or the migration missing), it refuses with 503 instead of booking without the deposit. Sending the same Pending booking again returns it (`already_booked`). | `services/appointmentsService.js` |
 | `POST /payments/checkout {appointment_id}` opens (or resumes) a 30-minute PayMongo checkout for the owner's Pending appointment. The amount (10000 centavos) is a server constant. Payment methods = PetHub's list (`gcash`, `qrph`, `card`) limited to what `GET /v1/merchants/capabilities/payment_methods` reports (cached 10 minutes; the test account reported only `qrph` on 2026-10-17). | `services/paymentsService.js` `createCheckout` |
 | `POST /payments/webhook` records the payment after checking the `Paymongo-Signature` HMAC over the raw body, test mode, amount, currency, session id and PetHub metadata | `handleWebhook` |
 | `GET /payments/appointment/:id` shows the owner the deposit state and asks PayMongo directly while a checkout is open (covers a late or missing webhook). The checkout redirect never counts as payment. | `getAppointmentPaymentStatus` |
@@ -26,13 +27,18 @@ still approves it, and only an approved appointment holds its time slot.
 | "PetHub — Appointment Approved" | An admin approves an appointment that needed a deposit (and has a verified one). | Status changes are conditional updates, so each decision is stored and emailed once. |
 | "PetHub — Appointment Request Declined" / "Appointment Cancelled" | An admin cancels a Pending / Approved appointment that needed a deposit. With a paid deposit it explains a refund is due under the clinic's policy and that the email does not mean the refund was made. | Same as above. A failed decision email is logged, not retried. |
 
-Appointments booked before deposits were switched on (exempt) get no new emails, and nothing is emailed while
-`PAYMENTS_ENABLED` is off. Emails run in the background and never change payment or appointment state.
+Appointments that need no deposit (booked while deposits were off) get no new emails. Appointments that need one keep
+their emails whatever `PAYMENTS_ENABLED` says. Emails run in the background and never change payment or appointment state.
 The links in emails use `FRONTEND_URL` (left out if it is not set).
 
 Payment state comes only from `public.payments` (`Pending`, `Paid`, `Expired`, `Failed`, `Refunded`). Status changes are
 conditional updates, so duplicate or late webhooks can never move a payment backwards. A payment that PayMongo confirms
-after the local window is still recorded (shown as "paid (late)"). `appointments.payment_status` is not used.
+after the local window is still recorded (shown as "paid (late)"). `appointments.payment_status` mirrors it: set to
+`Paid` once a deposit is verified and `Refunded` after a full refund (best effort: a database refusal is logged and never
+undoes the payment). A `checkout_session.payment.paid` event that matches no payment row is acknowledged and changes
+nothing; `payments.webhook_unmatched` says why: `not_created_by_pethub` (no PetHub metadata, e.g. a dashboard test event),
+`payment_row_not_found` (PetHub metadata for a row this database lacks: compare `supabase_project`) or
+`invalid_pethub_reference`.
 
 The PayMongo client uses the v1 checkout endpoints (create, retrieve and expire are documented together). PayMongo
 recommends v2 for creating sessions but documents no retrieve/expire for v2 sessions; run the v2 sandbox check below
@@ -42,7 +48,7 @@ before changing `CHECKOUT_SESSION_CREATE_PATH` in `utils/paymongoClient.js`.
 
 | Variable | Value |
 |---|---|
-| `PAYMENTS_ENABLED` | `true` turns deposits on. Unset or anything else = off (default, behaves exactly as before). |
+| `PAYMENTS_ENABLED` | `true`: new bookings need the deposit and customers can open checkouts. Unset or anything else = off (default): new bookings need no deposit and no checkout can be opened. Appointments already marked `deposit_required` keep their rules either way (approval needs a verified deposit; lists show it; cancelling closes open checkouts; webhooks are recorded). |
 | `PAYMONGO_SECRET_KEY` | Test secret key `sk_test_...` (Dashboard → Developers → API Keys). Live `sk_live_` keys are refused. |
 | `PAYMONGO_WEBHOOK_SECRET` | The `whsk_...` secret PayMongo shows once when you create the test webhook endpoint. |
 | `SUPABASE_SERVICE_KEY` | Service-role key. Payment rows are only read and written with it (`config/supabaseAdmin.js`). |
@@ -57,8 +63,9 @@ before changing `CHECKOUT_SESSION_CREATE_PATH` in `utils/paymongoClient.js`.
 4. Add the test keys, register the test webhook, then set `PAYMENTS_ENABLED=true`.
 5. After a test checkout and webhook work: PART 3 (RLS on `payments`, separate approval).
 
-Rollback: set `PAYMENTS_ENABLED=false` and restart. Deposits are no longer required for approval and checkout closes;
-webhooks for payments already made are still recorded.
+Rollback: set `PAYMENTS_ENABLED=false` and restart. New bookings no longer need a deposit and checkout closes.
+Appointments booked with the deposit still cannot be approved until it is verified (cancel them, or switch deposits back
+on so customers can pay); webhooks for payments already made are still recorded.
 
 ## Test webhook
 

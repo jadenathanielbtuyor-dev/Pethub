@@ -357,9 +357,18 @@ function getAppointmentTimeRangeDisplay(appointment) {
   return `${startTime.toLocaleTimeString('en-US', formatOptions)} - ${endTime.toLocaleTimeString('en-US', formatOptions)}`;
 }
 
-// Next relevant appointments: Pending or Approved and not yet finished (start + duration, browser-local time
-// like the times shown on this page), soonest first. The API orders by date only, so time is sorted here.
-function getUpcomingAppointments(appointments, now = new Date()) {
+// While deposits are on, a Pending appointment that needs the ₱100 deposit is only booked once the deposit is
+// verified; until then it is an incomplete booking, not an upcoming appointment
+function isIncompleteDepositBooking(appointment) {
+  const deposit = appointment?.deposit;
+  return Boolean(deposit && deposit.required !== false) &&
+    getAppointmentStatusLabel(appointment.status) === 'Pending' &&
+    deposit.status !== 'paid';
+}
+
+// Pending or Approved and not yet finished (start + duration, browser-local time like the times shown on this page),
+// soonest first. The API lists the newest appointments first, so the soonest are picked here.
+function getNotFinishedAppointments(appointments, now = new Date()) {
   return appointments
     .map(appointment => ({
       appointment,
@@ -373,6 +382,34 @@ function getUpcomingAppointments(appointments, now = new Date()) {
     })
     .sort((a, b) => a.startTime - b.startTime)
     .map(({ appointment }) => appointment);
+}
+
+function getUpcomingAppointments(appointments, now = new Date()) {
+  return getNotFinishedAppointments(appointments, now).filter(appointment => !isIncompleteDepositBooking(appointment));
+}
+
+function getIncompleteBookingsNoticeHtml(appointments, now = new Date()) {
+  const count = getNotFinishedAppointments(appointments, now).filter(isIncompleteDepositBooking).length;
+  if (count === 0) return '';
+
+  return `
+    <div id="incompleteBookingsNotice" class="mb-4 rounded-2xl border border-orange-200 bg-orange-50 p-4 text-left text-sm text-orange-700" role="status">
+      <p class="font-semibold">${count} booking${count === 1 ? ' is' : 's are'} not complete</p>
+      <p class="mt-1">The ₱100 deposit has not been verified yet, so ${count === 1 ? 'it is' : 'they are'} not booked and the clinic has not received ${count === 1 ? 'it' : 'them'} for review. <a href="appointments.html" class="font-semibold hover:underline">Complete the payment</a></p>
+    </div>
+  `;
+}
+
+function getAppointmentPaymentLabel(appointment) {
+  const deposit = appointment?.deposit;
+  if (!deposit || deposit.required === false) return '';
+  return deposit.status === 'paid' ? 'Paid (₱100 deposit)' : 'Not verified (₱100 deposit)';
+}
+
+// Same short reference as the Appointments page (the stored appointment_reference is empty)
+function getAppointmentReference(appointment) {
+  const compactId = String(appointment?.id || '').replace(/[^A-Za-z0-9]/g, '');
+  return compactId ? `PH-${compactId.slice(0, 8).toUpperCase()}` : 'N/A';
 }
 
 function getAppointmentStatusNote(status) {
@@ -481,8 +518,10 @@ function displayAppointments(appointments) {
   }
 
   const upcomingAppointments = getUpcomingAppointments(appointmentList);
+  const incompleteBookingsNotice = getIncompleteBookingsNoticeHtml(appointmentList);
   if (upcomingAppointments.length === 0) {
     appointmentsContainer.innerHTML = `
+      ${incompleteBookingsNotice}
       <div class="empty-state text-center py-8">
         <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 text-blue-500">
           <i class="ri-calendar-event-line text-2xl"></i>
@@ -498,8 +537,16 @@ function displayAppointments(appointments) {
   const apt = upcomingAppointments[0];
   const handledBy = getHandledByLabel(apt);
   const status = getAppointmentStatusLabel(apt.status);
+  const paymentLabel = getAppointmentPaymentLabel(apt);
   const handledByRow = handledBy
     ? `<p><span class="font-semibold text-slate-500">Handled by:</span> ${escapeHtml(handledBy)}</p>`
+    : '';
+  // Payment status is shown apart from the appointment status (which only the clinic changes)
+  const paymentRow = paymentLabel
+    ? `<p><span class="font-semibold text-slate-500">Payment:</span> ${escapeHtml(paymentLabel)}</p>`
+    : '';
+  const statusHeading = paymentLabel
+    ? '<p class="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-600">Appointment status</p>'
     : '';
   const moreUpcomingCount = upcomingAppointments.length - 1;
   const moreUpcomingRow = moreUpcomingCount > 0
@@ -507,6 +554,7 @@ function displayAppointments(appointments) {
     : '';
 
   appointmentsContainer.innerHTML = `
+    ${incompleteBookingsNotice}
     <div class="rounded-2xl border border-blue-100 bg-blue-50 p-5 text-left">
       <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div class="flex items-start gap-4">
@@ -519,6 +567,7 @@ function displayAppointments(appointments) {
           </div>
         </div>
         <div>
+          ${statusHeading}
           <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ${getStatusBadgeClasses(status)}">${escapeHtml(status)}</span>
           <p class="mt-1 text-xs text-gray-500">${escapeHtml(getAppointmentStatusNote(status))}</p>
         </div>
@@ -527,6 +576,8 @@ function displayAppointments(appointments) {
         <p><span class="font-semibold text-slate-500">Pet:</span> ${escapeHtml(hasRecordedValue(apt.pet_name) ? apt.pet_name : 'N/A')}</p>
         <p><span class="font-semibold text-slate-500">Service:</span> ${escapeHtml(hasRecordedValue(apt.service_type) ? apt.service_type : 'N/A')}</p>
         <p><span class="font-semibold text-slate-500">Duration:</span> ${escapeHtml(getAppointmentDurationLabel(apt))}</p>
+        <p><span class="font-semibold text-slate-500">Reference:</span> ${escapeHtml(getAppointmentReference(apt))}</p>
+        ${paymentRow}
         ${handledByRow}
       </div>
     </div>

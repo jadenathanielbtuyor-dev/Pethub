@@ -46,7 +46,36 @@ describe('live key refused', () => {
     assert.equal(list.body.appointments[0].deposit.status, 'unpaid');
     assert.equal(list.body.appointments[0].deposit.can_pay, false);
   });
+
+  it('refuses new bookings while the deposit cannot be paid, and creates nothing', async () => {
+    const user = t.createUser();
+    const pet = t.createPet(user);
+
+    const response = await bookFor(user, pet, 34);
+    assert.equal(response.status, 503);
+    assert.match(response.body.error, /₱100 deposit/);
+    assert.equal(t.db.table('appointments').filter(row => row.user_id === user.id).length, 0);
+    assert.equal(t.paymongo.requests.length, 0);
+
+    const list = await t.api('GET', `/appointments/userAppointments?user_id=${user.id}`, { token: user.token });
+    assert.equal(list.body.deposit_policy.required, true);
+    assert.equal(list.body.deposit_policy.checkout_available, false);
+  });
 });
+
+function bookFor(user, pet, daysAhead) {
+  return t.api('POST', '/appointments/create', {
+    token: user.token,
+    body: {
+      user_id: user.id,
+      pet_id: pet.id,
+      pet_name: pet.name,
+      service_type: 'Checkup',
+      appointment_date: t.manilaDate(daysAhead),
+      appointment_time: '09:00:00'
+    }
+  });
+}
 
 describe('service-role client missing', () => {
   it('blocks approval of deposit appointments with 503 but leaves exempt ones alone', async () => {
@@ -72,6 +101,12 @@ describe('service-role client missing', () => {
 
       const webhook = await t.sendWebhook({ data: { id: 'evt_x', type: 'event', attributes: { type: 'payment.paid', livemode: false, data: {} } } });
       assert.equal(webhook.status, 503);
+
+      // Deposits are required, but no payment can be recorded: new bookings are refused instead of created unpaid
+      const pet = t.createPet(user);
+      const booking = await bookFor(user, pet, 35);
+      assert.equal(booking.status, 503);
+      assert.equal(t.db.table('appointments').filter(row => row.user_id === user.id).length, 2);
     } finally {
       t.adminState.configured = true;
     }

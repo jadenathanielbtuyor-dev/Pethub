@@ -2,6 +2,15 @@ const supabase = require('../config/supabase');
 
 const APPOINTMENT_SELECT = 'id, user_id, pet_id, pet_name, service_type, estimated_duration_minutes, appointment_date, appointment_time, status, handled_by, created_at';
 
+// Newest first: latest appointment date, then latest time that day, then the most recently booked. Rows missing a
+// value go last (PostgreSQL would otherwise put NULLs first when sorting descending).
+function orderNewestFirst(query) {
+  return query
+    .order('appointment_date', { ascending: false, nullsFirst: false })
+    .order('appointment_time', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: false, nullsFirst: false });
+}
+
 function countAll() {
   return supabase
     .from('appointments')
@@ -54,18 +63,25 @@ function createAppointment(appointment) {
 }
 
 function listByUserId(userId) {
-  return supabase
+  return orderNewestFirst(supabase
     .from('appointments')
     .select(APPOINTMENT_SELECT)
-    .eq('user_id', userId)
-    .order('appointment_date', { ascending: true });
+    .eq('user_id', userId));
 }
 
 function listAllAppointments() {
+  return orderNewestFirst(supabase
+    .from('appointments')
+    .select(APPOINTMENT_SELECT));
+}
+
+// appointments.payment_status mirrors the verified deposit; the payments table stays the source of truth
+function updatePaymentStatus(appointmentId, paymentStatus) {
   return supabase
     .from('appointments')
-    .select(APPOINTMENT_SELECT)
-    .order('appointment_date', { ascending: true });
+    .update({ payment_status: paymentStatus })
+    .eq('id', appointmentId)
+    .select('id');
 }
 
 function findById(appointmentId) {
@@ -163,6 +179,7 @@ module.exports = {
   createAppointment,
   listByUserId,
   listAllAppointments,
+  updatePaymentStatus,
   findById,
   findStatusById,
   findForMedicalRecord,

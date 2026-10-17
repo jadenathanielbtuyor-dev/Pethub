@@ -3,7 +3,7 @@
 // - The deposit amount is a server constant; the browser only names the appointment.
 // - A payment is marked Paid only from a signature-verified webhook or a server-side PayMongo lookup,
 //   never from the checkout redirect.
-// - Payment state is derived from the payments table; appointments.payment_status is not used.
+// - Payment state is derived from the payments table; appointments.payment_status only mirrors it (Paid / Refunded).
 // - Paying never approves an appointment; an admin still approves it, and only admin approval reserves the slot.
 // - Emails (deposit confirmation, admin decision) go out after the state change and never change payment or appointment state.
 
@@ -65,7 +65,9 @@ const SWEEP_GLOBAL_KEY = Symbol.for('pethub.payments.expirySweep');
 
 // ==================== CONFIGURATION ====================
 
-// PAYMENTS_ENABLED is the deposit policy switch: new bookings need a deposit and approval checks it only while it is on
+// PAYMENTS_ENABLED is the deposit policy switch for NEW bookings: while it is on they need a deposit and customers can
+// open checkouts. Appointments already marked deposit_required keep their deposit rules whatever the flag: approval
+// needs a verified payment, lists show the deposit, cancelling settles open checkouts, and webhooks are recorded.
 function isDepositPolicyEnabled() {
   return env.payments.enabled;
 }
@@ -197,6 +199,12 @@ function reportMissingSchema(source, error) {
     if (details[name] === undefined) delete details[name];
   });
   logger.error('payments.schema_missing', details);
+}
+
+// A missing deposit_required column only matters while deposits are on: with the flag off and no column,
+// no appointment can need a deposit, so the old behaviour continues without a report
+function reportMissingDepositFlag(error) {
+  if (isDepositPolicyEnabled()) reportMissingSchema('appointments.deposit_required', error);
 }
 
 function toIso(value) {
@@ -415,12 +423,18 @@ async function loadDepositRequiredIds(appointments, audience) {
  */
 async function attachDepositSummaries(appointments, { audience = 'user' } = {}) {
   const list = Array.isArray(appointments) ? appointments : [];
-  if (!isDepositPolicyEnabled() || list.length === 0) return list;
+  if (list.length === 0) return list;
+  // While deposits are off, only appointments that already need one get a summary; every other one stays as before
+  const policyEnabled = isDepositPolicyEnabled();
 
   let requiredIds;
   try {
     requiredIds = await loadDepositRequiredIds(list, audience);
   } catch (error) {
+    if (!policyEnabled) {
+      if (!isMissingColumnError(error)) logDatabaseError('payments.summary_flags_failed', error);
+      return list;
+    }
     if (isMissingColumnError(error)) {
       // Before the migration no appointment can require a deposit
       reportMissingSchema('appointments.deposit_required', error);
@@ -431,7 +445,7 @@ async function attachDepositSummaries(appointments, { audience = 'user' } = {}) 
   }
 
   if (requiredIds.size === 0) {
-    return list.map(appointment => ({ ...appointment, deposit: createDepositSummary() }));
+    return policyEnabled ? list.map(appointment => ({ ...appointment, deposit: createDepositSummary() })) : list;
   }
 
   let rowsByAppointment = null;
@@ -460,7 +474,7 @@ async function attachDepositSummaries(appointments, { audience = 'user' } = {}) 
   return list.map(appointment => {
     const appointmentId = String(appointment?.id || '');
     if (!requiredIds.has(appointmentId)) {
-      return { ...appointment, deposit: createDepositSummary() };
+      return policyEnabled ? { ...appointment, deposit: createDepositSummary() } : appointment;
     }
     if (!rowsByAppointment) {
       return { ...appointment, deposit: createDepositSummary({ required: true, status: 'unavailable' }) };
@@ -674,6 +688,24 @@ function evaluateSessionPayment(session, row) {
   return problems.length > 0 ? { state: 'mismatch', problems } : { state: 'paid', payment };
 }
 
+// appointments.payment_status follows the verified deposit ('Paid', or 'Refunded' once no paid payment remains), so the
+// appointment row agrees with the payments table, which stays the source of truth. Best effort: a database refusal
+// is logged and never undoes or blocks the payment change.
+async function syncAppointmentPaymentStatus(appointmentId) {
+  try {
+    const rows = await loadPaymentRows(appointmentId);
+    let paymentStatus = null;
+    if (rows.some(row => row.payment_status === PAID)) paymentStatus = PAID;
+    else if (rows.some(row => row.payment_status === REFUNDED)) paymentStatus = REFUNDED;
+    if (!paymentStatus) return;
+
+    const { error } = await appointmentsRepository.updatePaymentStatus(appointmentId, paymentStatus);
+    if (error) logDatabaseError('payments.appointment_payment_status_sync_failed', error, { appointment_id: appointmentId });
+  } catch (error) {
+    logDatabaseError('payments.appointment_payment_status_sync_failed', error, { appointment_id: appointmentId });
+  }
+}
+
 // Pending, Expired and Failed rows can become Paid: a payment PayMongo confirms is always recorded, even late
 async function recordPaid(row, payment, { sessionId, source }) {
   const values = {
@@ -707,6 +739,7 @@ async function recordPaid(row, payment, { sessionId, source }) {
   } else if (isLatePayment(updated)) {
     logger.warn('payments.paid_after_window', { payment_row_id: updated.id, source });
   }
+  await syncAppointmentPaymentStatus(updated.appointment_id);
 
   // Only the request that moved the row to Paid gets here, so duplicate deliveries never queue a second email
   runInBackground('payments.receipt_email_failed', { payment_row_id: updated.id }, () => sendDepositReceipt(updated));
@@ -1123,15 +1156,14 @@ function approvalBlocked(statusCode, body) {
  * Used by both admin status endpoints before approving. Returns { allowed, depositPaid, result? }.
  * Fails closed: if a required deposit cannot be checked, approval waits.
  */
+// Checked whatever PAYMENTS_ENABLED says: switching deposits off never makes an unpaid deposit appointment approvable
 async function checkDepositForApproval(appointment) {
-  if (!isDepositPolicyEnabled()) return { allowed: true, depositPaid: false };
-
   const appointmentId = String(appointment?.id || '');
   const { data: depositInfo, error: flagError } = await appointmentsRepository.findForDeposit(appointmentId);
   if (flagError) {
     if (isMissingColumnError(flagError)) {
       // Before the migration no appointment can require a deposit
-      reportMissingSchema('appointments.deposit_required', flagError);
+      reportMissingDepositFlag(flagError);
       return { allowed: true, depositPaid: false };
     }
     logDatabaseError('payments.approval_check_failed', flagError, { appointment_id: appointmentId });
@@ -1192,7 +1224,7 @@ function addRefundRequiredToConflict(conflictBody, depositCheck) {
  */
 async function settleCancelledAppointment(appointment) {
   const exempt = { notice: {}, depositRequired: false, depositStatus: 'none' };
-  if (!isDepositPolicyEnabled() || !paymentsRepository.isConfigured()) return exempt;
+  if (!paymentsRepository.isConfigured()) return exempt;
 
   const appointmentId = String(appointment?.id || '');
   try {
@@ -1217,7 +1249,7 @@ async function settleCancelledAppointment(appointment) {
       depositStatus: paid ? 'paid' : rows.some(row => row.payment_status === REFUNDED) ? 'refunded' : 'none'
     };
   } catch (error) {
-    if (isMissingColumnError(error)) reportMissingSchema('appointments.deposit_required', error);
+    if (isMissingColumnError(error)) reportMissingDepositFlag(error);
     else logDatabaseError('payments.cancel_check_failed', error, { appointment_id: appointmentId });
     return exempt;
   }
@@ -1270,6 +1302,25 @@ async function findPaymentForSession(session) {
   return data || null;
 }
 
+// Why a paid checkout matched no payment row. PayMongo's own test events and checkouts made outside PetHub carry no
+// PetHub metadata; PetHub metadata without a row here points at another deployment or database (compare
+// supabase_project). Logs only provider and PetHub ids, never customer data.
+function describeUnmatchedSession(session) {
+  const referencedRowId = session.metadata[CHECKOUT_METADATA_PAYMENT_ID] || '';
+  const hasPetHubMetadata = Boolean(referencedRowId || session.metadata[CHECKOUT_METADATA_APPOINTMENT_ID]);
+  const validReference = PAYMENT_ROW_ID_PATTERN.test(referencedRowId);
+
+  let reason = 'not_created_by_pethub';
+  if (hasPetHubMetadata) reason = validReference ? 'payment_row_not_found' : 'invalid_pethub_reference';
+  return {
+    reason,
+    checkout_session_id: session.id.slice(0, 64),
+    pethub_metadata: hasPetHubMetadata,
+    ...(reason === 'payment_row_not_found' ? { referenced_row_id: referencedRowId } : {}),
+    supabase_project: getSupabaseProjectRef()
+  };
+}
+
 async function processCheckoutPaid(event, context) {
   const session = paymongo.normalizeCheckoutSession(event.resource);
   if (!session) {
@@ -1279,8 +1330,8 @@ async function processCheckoutPaid(event, context) {
 
   const row = await findPaymentForSession(session);
   if (!row) {
-    // Not a checkout created by this PetHub database
-    logger.warn('payments.webhook_unmatched', context);
+    // Not a checkout created by this PetHub database: nothing is marked paid
+    logger.warn('payments.webhook_unmatched', { ...context, ...describeUnmatchedSession(session) });
     return acknowledged();
   }
 
@@ -1374,6 +1425,7 @@ async function processRefundEvent(event, context, resourceKind) {
   }
 
   await moveStatus(row, [PAID], REFUNDED, 'payments.refunded');
+  await syncAppointmentPaymentStatus(row.appointment_id);
   return acknowledged();
 }
 

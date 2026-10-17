@@ -101,8 +101,9 @@ class FakeQuery {
     return this.addFilter(column, [], stored => !(value === null ? stored === null || stored === undefined : stored === value));
   }
 
-  order(column, { ascending = true } = {}) {
-    this.orders.push({ column, ascending });
+  // PostgreSQL puts NULLs last when ascending and first when descending, unless nullsFirst says otherwise
+  order(column, { ascending = true, nullsFirst = !ascending } = {}) {
+    this.orders.push({ column, ascending, nullsFirst });
     return this;
   }
 
@@ -276,8 +277,14 @@ class FakeDatabase {
     }
 
     let results = table.filter(matches);
-    query.orders.slice().reverse().forEach(({ column, ascending }) => {
+    query.orders.slice().reverse().forEach(({ column, ascending, nullsFirst }) => {
       results = results.slice().sort((first, second) => {
+        const firstIsNull = first[column] === null || first[column] === undefined;
+        const secondIsNull = second[column] === null || second[column] === undefined;
+        if (firstIsNull || secondIsNull) {
+          if (firstIsNull === secondIsNull) return 0;
+          return firstIsNull === nullsFirst ? -1 : 1;
+        }
         const order = compare(first[column], second[column]) ?? 0;
         return ascending ? order : -order;
       });

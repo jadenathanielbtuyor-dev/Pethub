@@ -8,6 +8,7 @@ const {
   hasValue
 } = require('../validators/commonValidator');
 const { INVALID_APPOINTMENT_DATE_MESSAGE, APPOINTMENT_STATUS_CHANGED_MESSAGE } = require('../constants/appointments');
+const { DEPOSIT_BOOKING_UNAVAILABLE_MESSAGE } = require('../constants/payments');
 const {
   SCHEDULE_CONFLICT_MESSAGE,
   OCCUPIED_APPOINTMENT_STATUSES,
@@ -220,7 +221,13 @@ const createAppointment = async (req) => {
 
     // While deposits are on, new bookings are marked deposit_required; older appointments stay exempt
     const depositFields = paymentsService.getNewAppointmentDepositFields();
-    let depositRequired = Object.keys(depositFields).length > 0;
+    const depositRequired = Object.keys(depositFields).length > 0;
+
+    // Deposits are required, but no deposit can be paid right now (PayMongo or the server-only database key is not
+    // configured): the booking is refused rather than created without its deposit
+    if (depositRequired && !paymentsService.isCheckoutAvailable()) {
+      return { statusCode: 503, body: { error: DEPOSIT_BOOKING_UNAVAILABLE_MESSAGE } };
+    }
 
     // With the deposit, booking continues to PayMongo, so the same booking can arrive again (Back from the payment
     // page, a refresh, a second click). It returns the existing Pending appointment, whose checkout then resumes.
@@ -237,13 +244,13 @@ const createAppointment = async (req) => {
       }
     }
 
-    let { data, error } = await appointmentsRepository.createAppointment({ ...appointmentRecord, ...depositFields });
+    const { data, error } = await appointmentsRepository.createAppointment({ ...appointmentRecord, ...depositFields });
 
     if (error && depositRequired && paymentsService.isMissingColumnError(error)) {
-      // PAYMENTS_ENABLED is on but the deposit migration has not been applied yet: keep booking working without a deposit
+      // PAYMENTS_ENABLED is on but the deposit migration has not been applied: the deposit cannot be recorded,
+      // so the booking is refused rather than created without it
       paymentsService.reportMissingSchema('appointments.deposit_required', error);
-      depositRequired = false;
-      ({ data, error } = await appointmentsRepository.createAppointment(appointmentRecord));
+      return { statusCode: 503, body: { error: DEPOSIT_BOOKING_UNAVAILABLE_MESSAGE } };
     }
 
     if (error) {

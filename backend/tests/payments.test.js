@@ -299,6 +299,108 @@ describe('GET /payments/appointment/:appointmentId', () => {
   });
 });
 
+describe('appointments.payment_status follows the verified payment', () => {
+  it('stays Pending while unpaid, becomes Paid after the verified webhook and Refunded after a full refund', async () => {
+    const user = t.createUser();
+    const appointment = t.createAppointment(user, { daysAhead: nextDay() });
+    await checkout(user, appointment.id);
+    assert.equal(t.appointmentRow(appointment.id).payment_status, 'Pending');
+
+    const { payment } = await payAndNotify(appointment.id);
+    assert.equal(t.appointmentRow(appointment.id).payment_status, 'Paid');
+    assert.equal(t.appointmentRow(appointment.id).status, 'Pending');
+
+    assert.equal((await t.sendWebhook(t.paymongo.refundSucceededEvent(payment.id))).status, 200);
+    assert.equal(t.appointmentRow(appointment.id).payment_status, 'Refunded');
+  });
+
+  it('is also set when PetHub confirms the payment with PayMongo itself (webhook not in yet)', async () => {
+    const user = t.createUser();
+    const appointment = t.createAppointment(user, { daysAhead: nextDay() });
+    await checkout(user, appointment.id);
+    t.paymongo.pay(onlyRow(appointment.id).provider_checkout_session_id);
+
+    const status = await depositStatus(user, appointment.id);
+    assert.equal(status.body.deposit.status, 'paid');
+    assert.equal(t.appointmentRow(appointment.id).payment_status, 'Paid');
+  });
+
+  it('a database refusal of the mirrored value never undoes the verified payment', async () => {
+    const user = t.createUser();
+    const appointment = t.createAppointment(user, { daysAhead: nextDay() });
+    await checkout(user, appointment.id);
+    t.db.interceptNext({ table: 'appointments', action: 'update' }, () => ({
+      data: null,
+      error: { code: '23514', message: 'new row for relation "appointments" violates check constraint', details: null, hint: null }
+    }));
+
+    await payAndNotify(appointment.id);
+    assert.equal(onlyRow(appointment.id).payment_status, 'Paid');
+    assert.equal(t.appointmentRow(appointment.id).payment_status, 'Pending');
+    assert.ok(t.logs.some(line => line.includes('payments.appointment_payment_status_sync_failed') && line.includes('23514')));
+  });
+});
+
+describe('POST /payments/webhook: events that match no PetHub payment', () => {
+  // Signed with the configured secret (as PayMongo's own test events are), but not for a checkout PetHub created
+  function paidSessionEvent(sessionId, metadata) {
+    return t.paymongo.event('checkout_session.payment.paid', {
+      id: sessionId,
+      type: 'checkout_session',
+      attributes: {
+        status: 'active',
+        livemode: false,
+        reference_number: null,
+        metadata,
+        payments: [{ id: 'pay_samplepayment0001', type: 'payment', attributes: { amount: 10000, currency: 'PHP', status: 'paid', livemode: false } }]
+      }
+    });
+  }
+
+  function unmatchedLog(sessionId) {
+    return t.logs.find(line => line.includes('payments.webhook_unmatched') && line.includes(sessionId)) || '';
+  }
+
+  it('a sample event (no PetHub metadata, unknown session) changes nothing and is logged as not created by PetHub', async () => {
+    // Earlier tests' receipt emails finish in the background and stamp their rows; wait so only this event could change rows
+    await t.settleEmails();
+    const before = JSON.stringify(t.db.table('payments'));
+    const response = await t.sendWebhook(paidSessionEvent('cs_dashboardsample01', null));
+    assert.equal(response.status, 200);
+    assert.equal(JSON.stringify(t.db.table('payments')), before);
+
+    const line = unmatchedLog('cs_dashboardsample01');
+    assert.match(line, /reason: 'not_created_by_pethub'/);
+    assert.match(line, /pethub_metadata: false/);
+    assert.match(line, /event_type: 'checkout_session\.payment\.paid'/);
+  });
+
+  it('PetHub metadata for a payment row this database does not have (another deployment or database) is unmatched, not paid', async () => {
+    await t.settleEmails();
+    const before = JSON.stringify(t.db.table('payments'));
+    const missingRowId = crypto.randomUUID();
+    const response = await t.sendWebhook(paidSessionEvent('cs_otherdatabase0001', {
+      pethub_payment_id: missingRowId,
+      pethub_appointment_id: crypto.randomUUID()
+    }));
+    assert.equal(response.status, 200);
+    assert.equal(JSON.stringify(t.db.table('payments')), before);
+
+    const line = unmatchedLog('cs_otherdatabase0001');
+    assert.match(line, /reason: 'payment_row_not_found'/);
+    assert.match(line, /pethub_metadata: true/);
+    assert.match(line, new RegExp(`referenced_row_id: '${missingRowId}'`));
+  });
+
+  it('a malformed PetHub reference is unmatched and never used in a query', async () => {
+    const response = await t.sendWebhook(paidSessionEvent('cs_badreference00001', { pethub_payment_id: "1' or '1'='1", pethub_appointment_id: 'x' }));
+    assert.equal(response.status, 200);
+    const line = unmatchedLog('cs_badreference00001');
+    assert.match(line, /reason: 'invalid_pethub_reference'/);
+    assert.doesNotMatch(line, /or '1'='1/);
+  });
+});
+
 describe('POST /payments/webhook', () => {
   it('records a verified payment once; duplicate deliveries change nothing', async () => {
     const user = t.createUser();
@@ -664,6 +766,69 @@ describe('Booking with the deposit (booking form -> checkout)', () => {
   function appointmentsOf(user) {
     return t.db.table('appointments').filter(row => row.user_id === user.id);
   }
+
+  it('whole flow (PayMongo mocked): unpaid is not approvable, a failed payment and the redirect change nothing, one verified webhook pays it once, approval stays separate', async () => {
+    const admin = t.createUser({ role: 'admin' });
+    const user = t.createUser();
+    const pet = t.createPet(user);
+
+    const booked = await book(user, bookingBody(user, pet));
+    assert.equal(booked.status, 201);
+    const appointmentId = booked.body.appointment.id;
+    assert.equal(booked.body.deposit.status, 'unpaid');
+    assert.equal(booked.body.deposit.amount, 100);
+    assert.equal((await setStatusVia('admin', admin, appointmentId, 'Approved')).status, 409);
+
+    const opened = await checkout(user, appointmentId);
+    assert.equal(opened.status, 201);
+    const row = onlyRow(appointmentId);
+    assert.equal(row.amount, 100);
+    assert.equal(createRequests(appointmentId)[0].body.data.attributes.line_items[0].amount, 10000);
+
+    // A failed attempt on PayMongo's page is not a payment; the checkout stays open for another try
+    const failed = await t.sendWebhook(t.paymongo.event('payment.failed', {
+      id: 'pay_failedattempt0001', type: 'payment', attributes: { status: 'failed', amount: 10000, currency: 'PHP', livemode: false }
+    }));
+    assert.equal(failed.status, 200);
+    assert.equal(onlyRow(appointmentId).payment_status, 'Pending');
+
+    // Coming back to the success URL is not proof of payment
+    const returned = await depositStatus(user, appointmentId);
+    assert.equal(returned.body.deposit.status, 'pending');
+    assert.equal((await setStatusVia('admin', admin, appointmentId, 'Approved')).status, 409);
+
+    t.paymongo.pay(row.provider_checkout_session_id);
+    const paidEvent = t.paymongo.checkoutPaidEvent(row.provider_checkout_session_id);
+    assert.equal((await t.sendWebhook(paidEvent)).status, 200);
+    assert.equal((await t.sendWebhook(paidEvent)).status, 200);
+    assert.equal(t.paymentsFor(appointmentId).length, 1);
+    assert.equal(onlyRow(appointmentId).payment_status, 'Paid');
+    assert.equal(t.appointmentRow(appointmentId).status, 'Pending');
+
+    // The customer's list keeps the appointment status and the payment status apart
+    const list = await t.api('GET', `/appointments/userAppointments?user_id=${user.id}`, { token: user.token });
+    const listed = list.body.appointments.find(item => item.id === appointmentId);
+    assert.equal(listed.status, 'Pending');
+    assert.equal(listed.deposit.status, 'paid');
+    assert.equal(listed.deposit.can_pay, false);
+
+    assert.equal((await setStatusVia('admin', admin, appointmentId, 'Approved')).status, 200);
+    assert.equal(onlyRow(appointmentId).payment_status, 'Paid');
+  });
+
+  it('refuses booking, checkout and status calls without a valid sign-in, and creates nothing', async () => {
+    const user = t.createUser();
+    const pet = t.createPet(user);
+    const appointment = t.createAppointment(user, { daysAhead: nextDay() });
+    const body = bookingBody(user, pet);
+
+    assert.equal((await t.api('POST', '/appointments/create', { body })).status, 401);
+    assert.equal((await t.api('POST', '/appointments/create', { body, token: 'not-a-real-token' })).status, 401);
+    assert.equal((await t.api('POST', '/payments/checkout', { body: { appointment_id: appointment.id } })).status, 401);
+    assert.equal((await t.api('GET', `/payments/appointment/${appointment.id}`)).status, 401);
+    assert.equal(appointmentsOf(user).length, 1);
+    assert.equal(t.paymentsFor(appointment.id).length, 0);
+  });
 
   it('validates the booking on the server and creates nothing when it is refused', async () => {
     const user = t.createUser();
