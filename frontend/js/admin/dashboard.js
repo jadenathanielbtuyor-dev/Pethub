@@ -2161,6 +2161,7 @@ function displayAppointmentsTable(appointments) {
         <span class="${getStatusBadgeClass(status)}">
           ${escapeHtml(status)}
         </span>
+        ${getDepositBadgesHtml(apt, status)}
       </td>
       <td class="px-4 py-3 text-sm text-gray-600">${handledBy ? escapeHtml(handledBy) : '<span class="text-slate-400">-</span>'}</td>
       <td class="px-4 py-3 text-sm">
@@ -2940,6 +2941,40 @@ function getStatusBadgeClass(status) {
   return classes[status] || 'admin-status-badge admin-status-neutral';
 }
 
+// Deposit state comes from the backend (payments table); appointments booked before deposits show nothing here
+function getDepositBadges(deposit, appointmentStatus) {
+  if (!deposit || deposit.required === false) return [];
+
+  if (deposit.status === 'paid') {
+    const badges = [{ label: deposit.late_payment ? 'Deposit paid (late)' : 'Deposit paid', tone: 'success' }];
+    if (deposit.refund_required) {
+      badges.push({ label: deposit.slot_conflict ? 'Slot taken: refund required' : 'Refund required', tone: 'danger' });
+    }
+    return badges;
+  }
+
+  if (deposit.status === 'refunded') return [{ label: 'Deposit refunded', tone: 'neutral' }];
+  if (deposit.status === 'unavailable') return [{ label: 'Deposit status unavailable', tone: 'neutral' }];
+  if (appointmentStatus !== 'Pending') return [{ label: 'No deposit paid', tone: 'neutral' }];
+
+  const badges = deposit.status === 'pending'
+    ? [{ label: 'Deposit in checkout', tone: 'info' }]
+    : [{ label: 'Deposit unpaid', tone: 'warning' }];
+  if (deposit.slot_conflict) badges.push({ label: 'Slot taken', tone: 'neutral' });
+  return badges;
+}
+
+function getDepositBadgesHtml(appointment, appointmentStatus) {
+  const badges = getDepositBadges(appointment?.deposit, appointmentStatus);
+  if (badges.length === 0) return '';
+
+  return `
+    <div class="mt-2 flex flex-wrap gap-1">
+      ${badges.map(badge => `<span class="admin-status-badge admin-status-${badge.tone}">${escapeHtml(badge.label)}</span>`).join('')}
+    </div>
+  `;
+}
+
 function formatSuggestedAppointmentTimeDisplay(timeValue) {
   const match = String(timeValue || '').trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
   if (!match) return '';
@@ -2958,6 +2993,10 @@ function formatSuggestedAppointmentTimeDisplay(timeValue) {
 }
 
 function getAppointmentStatusUpdateErrorMessage(error) {
+  // Deposit refusals (unpaid deposit, or a paid deposit that now needs a refund) keep the backend's explanation
+  if (error?.depositRelated) {
+    return error.message || 'Could not update appointment.';
+  }
   const suggestedTime = formatSuggestedAppointmentTimeDisplay(error?.suggestedTime);
   if (suggestedTime) {
     return `Selected time is unavailable. Next available time: ${suggestedTime}.`;
@@ -3007,6 +3046,7 @@ async function updateAppointmentStatus(button, appointmentId, newStatus) {
     if (!response.ok || data.success === false) {
       const updateError = new Error(data.error || 'Could not update appointment.');
       updateError.suggestedTime = data.suggested_time;
+      updateError.depositRelated = data.refund_required === true || data.deposit_required === true;
       throw updateError;
     }
 
@@ -3015,7 +3055,7 @@ async function updateAppointmentStatus(button, appointmentId, newStatus) {
     }
 
     await loadDashboardOverview();
-    showAdminStatus('success', getAppointmentStatusFeedback(newStatus));
+    showAdminStatus('success', getAppointmentStatusFeedback(newStatus, data));
   } catch (error) {
     console.error('Error updating appointment:', error);
     setActionButtonGroupLoading(button, false, 'Updating...', originalText);
@@ -3027,7 +3067,10 @@ function getContactMessageStatusFeedback(status) {
   return status === CONTACT_MESSAGE_READ_STATUS ? 'Message marked read.' : 'Status updated.';
 }
 
-function getAppointmentStatusFeedback(status) {
+function getAppointmentStatusFeedback(status, data = {}) {
+  if (status === 'Cancelled' && data.refund_required) {
+    return 'Appointment cancelled. Its ₱100 deposit was paid: refund it in the PayMongo Dashboard.';
+  }
   const messages = {
     Approved: 'Appointment approved.',
     Completed: 'Appointment completed.',

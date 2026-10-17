@@ -68,6 +68,15 @@ const env = {
   auth: {
     tokenSecret: readEnv('AUTH_TOKEN_SECRET')
   },
+  payments: {
+    // Appointment deposits stay off unless PAYMENTS_ENABLED is exactly "true"
+    enabled: readEnv('PAYMENTS_ENABLED').trim().toLowerCase() === 'true',
+    // Server-only PayMongo credentials (test mode only; live keys are refused in services/paymentsService.js)
+    paymongoSecretKey: readEnv('PAYMONGO_SECRET_KEY').trim(),
+    paymongoWebhookSecret: readEnv('PAYMONGO_WEBHOOK_SECRET').trim(),
+    // Where PayMongo sends the customer back after checkout (falls back to the request's allowed Origin)
+    frontendUrl: readEnv('FRONTEND_URL').trim()
+  },
   cors: {
     allowedOrigins: uniqueValues([
       ...DEFAULT_ALLOWED_ORIGINS,

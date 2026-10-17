@@ -30,6 +30,8 @@ const appointmentsRepository = require('../repositories/appointmentsRepository')
 const medicalRecordsRepository = require('../repositories/medicalRecordsRepository');
 const activityLogsRepository = require('../repositories/activityLogsRepository');
 const contactRepository = require('../repositories/contactRepository');
+const paymentsService = require('./paymentsService');
+const { APPOINTMENT_STATUS_CHANGED_MESSAGE } = require('../constants/appointments');
 
 // "Due soon" = Pending or Approved vaccination appointments from today through today + 7 days (inclusive)
 const VACCINATIONS_DUE_SOON_WINDOW_DAYS = 7;
@@ -613,7 +615,7 @@ const getDashboardOverview = async (req) => {
       },
       users,
       pets: normalizedPets,
-      appointments: normalizedAppointments,
+      appointments: await paymentsService.attachDepositSummaries(normalizedAppointments, { audience: 'admin' }),
       medicalRecords: normalizedMedicalRecords,
       petTypes: {
         labels: Object.keys(petTypeCounts),
@@ -950,8 +952,9 @@ const getAllAppointments = async (req) => {
       normalizeAppointmentNames(appointmentsList, userMap),
       appointmentMedicalRecordState
     );
+    const appointmentsWithDeposits = await paymentsService.attachDepositSummaries(normalizedAppointments, { audience: 'admin' });
 
-    return { statusCode: 200, body: { success: true, appointments: normalizedAppointments } };
+    return { statusCode: 200, body: { success: true, appointments: appointmentsWithDeposits } };
   } catch (error) {
     console.error('Get all appointments error:', error);
     return { statusCode: 500, body: { error: 'Server error' } };
@@ -1176,19 +1179,24 @@ const updateAppointmentStatus = async (req) => {
     }
 
     if (normalizedStatus === 'Approved') {
+      // Appointments booked while deposits are on need a paid deposit first (same check in appointmentsService.updateStatus)
+      const depositCheck = await paymentsService.checkDepositForApproval(existingData);
+      if (!depositCheck.allowed) return depositCheck.result;
+
       const conflict = await getAppointmentApprovalConflict(existingData, normalizedAppointmentId);
       if (conflict.hasConflict) {
-        return { statusCode: 409, body: {
+        return { statusCode: 409, body: paymentsService.addRefundRequiredToConflict({
           error: conflict.error || SCHEDULE_CONFLICT_MESSAGE,
           suggested_time: conflict.suggested_time || null
-        } };
+        }, depositCheck) };
       }
     }
 
     const { data, error } = await appointmentsRepository.updateStatus(
       normalizedAppointmentId,
       normalizedStatus,
-      normalizedAdminUserId
+      normalizedAdminUserId,
+      currentStatus
     );
 
     if (error) {
@@ -1197,7 +1205,11 @@ const updateAppointmentStatus = async (req) => {
     }
 
     if (!data || data.length === 0) {
-      return { statusCode: 404, body: { error: 'Appointment not found' } };
+      // The update only applies while the status is still currentStatus; tell apart "changed meanwhile" and "gone"
+      const { data: latest } = await appointmentsRepository.findStatusById(normalizedAppointmentId);
+      return latest
+        ? { statusCode: 409, body: { error: APPOINTMENT_STATUS_CHANGED_MESSAGE } }
+        : { statusCode: 404, body: { error: 'Appointment not found' } };
     }
 
     await logAdminActivity(
@@ -1207,7 +1219,12 @@ const updateAppointmentStatus = async (req) => {
       `Updated appointment status from ${currentStatus} to ${normalizedStatus}`
     );
 
-    return { statusCode: 200, body: { success: true, appointment: data[0] } };
+    // Cancelling closes any open deposit checkout and reports a paid deposit that now needs a refund
+    const depositNotice = normalizedStatus === 'Cancelled'
+      ? await paymentsService.handleAppointmentCancelled(existingData)
+      : {};
+
+    return { statusCode: 200, body: { success: true, appointment: data[0], ...depositNotice } };
   } catch (error) {
     console.error('Update appointment status error:', error);
     return { statusCode: 500, body: { error: 'Server error' } };

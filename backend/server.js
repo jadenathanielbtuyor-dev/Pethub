@@ -56,6 +56,11 @@ const corsOptionsDelegate = (req, callback) => {
 };
 
 app.use(cors(corsOptionsDelegate));
+
+// PayMongo webhooks are verified against the exact raw request body, so this route must come before express.json()
+const paymentsWebhookRoutes = require('./routes/paymentsWebhook');
+app.use('/payments', paymentsWebhookRoutes);
+
 app.use(express.json());
 
 // Routes
@@ -65,6 +70,8 @@ const appointmentsRoutes = require('./routes/appointments');
 const aiRoutes = require('./routes/ai');
 const adminRoutes = require('./routes/admin');
 const contactRoutes = require('./routes/contact');
+const paymentsRoutes = require('./routes/payments');
+const paymentsService = require('./services/paymentsService');
 
 // Explicitly handle OPTIONS for API routes using regex (Express 5 compatible)
 API_PREFIXES.forEach(prefix => {
@@ -78,6 +85,7 @@ app.use('/appointments', appointmentsRoutes);
 app.use('/ai', aiRoutes);
 app.use('/admin', adminRoutes);
 app.use('/contact', contactRoutes);
+app.use('/payments', paymentsRoutes);
 
 // API fallback for unknown API routes (404 for unmatched API calls)
 app.use(apiNotFoundHandler);
@@ -99,7 +107,14 @@ app.use((req, res) => {
 // Error handling middleware - MUST be last
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-  logger.info('server.started', { port: PORT });
-});
+// Every normal start listens exactly as before; only the automated tests set PETHUB_DISABLE_LISTEN to load the app without a port
+if (process.env.PETHUB_DISABLE_LISTEN !== 'true') {
+  app.listen(PORT, () => {
+    logger.info('server.started', { port: PORT });
+    // Closes deposit checkouts whose 30-minute window has passed (only runs with PayMongo test keys configured)
+    paymentsService.startExpirySweep();
+  });
+}
+
+module.exports = app;
 

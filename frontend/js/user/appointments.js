@@ -21,6 +21,14 @@ const APPOINTMENT_DATE_TIME_MESSAGES = [
   PAST_APPOINTMENT_DATE_MESSAGE,
   PAST_APPOINTMENT_TIME_MESSAGE,
 ];
+const DEPOSIT_PAY_BUTTON_CLASS = "inline-flex items-center justify-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100";
+const DEPOSIT_CHECK_BUTTON_CLASS = "inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50";
+const DEPOSIT_NOTICE_CLASSES = {
+  success: "border-green-200 bg-green-50 text-green-700",
+  error: "border-red-200 bg-red-50 text-red-700",
+  info: "border-blue-100 bg-blue-50 text-blue-700",
+};
+const DEPOSIT_APPOINTMENT_ID_PATTERN = /^[A-Za-z0-9-]{1,64}$/;
 
 // Initialize on page load
 document.addEventListener("DOMContentLoaded", initAppointments);
@@ -50,7 +58,13 @@ function initAppointments() {
   renderAppointmentPetOptions();
   updateAppointmentPetBookingState();
   loadAppointmentPets(currentUser.id);
-  loadAppointments(currentUser.id);
+  setupDepositActions();
+  const depositReturn = readDepositCheckoutReturn();
+  if (depositReturn) {
+    handleDepositCheckoutReturn(depositReturn);
+  } else {
+    loadAppointments(currentUser.id);
+  }
   setupFormHandler();
 }
 
@@ -812,7 +826,9 @@ function displayAppointments(appointments) {
               </dd>
             </div>
             ${handledByRow}
+            ${getDepositDetailsHtml(apt)}
           </dl>
+          ${getDepositActionsHtml(apt)}
         </div>
       `;
     })
@@ -851,6 +867,269 @@ function getStatusClass(status) {
     Pending: "bg-yellow-100 text-yellow-700",
   };
   return statusClasses[status] || "bg-gray-100 text-gray-700";
+}
+
+// ==================== APPOINTMENT DEPOSITS ====================
+// The backend decides the ₱100 deposit (amount, eligibility and status). This page only shows that state and opens
+// the PayMongo checkout URL the backend returns. Coming back from PayMongo only tells the page which appointment
+// to re-check with the backend; the redirect itself never counts as payment.
+
+function hasDepositInfo(appointment) {
+  return Boolean(appointment && appointment.deposit && appointment.deposit.required !== false);
+}
+
+function getDepositAppointmentId(appointment) {
+  const appointmentId = String(appointment?.id || "");
+  return DEPOSIT_APPOINTMENT_ID_PATTERN.test(appointmentId) ? appointmentId : "";
+}
+
+function formatDepositTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
+function formatDepositDateTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function getDepositDisplay(appointment) {
+  const deposit = appointment.deposit;
+  if (deposit.status === "paid") {
+    if (deposit.refund_required) {
+      return { label: "Deposit refund due", className: "bg-red-100 text-red-700", note: "The clinic will refund your ₱100 deposit." };
+    }
+    const paidAt = formatDepositDateTime(deposit.paid_at);
+    return {
+      label: "Deposit paid",
+      className: "bg-green-100 text-green-700",
+      note: paidAt ? `Paid ${paidAt}. The clinic will review your appointment.` : "The clinic will review your appointment.",
+    };
+  }
+  if (deposit.status === "refunded") {
+    return { label: "Deposit refunded", className: "bg-gray-100 text-gray-700", note: "" };
+  }
+  if (deposit.status === "unavailable") {
+    return { label: "Deposit status unavailable", className: "bg-gray-100 text-gray-700", note: "Refresh the page in a moment to see the deposit status." };
+  }
+  if (getAppointmentStatusLabel(appointment.status) !== "Pending") {
+    return { label: "No deposit paid", className: "bg-gray-100 text-gray-700", note: "" };
+  }
+  if (deposit.status === "pending") {
+    const openUntil = formatDepositTime(deposit.checkout_expires_at);
+    return {
+      label: "Payment in progress",
+      className: "bg-blue-100 text-blue-700",
+      note: openUntil ? `Your checkout is open until ${openUntil}.` : "",
+    };
+  }
+
+  const lastCheckoutNotes = {
+    expired: "Your last checkout expired before payment. You can try again.",
+    failed: "Your last checkout could not be opened. You can try again.",
+  };
+  return {
+    label: "₱100 deposit due",
+    className: "bg-yellow-100 text-yellow-700",
+    note: lastCheckoutNotes[deposit.last_checkout_status] || "Pay the deposit so the clinic can review this appointment.",
+  };
+}
+
+function getDepositDetailsHtml(appointment) {
+  if (!hasDepositInfo(appointment)) return "";
+  const display = getDepositDisplay(appointment);
+  return `
+    <div>
+      <dt class="text-xs font-semibold uppercase tracking-wide text-gray-400">Deposit</dt>
+      <dd class="mt-1">
+        <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold ${display.className}">
+          ${escapeHtml(display.label)}
+        </span>
+      </dd>
+    </div>
+  `;
+}
+
+function getDepositActionsHtml(appointment) {
+  if (!hasDepositInfo(appointment)) return "";
+
+  const deposit = appointment.deposit;
+  const appointmentId = getDepositAppointmentId(appointment);
+  const isPendingAppointment = getAppointmentStatusLabel(appointment.status) === "Pending";
+  const buttons = [];
+
+  if (deposit.can_pay && appointmentId) {
+    const label = deposit.status === "pending" ? "Continue ₱100 deposit payment" : "Pay ₱100 deposit";
+    buttons.push(`
+      <button type="button" class="${DEPOSIT_PAY_BUTTON_CLASS}" data-deposit-action="pay" data-appointment-id="${appointmentId}">
+        <i class="ri-bank-card-line" aria-hidden="true"></i><span>${escapeHtml(label)}</span>
+      </button>
+    `);
+  }
+  if (deposit.status === "pending" && isPendingAppointment && appointmentId) {
+    buttons.push(`
+      <button type="button" class="${DEPOSIT_CHECK_BUTTON_CLASS}" data-deposit-action="check" data-appointment-id="${appointmentId}">
+        <i class="ri-refresh-line" aria-hidden="true"></i><span>Check payment status</span>
+      </button>
+    `);
+  }
+
+  let note = getDepositDisplay(appointment).note;
+  if (!deposit.can_pay && isPendingAppointment && ["unpaid", "pending", "refunded"].includes(deposit.status)) {
+    note = "Online payment is not available for this appointment right now. Please contact the clinic.";
+  }
+  if (buttons.length === 0 && !note) return "";
+
+  return `
+    <div class="mt-4 flex flex-wrap items-center gap-3">
+      ${buttons.join("")}
+      ${note ? `<p class="text-sm text-gray-600">${escapeHtml(note)}</p>` : ""}
+    </div>
+  `;
+}
+
+function getDepositNoticeElement() {
+  let notice = document.getElementById("depositNotice");
+  if (notice) return notice;
+
+  const list = document.getElementById("appointmentsList");
+  if (!list || !list.parentNode) return null;
+
+  notice = document.createElement("div");
+  notice.id = "depositNotice";
+  notice.className = "mb-4 hidden rounded-lg border p-3 text-sm";
+  list.parentNode.insertBefore(notice, list);
+  return notice;
+}
+
+function showDepositNotice(message, type = "info") {
+  const notice = getDepositNoticeElement();
+  if (!notice) return;
+  notice.className = `mb-4 rounded-lg border p-3 text-sm ${DEPOSIT_NOTICE_CLASSES[type] || DEPOSIT_NOTICE_CLASSES.info}`;
+  notice.setAttribute("role", type === "error" ? "alert" : "status");
+  notice.setAttribute("aria-live", type === "error" ? "assertive" : "polite");
+  notice.textContent = message;
+}
+
+function isPayMongoCheckoutUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return url.protocol === "https:" && (url.hostname === "paymongo.com" || url.hostname.endsWith(".paymongo.com"));
+  } catch (error) {
+    return false;
+  }
+}
+
+async function fetchDepositStatus(appointmentId) {
+  const response = await fetch(`${window.API_BASE_URL}/payments/appointment/${encodeURIComponent(appointmentId)}`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.deposit) {
+    throw new Error(data.error || "We could not check the deposit right now. Please try again in a moment.");
+  }
+  return data.deposit;
+}
+
+function getDepositStatusMessage(deposit, outcome = "") {
+  if (deposit.status === "paid" && deposit.refund_required) {
+    return "Your ₱100 deposit was received, but this appointment can no longer go ahead. The clinic will refund the deposit.";
+  }
+  if (deposit.status === "paid") {
+    return "Your ₱100 deposit was received. The clinic will now review your appointment.";
+  }
+  if (deposit.status === "not_required") {
+    return "This appointment does not need a deposit.";
+  }
+  if (deposit.status === "pending" && outcome === "cancelled") {
+    return "You left the payment page before paying. You can continue the deposit payment from your appointments list.";
+  }
+  if (deposit.status === "pending") {
+    return "We have not received confirmation of your payment yet. This can take a minute; use \"Check payment status\" to look again.";
+  }
+  return "The deposit has not been paid. You can try again from your appointments list.";
+}
+
+async function startDepositCheckout(button, appointmentId) {
+  if (!appointmentId || button?.dataset?.loading === "true") return;
+
+  updateButtonState(button, true, "Opening payment page...");
+  try {
+    const response = await fetch(`${window.API_BASE_URL}/payments/checkout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ appointment_id: appointmentId }),
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok || !isPayMongoCheckoutUrl(data.checkout_url)) {
+      throw new Error(data.error || "We could not open the payment page. Please try again.");
+    }
+
+    // PayMongo's hosted checkout handles the payment; PetHub never sees card or e-wallet details
+    window.location.assign(data.checkout_url);
+  } catch (error) {
+    console.error("Deposit checkout error:", error);
+    updateButtonState(button, false);
+    showDepositNotice(error.message || "We could not open the payment page. Please try again.", "error");
+    await loadAppointments(currentUser.id);
+  }
+}
+
+async function refreshDepositStatus(button, appointmentId) {
+  if (!appointmentId || button?.dataset?.loading === "true") return;
+
+  updateButtonState(button, true, "Checking...");
+  try {
+    const deposit = await fetchDepositStatus(appointmentId);
+    showDepositNotice(getDepositStatusMessage(deposit), deposit.status === "paid" ? "success" : "info");
+  } catch (error) {
+    showDepositNotice(error.message, "error");
+  }
+  await loadAppointments(currentUser.id);
+}
+
+function setupDepositActions() {
+  const container = document.getElementById("appointmentsList");
+  if (!container || container.dataset.depositActionsReady === "true") return;
+  container.dataset.depositActionsReady = "true";
+
+  container.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-deposit-action]");
+    if (!button || !container.contains(button)) return;
+
+    const appointmentId = String(button.dataset.appointmentId || "");
+    if (!DEPOSIT_APPOINTMENT_ID_PATTERN.test(appointmentId)) return;
+
+    if (button.dataset.depositAction === "pay") startDepositCheckout(button, appointmentId);
+    if (button.dataset.depositAction === "check") refreshDepositStatus(button, appointmentId);
+  });
+}
+
+// Reads ?payment=...&appointment_id=... once and removes it from the address bar, so a refresh does not repeat the check
+function readDepositCheckoutReturn() {
+  const params = new URLSearchParams(window.location.search);
+  const outcome = params.get("payment");
+  const appointmentId = params.get("appointment_id");
+  if (!outcome || !appointmentId) return null;
+
+  params.delete("payment");
+  params.delete("appointment_id");
+  const query = params.toString();
+  window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`);
+
+  return DEPOSIT_APPOINTMENT_ID_PATTERN.test(appointmentId) ? { outcome, appointmentId } : null;
+}
+
+async function handleDepositCheckoutReturn({ outcome, appointmentId }) {
+  showDepositNotice("Checking your deposit payment...", "info");
+  try {
+    const deposit = await fetchDepositStatus(appointmentId);
+    showDepositNotice(getDepositStatusMessage(deposit, outcome), deposit.status === "paid" ? "success" : "info");
+  } catch (error) {
+    showDepositNotice(error.message, "error");
+  }
+  await loadAppointments(currentUser.id);
 }
 
 /**
@@ -950,8 +1229,11 @@ function setupFormHandler() {
         throw bookingError;
       }
 
-      showAppointmentFeedback(messageContainer, "Appointment booked.", "success");
-      if (typeof showSuccess === "function") showSuccess("Appointment booked.");
+      const bookedMessage = data.deposit && data.deposit.required
+        ? "Appointment booked. Pay the ₱100 deposit from your appointments list so the clinic can review it."
+        : "Appointment booked.";
+      showAppointmentFeedback(messageContainer, bookedMessage, "success");
+      if (typeof showSuccess === "function") showSuccess(bookedMessage);
 
       // Reset form
       form.reset();

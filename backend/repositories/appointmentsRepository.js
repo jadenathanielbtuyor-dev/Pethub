@@ -92,12 +92,43 @@ function findForMedicalRecord(appointmentId) {
     .maybeSingle();
 }
 
-function updateStatus(appointmentId, status, handledBy) {
-  return supabase
+// With expectedCurrentStatus, the row only changes if its status is still the one the caller checked,
+// so two admins acting at once cannot overwrite each other (0 rows returned = it changed meanwhile).
+function updateStatus(appointmentId, status, handledBy, expectedCurrentStatus) {
+  let query = supabase
     .from('appointments')
     .update({ status, handled_by: handledBy })
+    .eq('id', appointmentId);
+
+  if (expectedCurrentStatus) {
+    query = query.eq('status', expectedCurrentStatus);
+  }
+
+  return query.select(APPOINTMENT_SELECT);
+}
+
+// deposit_required comes from database/migrations/2026-10-17_paymongo_deposits.sql; these reads run
+// only while PAYMENTS_ENABLED is on (services/paymentsService.js), so nothing selects it before the migration.
+function findForDeposit(appointmentId) {
+  return supabase
+    .from('appointments')
+    .select('id, user_id, status, appointment_date, appointment_time, estimated_duration_minutes, deposit_required')
     .eq('id', appointmentId)
-    .select(APPOINTMENT_SELECT);
+    .maybeSingle();
+}
+
+function listDepositFlagsByIds(appointmentIds) {
+  return supabase
+    .from('appointments')
+    .select('id, deposit_required')
+    .in('id', appointmentIds);
+}
+
+function listDepositRequiredIds() {
+  return supabase
+    .from('appointments')
+    .select('id')
+    .eq('deposit_required', true);
 }
 
 function listServiceTypes() {
@@ -136,6 +167,9 @@ module.exports = {
   findStatusById,
   findForMedicalRecord,
   updateStatus,
+  findForDeposit,
+  listDepositFlagsByIds,
+  listDepositRequiredIds,
   listServiceTypes,
   listAppointmentDatesBetween,
   listUsersByAppointmentIds

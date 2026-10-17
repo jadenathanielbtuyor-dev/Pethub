@@ -3,10 +3,11 @@ const petsRepository = require('../repositories/petsRepository');
 const appointmentsRepository = require('../repositories/appointmentsRepository');
 const { isUserVerified, isAdminVerified } = require('../utils/accountVerification');
 const { logAdminActivity } = require('../utils/activityLogger');
+const paymentsService = require('./paymentsService');
 const {
   hasValue
 } = require('../validators/commonValidator');
-const { INVALID_APPOINTMENT_DATE_MESSAGE } = require('../constants/appointments');
+const { INVALID_APPOINTMENT_DATE_MESSAGE, APPOINTMENT_STATUS_CHANGED_MESSAGE } = require('../constants/appointments');
 const {
   SCHEDULE_CONFLICT_MESSAGE,
   OCCUPIED_APPOINTMENT_STATUSES,
@@ -191,7 +192,7 @@ const createAppointment = async (req) => {
       } };
     }
 
-    const { data, error } = await appointmentsRepository.createAppointment({
+    const appointmentRecord = {
       user_id: normalizedUserId,
       pet_id: String(pet.id),
       pet_name: petName,
@@ -200,14 +201,30 @@ const createAppointment = async (req) => {
       appointment_date: normalizedAppointmentDate,
       appointment_time: normalizedAppointmentTime,
       status: 'Pending'
-    });
+    };
+
+    // While deposits are on, new bookings are marked deposit_required; older appointments stay exempt
+    const depositFields = paymentsService.getNewAppointmentDepositFields();
+    let depositRequired = Object.keys(depositFields).length > 0;
+    let { data, error } = await appointmentsRepository.createAppointment({ ...appointmentRecord, ...depositFields });
+
+    if (error && depositRequired && paymentsService.isMissingColumnError(error)) {
+      // PAYMENTS_ENABLED is on but the deposit migration has not been applied yet: keep booking working without a deposit
+      paymentsService.reportMissingSchema('appointments.deposit_required', error);
+      depositRequired = false;
+      ({ data, error } = await appointmentsRepository.createAppointment(appointmentRecord));
+    }
 
     if (error) {
       console.error('Error creating appointment:', error);
       return { statusCode: 500, body: { error: 'Failed to create appointment' } };
     }
 
-    return { statusCode: 201, body: { success: true, appointment: data[0] } };
+    return { statusCode: 201, body: {
+      success: true,
+      appointment: data[0],
+      ...(depositRequired ? { deposit: paymentsService.getNewAppointmentDepositNotice() } : {})
+    } };
   } catch (error) {
     console.error('Create appointment error:', error);
     return { statusCode: 500, body: { error: 'Server error' } };
@@ -237,7 +254,8 @@ const getUserAppointments = async (req) => {
     }
 
     const appointmentsWithHandlers = await attachHandledByNames(appointments || []);
-    return { statusCode: 200, body: { success: true, appointments: appointmentsWithHandlers } };
+    const appointmentsWithDeposits = await paymentsService.attachDepositSummaries(appointmentsWithHandlers, { audience: 'user' });
+    return { statusCode: 200, body: { success: true, appointments: appointmentsWithDeposits } };
   } catch (error) {
     console.error('Get user appointments error:', error);
     return { statusCode: 500, body: { error: 'Server error' } };
@@ -324,6 +342,10 @@ const updateStatus = async (req) => {
     }
 
     if (normalizedStatus === 'Approved') {
+      // Same deposit check as PUT /admin/dashboard/appointment-status, so this legacy route cannot bypass it
+      const depositCheck = await paymentsService.checkDepositForApproval(existingAppointment);
+      if (!depositCheck.allowed) return depositCheck.result;
+
       const conflict = await getScheduleConflict(
         existingAppointment.appointment_date,
         existingAppointment.appointment_time,
@@ -332,14 +354,14 @@ const updateStatus = async (req) => {
       );
 
       if (conflict.hasConflict) {
-        return { statusCode: 409, body: {
+        return { statusCode: 409, body: paymentsService.addRefundRequiredToConflict({
           error: conflict.error || SCHEDULE_CONFLICT_MESSAGE,
           suggested_time: conflict.suggested_time || null
-        } };
+        }, depositCheck) };
       }
     }
 
-    const { data, error } = await appointmentsRepository.updateStatus(normalizedAppointmentId, normalizedStatus, normalizedAdminId);
+    const { data, error } = await appointmentsRepository.updateStatus(normalizedAppointmentId, normalizedStatus, normalizedAdminId, currentStatus);
 
     if (error) {
       console.error('Error updating appointment:', error);
@@ -347,12 +369,21 @@ const updateStatus = async (req) => {
     }
 
     if (!data || data.length === 0) {
-      return { statusCode: 404, body: { error: 'Appointment not found' } };
+      // The update only applies while the status is still currentStatus; tell apart "changed meanwhile" and "gone"
+      const { data: latest } = await appointmentsRepository.findStatusById(normalizedAppointmentId);
+      return latest
+        ? { statusCode: 409, body: { error: APPOINTMENT_STATUS_CHANGED_MESSAGE } }
+        : { statusCode: 404, body: { error: 'Appointment not found' } };
     }
 
     await logAdminActivity(normalizedAdminId, 'appointments', normalizedAppointmentId, `Updated appointment status to ${normalizedStatus}`);
 
-    return { statusCode: 200, body: { success: true, message: 'Status updated', appointment: data[0] } };
+    // Cancelling closes any open deposit checkout and reports a paid deposit that now needs a refund
+    const depositNotice = normalizedStatus === 'Cancelled'
+      ? await paymentsService.handleAppointmentCancelled(existingAppointment)
+      : {};
+
+    return { statusCode: 200, body: { success: true, message: 'Status updated', appointment: data[0], ...depositNotice } };
   } catch (error) {
     console.error('Update status error:', error);
     return { statusCode: 500, body: { error: 'Server error' } };

@@ -4,7 +4,8 @@ const API_PREFIXES = Object.freeze([
   '/appointments',
   '/ai',
   '/admin',
-  '/contact'
+  '/contact',
+  '/payments'
 ]);
 
 module.exports = {
