@@ -45,6 +45,25 @@ describe('verifyWebhookSignature', () => {
     assert.equal(paymongo.verifyWebhookSignature({ rawBody, signatureHeader: header, webhookSecret: '' }), false);
     assert.equal(paymongo.verifyWebhookSignature({ rawBody: JSON.parse(rawText), signatureHeader: header, webhookSecret: WEBHOOK_SECRET }), false);
   });
+
+  it('names why a signature failed with a fixed code, never the header, body or secret', () => {
+    const good = sign(rawText);
+    const check = (fields) => paymongo.checkWebhookSignature({ rawBody, signatureHeader: `t=1700000000,te=${good},li=`, webhookSecret: WEBHOOK_SECRET, ...fields });
+    const cases = [
+      [{}, true, ''],
+      [{ webhookSecret: '' }, false, 'missing_secret'],
+      [{ rawBody: JSON.parse(rawText) }, false, 'body_not_raw'],
+      [{ rawBody: Buffer.alloc(0) }, false, 'empty_body'],
+      [{ signatureHeader: undefined }, false, 'missing_header'],
+      [{ signatureHeader: 'not-a-signature' }, false, 'malformed_header'],
+      [{ signatureHeader: `t=1700000000,te=,li=${good}` }, false, 'no_test_signature'],
+      [{ signatureHeader: `t=1700000000,te=${sign(rawText, { secret: 'whsk_other' })},li=` }, false, 'signature_mismatch'],
+      [{ rawBody: Buffer.from(rawText.replace('evt_1', 'evt_2')) }, false, 'signature_mismatch']
+    ];
+    for (const [fields, valid, reason] of cases) {
+      assert.deepEqual(check(fields), { valid, reason });
+    }
+  });
 });
 
 describe('keys and ids', () => {
@@ -141,24 +160,6 @@ describe('createPayMongoClient requests', () => {
     assert.equal(called, false);
   });
 
-  it('reads the payment method capabilities array with a GET, keeping only method identifiers', async () => {
-    const calls = [];
-    const client = paymongo.createPayMongoClient({
-      secretKey: TEST_KEY,
-      fetchImpl: async (url, init) => {
-        calls.push({ url, init });
-        return jsonResponse(200, ['qrph', 'card', 'qrph', 42, 'Bad Value', null]);
-      }
-    });
-
-    assert.deepEqual(await client.listPaymentMethodCapabilities(), ['qrph', 'card']);
-    assert.equal(calls[0].url, 'https://api.paymongo.com/v1/merchants/capabilities/payment_methods');
-    assert.equal(calls[0].init.method, 'GET');
-    assert.equal(calls[0].init.body, undefined);
-
-    const wrongShape = paymongo.createPayMongoClient({ secretKey: TEST_KEY, fetchImpl: async () => jsonResponse(200, { data: [] }) });
-    await assert.rejects(wrongShape.listPaymentMethodCapabilities(), { code: 'invalid_response' });
-  });
 });
 
 describe('event and resource parsing', () => {

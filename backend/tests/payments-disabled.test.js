@@ -83,6 +83,15 @@ describe('payments switched off (default)', () => {
     assert.equal(t.paymongo.requests.length, 0);
   });
 
+  it('the payments.status line says deposits are off, which is why the booking page shows "Online payment unavailable"', () => {
+    t.paymentsService.logStartupStatus();
+    const line = t.logs.filter(entry => entry.includes('payments.status')).pop() || '';
+    assert.match(line, /deposits: 'off'/);
+    assert.match(line, /payments_enabled_setting: 'unset'/);
+    assert.match(line, /checkout_available: false/);
+    assert.match(line, /problems: \[\]/);
+  });
+
   it('does not start the expiry sweep timer twice', () => {
     assert.equal(t.paymentsService.startExpirySweep(), true);
     assert.equal(t.paymentsService.startExpirySweep(), false);

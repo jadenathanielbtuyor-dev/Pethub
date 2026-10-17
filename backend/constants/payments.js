@@ -15,12 +15,12 @@ const PAYMENT_STATUSES = Object.freeze({
   REFUNDED: 'Refunded'
 });
 
-// Methods PetHub offers, in this order. Each checkout only requests the ones PayMongo reports as configured on the
-// account (GET /v1/merchants/capabilities/payment_methods), so a method that is not activated yet is left out.
-const CHECKOUT_PAYMENT_METHOD_TYPES = Object.freeze(['gcash', 'qrph', 'card']);
-const PAYMENT_METHODS_CACHE_MS = 10 * 60 * 1000;
-// After a failed capabilities lookup, the fallback list is reused for this long before PayMongo is asked again
-const PAYMENT_METHODS_RETRY_MS = 60 * 1000;
+// Methods every checkout offers (this version runs PayMongo in test mode only). Both are simulated in test mode: test
+// cards (e.g. 4343 4343 4343 4345, any future expiry and CVC) and GCash's Authorize/Fail test page. QR Ph is left out on
+// purpose: PayMongo's test-mode QR Ph codes are real, and scanning one with a banking app would move real money.
+// The account's capabilities endpoint lists only "qrph", but a sandbox check on 2026-10-18 confirmed that test-mode
+// checkout sessions accept and show card and GCash, so that list is not used to filter these.
+const CHECKOUT_PAYMENT_METHOD_TYPES = Object.freeze(['card', 'gcash']);
 const CHECKOUT_LINE_ITEM_NAME = 'Appointment deposit';
 const CHECKOUT_DESCRIPTION = 'PetHub appointment deposit';
 const CHECKOUT_RETURN_PATH = '/pages/user/appointments.html';
@@ -65,8 +65,6 @@ module.exports = {
   CHECKOUT_WINDOW_MINUTES,
   PAYMENT_STATUSES,
   CHECKOUT_PAYMENT_METHOD_TYPES,
-  PAYMENT_METHODS_CACHE_MS,
-  PAYMENT_METHODS_RETRY_MS,
   CHECKOUT_LINE_ITEM_NAME,
   CHECKOUT_DESCRIPTION,
   CHECKOUT_RETURN_PATH,

@@ -63,6 +63,62 @@ describe('live key refused', () => {
   });
 });
 
+describe('webhooks and startup status without a usable test key', () => {
+  it('a paid event for a PetHub payment cannot be confirmed with PayMongo, so it is retried later and nothing is recorded', async () => {
+    const user = t.createUser();
+    const appointment = t.createAppointment(user, { daysAhead: 36 });
+    const row = t.db.seed('payments', {
+      appointment_id: appointment.id,
+      user_id: user.id,
+      amount: 100,
+      payment_status: 'Pending',
+      provider_checkout_session_id: 'cs_fakeseededsession01',
+      created_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString()
+    });
+    const event = t.paymongo.event('checkout_session.payment.paid', {
+      id: 'cs_fakeseededsession01',
+      type: 'checkout_session',
+      attributes: {
+        status: 'active',
+        livemode: false,
+        reference_number: row.id,
+        metadata: { pethub_payment_id: row.id, pethub_appointment_id: appointment.id },
+        payments: [{ id: 'pay_fakeseeded0000001', type: 'payment', attributes: { amount: 10000, currency: 'PHP', status: 'paid', livemode: false } }]
+      }
+    });
+
+    const response = await t.sendWebhook(event);
+    assert.equal(response.status, 503);
+    assert.equal(row.payment_status, 'Pending');
+    assert.equal(t.paymongo.requests.length, 0, 'a live key is never used');
+    assert.ok(t.logs.some(line => line.includes('payments.webhook_unconfirmed') && line.includes("reason: 'provider_unavailable'")));
+  });
+
+  it('an event that matches no PetHub payment is still acknowledged, so PayMongo does not keep retrying it', async () => {
+    const sample = t.paymongo.event('checkout_session.payment.paid', {
+      id: 'cs_dashboardsample99',
+      type: 'checkout_session',
+      attributes: { status: 'active', livemode: false, metadata: null, payments: [] }
+    });
+    assert.equal((await t.sendWebhook(sample)).status, 200);
+    assert.ok(t.logs.some(line => line.includes('payments.webhook_unmatched') && line.includes("provider_session: 'not_checked'")));
+  });
+
+  it('the payments.status line says checkout is unavailable and why, without any key', () => {
+    t.paymentsService.logStartupStatus();
+    const line = t.logs.filter(entry => entry.includes('payments.status')).pop() || '';
+    assert.match(line, /deposits: 'on'/);
+    assert.match(line, /payments_enabled_setting: 'true'/);
+    assert.match(line, /checkout_available: false/);
+    assert.match(line, /'paymongo_live_key_refused'/);
+    assert.match(line, /frontend_url: 'https:\/\/pethub-frontend\.test'/);
+    assert.match(line, /supabase_project: /);
+    assert.ok(!line.includes(LIVE_KEY));
+    assert.ok(!line.includes(t.secrets.webhookSecret));
+  });
+});
+
 function bookFor(user, pet, daysAhead) {
   return t.api('POST', '/appointments/create', {
     token: user.token,

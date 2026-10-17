@@ -1,9 +1,9 @@
 // Opt-in checks against the real PayMongo TEST API. Skipped by default (npm test never calls PayMongo).
 // Nothing is paid: sessions are created, read and expired, so no money moves. Every session created here is expired
 // again before the test ends, even when an assertion fails. Never scan a test-mode QR Ph code with a banking app.
-//   PAYMONGO_SANDBOX_TESTS=1   payment method capabilities, then v1 create -> retrieve -> expire with the methods the
-//                              account has; also reports (does not require) Idempotency-Key replay, which PayMongo
-//                              does not document
+//   PAYMONGO_SANDBOX_TESTS=1   v1 create -> retrieve -> expire with the methods every PetHub checkout offers (card and
+//                              GCash, both simulated in test mode); also reports (does not require) Idempotency-Key
+//                              replay, which PayMongo does not document
 //   PAYMONGO_SANDBOX_TESTS=v2  also checks whether the v1 retrieve/expire endpoints accept a v2-created session
 // The key comes from PAYMONGO_SECRET_KEY (environment, or backend/.env when opted in) and must be sk_test_...
 // Only ids and status codes are printed; keys and checkout URLs never are.
@@ -25,7 +25,7 @@ function loadTestSecretKey() {
   return secretKey;
 }
 
-function sessionInput(reference, paymentMethodTypes = ['gcash', 'qrph', 'card']) {
+function sessionInput(reference, paymentMethodTypes = ['card', 'gcash']) {
   return {
     amountCentavos: 10000,
     currency: 'PHP',
@@ -40,7 +40,7 @@ function sessionInput(reference, paymentMethodTypes = ['gcash', 'qrph', 'card'])
   };
 }
 
-test('PayMongo sandbox: payment methods, then v1 checkout create, retrieve and expire', {
+test('PayMongo sandbox: v1 checkout create (card + GCash), retrieve and expire', {
   skip: runV1 ? false : 'set PAYMONGO_SANDBOX_TESTS=1 to run against the PayMongo test API'
 }, async () => {
   const paymongo = require('../utils/paymongoClient');
@@ -48,11 +48,9 @@ test('PayMongo sandbox: payment methods, then v1 checkout create, retrieve and e
   const client = paymongo.createPayMongoClient({ secretKey: loadTestSecretKey() });
   const reference = `pethub-sandbox-${Date.now()}`;
 
-  // Same choice as the app: PetHub's methods that the account has configured
-  const configured = await client.listPaymentMethodCapabilities();
-  const methods = CHECKOUT_PAYMENT_METHOD_TYPES.filter(type => configured.includes(type));
-  console.log(`sandbox: account payment methods [${configured.join(', ')}] -> checkout requests [${methods.join(', ')}]`);
-  assert.ok(methods.length > 0, 'none of PetHub\'s payment methods is configured on this PayMongo account');
+  // Same methods as the app; a test account whose capabilities list only "qrph" still accepts these in test mode
+  const methods = [...CHECKOUT_PAYMENT_METHOD_TYPES];
+  console.log(`sandbox: checkout requests [${methods.join(', ')}]`);
 
   const sessionsToClose = new Set();
   try {

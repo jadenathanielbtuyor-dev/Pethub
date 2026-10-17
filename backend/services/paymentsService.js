@@ -1,8 +1,9 @@
 // ==================== PAYMENTS SERVICE ====================
 // Appointment deposits through PayMongo Checkout (test mode only).
 // - The deposit amount is a server constant; the browser only names the appointment.
-// - A payment is marked Paid only from a signature-verified webhook or a server-side PayMongo lookup,
-//   never from the checkout redirect.
+// - A payment is marked Paid only after PayMongo's API confirms it (a server-side lookup of the checkout session),
+//   never from the checkout redirect or from a webhook's contents alone: a signature-verified webhook only names the
+//   checkout to look up, because PayMongo Dashboard test events are signed too and their values can be edited.
 // - Payment state is derived from the payments table; appointments.payment_status only mirrors it (Paid / Refunded).
 // - Paying never approves an appointment; an admin still approves it, and only admin approval reserves the slot.
 // - Emails (deposit confirmation, admin decision) go out after the state change and never change payment or appointment state.
@@ -28,8 +29,6 @@ const {
   CHECKOUT_WINDOW_MINUTES,
   PAYMENT_STATUSES,
   CHECKOUT_PAYMENT_METHOD_TYPES,
-  PAYMENT_METHODS_CACHE_MS,
-  PAYMENT_METHODS_RETRY_MS,
   CHECKOUT_LINE_ITEM_NAME,
   CHECKOUT_DESCRIPTION,
   CHECKOUT_RETURN_PATH,
@@ -112,6 +111,27 @@ if (startupProblems.includes('paymongo_live_key_refused')) {
 }
 if (isDepositPolicyEnabled() && startupProblems.length > 0) {
   logger.warn('payments.config_incomplete', { problems: startupProblems });
+}
+
+/**
+ * One line at server start with the effective deposit settings, so the server log (e.g. Railway's deploy log) shows
+ * whether booking can reach PayMongo and why not. Setting names, problem codes and public ids only, never values:
+ * - deposits / payments_enabled_setting: PAYMENTS_ENABLED as read ('true' | 'false' | 'unset' | 'unrecognized')
+ * - checkout_available: false means the booking page shows "Online payment unavailable"
+ * - supabase_project: the project id from SUPABASE_URL, to compare with the project that holds PetHub's data
+ */
+function logStartupStatus() {
+  const frontendUrl = env.payments.frontendUrl;
+  logger.info('payments.status', {
+    deposits: isDepositPolicyEnabled() ? 'on' : 'off',
+    payments_enabled_setting: env.payments.enabledSetting,
+    checkout_available: isCheckoutAvailable(),
+    problems: getConfigurationProblems(),
+    payment_methods: [...CHECKOUT_PAYMENT_METHOD_TYPES],
+    // Return links fall back to the request's allowed origin; emails only link back when this is set
+    frontend_url: frontendUrl ? toReturnOrigin(frontendUrl) || 'invalid' : 'unset',
+    supabase_project: getSupabaseProjectRef()
+  });
 }
 
 // ==================== HELPERS ====================
@@ -833,38 +853,6 @@ function shouldAskProvider(paymentRowId, now = Date.now()) {
   return true;
 }
 
-// ==================== PAYMENT METHODS ====================
-
-let paymentMethodsCache = { methods: null, expiresAt: 0 };
-
-/**
- * The methods a new checkout requests: PetHub's list, limited to the ones PayMongo reports as configured on the
- * account. An empty list means none of them can be used. If PayMongo cannot be asked, the last known list is used
- * (or PetHub's full list, which PayMongo then filters), so a failed lookup alone never blocks checkout.
- */
-async function getCheckoutPaymentMethodTypes(client, now = Date.now()) {
-  if (paymentMethodsCache.methods && now < paymentMethodsCache.expiresAt) return paymentMethodsCache.methods;
-
-  try {
-    const configured = await client.listPaymentMethodCapabilities();
-    const methods = CHECKOUT_PAYMENT_METHOD_TYPES.filter(type => configured.includes(type));
-    paymentMethodsCache = { methods, expiresAt: now + PAYMENT_METHODS_CACHE_MS };
-    if (methods.length === 0) {
-      logger.error('payments.no_supported_payment_methods', { configured: configured.slice(0, 20) });
-    }
-    return methods;
-  } catch (error) {
-    const methods = paymentMethodsCache.methods || [...CHECKOUT_PAYMENT_METHOD_TYPES];
-    paymentMethodsCache = { methods, expiresAt: now + PAYMENT_METHODS_RETRY_MS };
-    logger.warn('payments.payment_methods_check_failed', describeError(error));
-    return methods;
-  }
-}
-
-function clearPaymentMethodsCache() {
-  paymentMethodsCache = { methods: null, expiresAt: 0 };
-}
-
 // ==================== CHECKOUT ====================
 
 function toReturnOrigin(value, { fromRequest = false } = {}) {
@@ -972,9 +960,6 @@ async function startCheckout(appointment, userId, originHeader) {
     return serviceUnavailable(PAYMENTS_UNAVAILABLE_MESSAGE);
   }
 
-  const paymentMethodTypes = await getCheckoutPaymentMethodTypes(getProviderClient());
-  if (paymentMethodTypes.length === 0) return serviceUnavailable(PAYMENTS_UNAVAILABLE_MESSAGE);
-
   const createdAt = new Date();
   const paymentRow = {
     id: crypto.randomUUID(),
@@ -1004,7 +989,7 @@ async function startCheckout(appointment, userId, originHeader) {
       currency: DEPOSIT_CURRENCY,
       lineItemName: CHECKOUT_LINE_ITEM_NAME,
       description: CHECKOUT_DESCRIPTION,
-      paymentMethodTypes,
+      paymentMethodTypes: [...CHECKOUT_PAYMENT_METHOD_TYPES],
       referenceNumber: paymentRow.id,
       metadata: {
         [CHECKOUT_METADATA_PAYMENT_ID]: paymentRow.id,
@@ -1315,18 +1300,48 @@ async function findPaymentForSession(session) {
   return data || null;
 }
 
-// Why a paid checkout matched no payment row. PayMongo's own test events and checkouts made outside PetHub carry no
-// PetHub metadata; PetHub metadata without a row here points at another deployment or database (compare
-// supabase_project). Logs only provider and PetHub ids, never customer data.
-function describeUnmatchedSession(session) {
+// Asks PayMongo about a checkout session named by an unmatched event, only to explain it in the log.
+// Returns 'found' | 'not_found' | 'not_checked' (no test key here) | 'lookup_failed', and whether the session PayMongo
+// holds carries PetHub metadata. Never throws: an unmatched event is acknowledged either way.
+async function lookUpSessionForDiagnostics(sessionId) {
+  const client = getProviderClient();
+  if (!client) return { state: 'not_checked', hasPetHubMetadata: false };
+  try {
+    const session = await client.retrieveCheckoutSession(sessionId);
+    return {
+      state: 'found',
+      hasPetHubMetadata: Boolean(session.metadata[CHECKOUT_METADATA_PAYMENT_ID] || session.metadata[CHECKOUT_METADATA_APPOINTMENT_ID])
+    };
+  } catch (error) {
+    if (error instanceof paymongo.PayMongoError && error.status === 404) return { state: 'not_found', hasPetHubMetadata: false };
+    return { state: 'lookup_failed', hasPetHubMetadata: false };
+  }
+}
+
+// Why a paid checkout matched no payment row, from the event's references and PayMongo's own copy of the session:
+// - likely_source 'paymongo_dashboard_test_event': no PetHub metadata and PayMongo has no such session (Dashboard
+//   test events carry sample ids); 'edited_test_event': PetHub metadata, but PayMongo has no such session
+// - 'checkout_created_outside_pethub': the session exists at PayMongo without PetHub metadata (e.g. a Payment Link)
+// - 'another_pethub_database': PayMongo's session was made by PetHub, but this database has no row for it, so another
+//   deployment or Supabase project created it (compare supabase_project with that server's payments.status line)
+// Logs only provider and PetHub ids, never customer data.
+async function describeUnmatchedSession(session) {
   const referencedRowId = session.metadata[CHECKOUT_METADATA_PAYMENT_ID] || '';
   const hasPetHubMetadata = Boolean(referencedRowId || session.metadata[CHECKOUT_METADATA_APPOINTMENT_ID]);
   const validReference = PAYMENT_ROW_ID_PATTERN.test(referencedRowId);
 
   let reason = 'not_created_by_pethub';
   if (hasPetHubMetadata) reason = validReference ? 'payment_row_not_found' : 'invalid_pethub_reference';
+
+  const provider = await lookUpSessionForDiagnostics(session.id);
+  let likelySource = 'unknown';
+  if (provider.state === 'not_found') likelySource = hasPetHubMetadata ? 'edited_test_event' : 'paymongo_dashboard_test_event';
+  if (provider.state === 'found') likelySource = provider.hasPetHubMetadata ? 'another_pethub_database' : 'checkout_created_outside_pethub';
+
   return {
     reason,
+    likely_source: likelySource,
+    provider_session: provider.state,
     checkout_session_id: session.id.slice(0, 64),
     pethub_metadata: hasPetHubMetadata,
     ...(reason === 'payment_row_not_found' ? { referenced_row_id: referencedRowId } : {}),
@@ -1334,17 +1349,28 @@ function describeUnmatchedSession(session) {
   };
 }
 
+function firstPaidPaymentId(session) {
+  const payment = (session?.payments || []).find(item => item.status === 'paid');
+  return payment ? payment.id : '';
+}
+
+/**
+ * checkout_session.payment.paid: the event's references (session id, PetHub metadata) only locate the PetHub payment
+ * row. Whether it was paid, how much and how, is read from PayMongo's API before anything is recorded, because a
+ * correctly signed event is not proof of payment: PayMongo Dashboard test events are signed with the same secret and
+ * their values can be edited before sending.
+ */
 async function processCheckoutPaid(event, context) {
-  const session = paymongo.normalizeCheckoutSession(event.resource);
-  if (!session) {
+  const eventSession = paymongo.normalizeCheckoutSession(event.resource);
+  if (!eventSession) {
     logger.warn('payments.webhook_ignored', { ...context, reason: 'malformed_checkout_session' });
     return acknowledged();
   }
 
-  const row = await findPaymentForSession(session);
+  const row = await findPaymentForSession(eventSession);
   if (!row) {
     // Not a checkout created by this PetHub database: nothing is marked paid
-    logger.warn('payments.webhook_unmatched', { ...context, ...describeUnmatchedSession(session) });
+    logger.warn('payments.webhook_unmatched', { ...context, ...(await describeUnmatchedSession(eventSession)) });
     return acknowledged();
   }
 
@@ -1353,10 +1379,36 @@ async function processCheckoutPaid(event, context) {
     logger.info('payments.webhook_duplicate', rowContext);
     return acknowledged();
   }
+  // A repeated delivery of the payment already recorded changes nothing, so PayMongo is not asked again
+  if (row.payment_status === PAID && row.provider_payment_id && firstPaidPaymentId(eventSession) === row.provider_payment_id) {
+    logger.info('payments.webhook_duplicate', rowContext);
+    return acknowledged();
+  }
+
+  const client = getProviderClient();
+  if (!client) {
+    // Without a test secret key the payment cannot be confirmed here; PayMongo delivers the event again later
+    logger.error('payments.webhook_unconfirmed', { ...rowContext, reason: 'provider_unavailable', problems: getConfigurationProblems() });
+    return retryLater();
+  }
+
+  let session;
+  try {
+    session = await client.retrieveCheckoutSession(eventSession.id);
+  } catch (error) {
+    if (error instanceof paymongo.PayMongoError && error.status === 404) {
+      // The event names a session PayMongo does not have (e.g. an edited Dashboard test event)
+      logger.warn('payments.webhook_unconfirmed', { ...rowContext, reason: 'session_not_found_at_paymongo', checkout_session_id: eventSession.id.slice(0, 64) });
+      return acknowledged();
+    }
+    logger.warn('payments.webhook_unconfirmed', { ...rowContext, reason: 'provider_lookup_failed', ...describeError(error) });
+    return retryLater();
+  }
 
   const evaluation = evaluateSessionPayment(session, row);
   if (evaluation.state === 'unpaid') {
-    logger.warn('payments.webhook_ignored', { ...rowContext, reason: 'no_paid_payment' });
+    // The event said "paid", PayMongo says otherwise (e.g. an edited Dashboard test event): nothing is recorded
+    logger.warn('payments.webhook_unconfirmed', { ...rowContext, reason: 'not_paid_at_paymongo', checkout_session_id: session.id.slice(0, 64) });
     return acknowledged();
   }
   if (evaluation.state === 'mismatch') {
@@ -1455,14 +1507,23 @@ const handleWebhook = async (req) => {
     return retryLater();
   }
 
-  const rawBody = Buffer.isBuffer(req.body) ? req.body : null;
-  const signatureValid = Boolean(rawBody && rawBody.length > 0) && paymongo.verifyWebhookSignature({
+  // express.raw() leaves no Buffer when the request has no body
+  const isEmptyBody = req.body === undefined || req.body === null ||
+    (typeof req.body === 'object' && !Buffer.isBuffer(req.body) && Object.keys(req.body).length === 0);
+  const rawBody = Buffer.isBuffer(req.body) ? req.body : (isEmptyBody ? Buffer.alloc(0) : req.body);
+  const signature = paymongo.checkWebhookSignature({
     rawBody,
     signatureHeader: req.headers?.['paymongo-signature'],
     webhookSecret
   });
-  if (!signatureValid) {
-    logger.warn('payments.webhook_rejected', { reason: 'invalid_signature' });
+  if (!signature.valid) {
+    logger.warn('payments.webhook_rejected', {
+      reason: 'invalid_signature',
+      signature_check: signature.reason,
+      ...(signature.reason === 'signature_mismatch'
+        ? { hint: 'PAYMONGO_WEBHOOK_SECRET on this server is not the secret of the PayMongo webhook that sent this request, or the body was changed on the way' }
+        : {})
+    });
     return { statusCode: 400, body: { received: false } };
   }
 
@@ -1492,6 +1553,10 @@ const handleWebhook = async (req) => {
       case 'payment.refunded':
       case 'payment.refund.updated':
         return await processRefundEvent(event, context, 'payment');
+      case 'payment.paid':
+        // A checkout's payment also arrives as checkout_session.payment.paid, which names the checkout PetHub created
+        logger.info('payments.webhook_ignored', { ...context, reason: 'handled_by_checkout_session_event' });
+        return acknowledged();
       default:
         logger.info('payments.webhook_ignored', { ...context, reason: 'unhandled_type' });
         return acknowledged();
@@ -1594,5 +1659,5 @@ module.exports = {
   startExpirySweep,
   stopExpirySweep,
   waitForBackgroundTasks,
-  clearPaymentMethodsCache
+  logStartupStatus
 };

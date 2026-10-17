@@ -98,7 +98,7 @@ describe('POST /payments/checkout', () => {
     assert.equal(request.authorized, true);
     assert.equal(request.idempotencyKey, row.id);
     assert.deepEqual(attributes.line_items, [{ name: 'Appointment deposit', amount: 10000, currency: 'PHP', quantity: 1 }]);
-    assert.deepEqual(attributes.payment_method_types, ['gcash', 'qrph', 'card']);
+    assert.deepEqual(attributes.payment_method_types, ['card', 'gcash']);
     assert.equal(attributes.reference_number, row.id);
     assert.deepEqual(attributes.metadata, { pethub_payment_id: row.id, pethub_appointment_id: appointment.id });
     assert.equal(
@@ -361,7 +361,19 @@ describe('POST /payments/webhook: events that match no PetHub payment', () => {
     return t.logs.find(line => line.includes('payments.webhook_unmatched') && line.includes(sessionId)) || '';
   }
 
-  it('a sample event (no PetHub metadata, unknown session) changes nothing and is logged as not created by PetHub', async () => {
+  // A checkout session that exists at (fake) PayMongo but has no row in this database
+  function sessionOnlyAtPayMongo(metadata) {
+    t.paymongo.createSession({ data: { attributes: {
+      line_items: [{ name: 'Appointment deposit', amount: 10000, currency: 'PHP', quantity: 1 }],
+      metadata,
+      reference_number: metadata?.pethub_payment_id || null
+    } } });
+    const sessionId = [...t.paymongo.sessions.keys()].pop();
+    t.paymongo.pay(sessionId);
+    return sessionId;
+  }
+
+  it('a Dashboard test event (no PetHub metadata, a session PayMongo does not have) changes nothing and says so', async () => {
     // Earlier tests' receipt emails finish in the background and stamp their rows; wait so only this event could change rows
     await t.settleEmails();
     const before = JSON.stringify(t.db.table('payments'));
@@ -371,25 +383,53 @@ describe('POST /payments/webhook: events that match no PetHub payment', () => {
 
     const line = unmatchedLog('cs_dashboardsample01');
     assert.match(line, /reason: 'not_created_by_pethub'/);
+    assert.match(line, /likely_source: 'paymongo_dashboard_test_event'/);
+    assert.match(line, /provider_session: 'not_found'/);
     assert.match(line, /pethub_metadata: false/);
     assert.match(line, /event_type: 'checkout_session\.payment\.paid'/);
+    assert.match(line, /supabase_project: /);
   });
 
-  it('PetHub metadata for a payment row this database does not have (another deployment or database) is unmatched, not paid', async () => {
+  it('a paid checkout made outside PetHub (no PetHub metadata) is unmatched, not paid', async () => {
+    await t.settleEmails();
+    const before = JSON.stringify(t.db.table('payments'));
+    const sessionId = sessionOnlyAtPayMongo({});
+    const response = await t.sendWebhook(t.paymongo.checkoutPaidEvent(sessionId));
+    assert.equal(response.status, 200);
+    assert.equal(JSON.stringify(t.db.table('payments')), before);
+
+    const line = unmatchedLog(sessionId);
+    assert.match(line, /reason: 'not_created_by_pethub'/);
+    assert.match(line, /likely_source: 'checkout_created_outside_pethub'/);
+    assert.match(line, /provider_session: 'found'/);
+  });
+
+  it('a PetHub checkout whose payment row this database does not have (another deployment or database) is unmatched, not paid', async () => {
     await t.settleEmails();
     const before = JSON.stringify(t.db.table('payments'));
     const missingRowId = crypto.randomUUID();
-    const response = await t.sendWebhook(paidSessionEvent('cs_otherdatabase0001', {
-      pethub_payment_id: missingRowId,
+    const sessionId = sessionOnlyAtPayMongo({ pethub_payment_id: missingRowId, pethub_appointment_id: crypto.randomUUID() });
+    const response = await t.sendWebhook(t.paymongo.checkoutPaidEvent(sessionId));
+    assert.equal(response.status, 200);
+    assert.equal(JSON.stringify(t.db.table('payments')), before);
+
+    const line = unmatchedLog(sessionId);
+    assert.match(line, /reason: 'payment_row_not_found'/);
+    assert.match(line, /likely_source: 'another_pethub_database'/);
+    assert.match(line, /pethub_metadata: true/);
+    assert.match(line, new RegExp(`referenced_row_id: '${missingRowId}'`));
+  });
+
+  it('PetHub metadata on a session PayMongo does not have (an edited test event) is unmatched, not paid', async () => {
+    await t.settleEmails();
+    const before = JSON.stringify(t.db.table('payments'));
+    const response = await t.sendWebhook(paidSessionEvent('cs_editedsample0001', {
+      pethub_payment_id: crypto.randomUUID(),
       pethub_appointment_id: crypto.randomUUID()
     }));
     assert.equal(response.status, 200);
     assert.equal(JSON.stringify(t.db.table('payments')), before);
-
-    const line = unmatchedLog('cs_otherdatabase0001');
-    assert.match(line, /reason: 'payment_row_not_found'/);
-    assert.match(line, /pethub_metadata: true/);
-    assert.match(line, new RegExp(`referenced_row_id: '${missingRowId}'`));
+    assert.match(unmatchedLog('cs_editedsample0001'), /likely_source: 'edited_test_event'/);
   });
 
   it('a malformed PetHub reference is unmatched and never used in a query', async () => {
@@ -447,43 +487,122 @@ describe('POST /payments/webhook', () => {
       assert.equal(response.status, 400);
       assert.equal(row.payment_status, 'Pending');
     }
+
+    // Each refusal names its cause with a fixed code (a wrong secret and a changed body both read as a mismatch)
+    const rejected = t.logs.filter(line => line.includes('payments.webhook_rejected'));
+    for (const code of ['signature_mismatch', 'missing_header', 'malformed_header', 'no_test_signature']) {
+      assert.ok(rejected.some(line => line.includes(`signature_check: '${code}'`)), `logged ${code}`);
+    }
+    assert.ok(rejected.some(line => line.includes('PAYMONGO_WEBHOOK_SECRET on this server')));
+    assert.ok(rejected.every(line => !line.includes(t.secrets.webhookSecret)));
   });
 
-  it('does not record events whose amount, currency, mode, metadata or ids do not match', async () => {
+  // Each case sets up what PayMongo itself holds for the session: the webhook is checked against PayMongo's data
+  async function paidCheckoutWith(adjust) {
     const user = t.createUser();
     const appointment = t.createAppointment(user, { daysAhead: nextDay() });
     await checkout(user, appointment.id);
     const row = onlyRow(appointment.id);
-    t.paymongo.pay(row.provider_checkout_session_id);
+    const session = t.paymongo.sessions.get(row.provider_checkout_session_id);
+    adjust({ session, pay: options => t.paymongo.pay(session.id, options) });
+    return row;
+  }
 
-    const mutations = [
-      resource => { resource.attributes.payments[0].attributes.amount = 5000; },
-      resource => { resource.attributes.payments[0].attributes.currency = 'USD'; },
-      resource => { resource.attributes.payments[0].attributes.livemode = true; },
-      resource => { resource.attributes.metadata.pethub_payment_id = crypto.randomUUID(); },
-      resource => { resource.attributes.metadata.pethub_appointment_id = crypto.randomUUID(); },
-      resource => { resource.attributes.reference_number = 'someone-else'; },
-      resource => { resource.id = 'cs_fakeSomeOtherSession'; },
-      resource => { resource.attributes.payments[0].attributes.status = 'failed'; }
+  it('does not record a payment whose amount, currency, mode, metadata or ids at PayMongo do not match', async () => {
+    const cases = [
+      ({ pay }) => pay({ amount: 5000 }),
+      ({ pay }) => pay({ currency: 'USD' }),
+      ({ pay }) => { pay().attributes.livemode = true; },
+      ({ session, pay }) => { pay(); session.attributes.metadata = { ...session.attributes.metadata, pethub_payment_id: crypto.randomUUID() }; },
+      ({ session, pay }) => { pay(); session.attributes.metadata = { ...session.attributes.metadata, pethub_appointment_id: crypto.randomUUID() }; },
+      ({ session, pay }) => { pay(); session.attributes.reference_number = 'someone-else'; },
+      ({ pay }) => { pay().attributes.status = 'failed'; }
     ];
 
-    for (const mutate of mutations) {
-      const response = await t.sendWebhook(t.paymongo.checkoutPaidEvent(row.provider_checkout_session_id, { mutate }));
+    for (const adjust of cases) {
+      const row = await paidCheckoutWith(adjust);
+      const response = await t.sendWebhook(t.paymongo.checkoutPaidEvent(row.provider_checkout_session_id));
       assert.equal(response.status, 200);
       assert.equal(row.payment_status, 'Pending');
     }
 
-    const liveEvent = await t.sendWebhook(t.paymongo.checkoutPaidEvent(row.provider_checkout_session_id, { livemode: true }));
-    assert.equal(liveEvent.status, 200);
-    assert.equal(row.payment_status, 'Pending');
     const mismatchLogs = t.logs.filter(line => line.includes('payments.webhook_mismatch'));
     assert.ok(mismatchLogs.some(line => line.includes("reason: 'payment_details_mismatch'") && line.includes("'amount'")));
+    assert.ok(mismatchLogs.some(line => line.includes("reason: 'payment_details_mismatch'") && line.includes("'currency'")));
+    assert.ok(mismatchLogs.some(line => line.includes("reason: 'payment_details_mismatch'") && line.includes("'livemode'")));
+    assert.ok(mismatchLogs.some(line => line.includes("reason: 'inconsistent_reference'") && line.includes("'metadata_payment_id'")));
     assert.ok(mismatchLogs.some(line => line.includes("reason: 'inconsistent_reference'") && line.includes("'metadata_appointment_id'")));
     assert.ok(mismatchLogs.some(line => line.includes("reason: 'inconsistent_reference'") && line.includes("'reference_number'")));
+    assert.ok(t.logs.some(line => line.includes('payments.webhook_unconfirmed') && line.includes("reason: 'not_paid_at_paymongo'")));
+
+    // A live-mode event and an event naming a session PayMongo does not have are not recorded either
+    const row = await paidCheckoutWith(({ pay }) => pay());
+    assert.equal((await t.sendWebhook(t.paymongo.checkoutPaidEvent(row.provider_checkout_session_id, { livemode: true }))).status, 200);
+    assert.equal(row.payment_status, 'Pending');
+    const otherSession = t.paymongo.checkoutPaidEvent(row.provider_checkout_session_id, { mutate: resource => { resource.id = 'cs_fakeSomeOtherSession'; } });
+    assert.equal((await t.sendWebhook(otherSession)).status, 200);
+    assert.equal(row.payment_status, 'Pending');
+    assert.ok(t.logs.some(line => line.includes('payments.webhook_unconfirmed') && line.includes("reason: 'session_not_found_at_paymongo'")));
 
     const genuine = await t.sendWebhook(t.paymongo.checkoutPaidEvent(row.provider_checkout_session_id));
     assert.equal(genuine.status, 200);
     assert.equal(row.payment_status, 'Paid');
+  });
+
+  it('an event edited to say "paid" (as a Dashboard test event can be) records nothing while PayMongo has no payment', async () => {
+    const row = await paidCheckoutWith(() => {});
+    const edited = t.paymongo.checkoutPaidEvent(row.provider_checkout_session_id, {
+      mutate: resource => {
+        resource.attributes.payments = [{ id: 'pay_editedsample0001', type: 'payment', attributes: { amount: 10000, currency: 'PHP', status: 'paid', livemode: false, source: { type: 'card' } } }];
+      }
+    });
+
+    const response = await t.sendWebhook(edited);
+    assert.equal(response.status, 200);
+    assert.equal(row.payment_status, 'Pending');
+    assert.equal(row.provider_payment_id ?? null, null);
+    assert.ok(t.logs.some(line => line.includes('payments.webhook_unconfirmed') && line.includes(String(row.id)) && line.includes("reason: 'not_paid_at_paymongo'")));
+  });
+
+  it('records what PayMongo reports, not what the event says', async () => {
+    let payment;
+    const row = await paidCheckoutWith(({ pay }) => { payment = pay({ methodType: 'card' }); });
+    const misleading = t.paymongo.checkoutPaidEvent(row.provider_checkout_session_id, {
+      mutate: resource => {
+        resource.attributes.payments[0].id = 'pay_notthepaymentid01';
+        resource.attributes.payments[0].attributes.amount = 1;
+        resource.attributes.payments[0].attributes.source = { type: 'gcash' };
+      }
+    });
+
+    assert.equal((await t.sendWebhook(misleading)).status, 200);
+    assert.equal(row.payment_status, 'Paid');
+    assert.equal(row.provider_payment_id, payment.id);
+    assert.equal(row.payment_method, 'card');
+    assert.equal(Number(row.amount), 100);
+  });
+
+  it('asks PayMongo before recording; if PayMongo cannot be reached the event is retried, then recorded once', async () => {
+    const row = await paidCheckoutWith(({ pay }) => pay());
+    const event = t.paymongo.checkoutPaidEvent(row.provider_checkout_session_id);
+    const sessionPath = new RegExp(`^/v1/checkout_sessions/${row.provider_checkout_session_id}$`);
+
+    t.paymongo.failNext({ method: 'GET', path: sessionPath, network: true });
+    const failed = await t.sendWebhook(event);
+    assert.equal(failed.status, 503);
+    assert.equal(row.payment_status, 'Pending');
+    assert.ok(t.logs.some(line => line.includes('payments.webhook_unconfirmed') && line.includes("reason: 'provider_lookup_failed'")));
+
+    const lookupsBefore = t.paymongo.count('GET', sessionPath);
+    assert.equal((await t.sendWebhook(event)).status, 200);
+    assert.equal(row.payment_status, 'Paid');
+    assert.equal(t.paymongo.count('GET', sessionPath) - lookupsBefore, 1, 'confirmed with one lookup');
+
+    // A repeated delivery of the recorded payment changes nothing and does not ask PayMongo again
+    const paidAt = row.paid_at;
+    assert.equal((await t.sendWebhook(event)).status, 200);
+    assert.equal(t.paymongo.count('GET', sessionPath) - lookupsBefore, 1);
+    assert.equal(row.paid_at, paidAt);
   });
 
   it('records a payment that arrives after the checkout was closed locally', async () => {
@@ -503,6 +622,11 @@ describe('POST /payments/webhook', () => {
   it('acknowledges unrelated and unknown events without changes', async () => {
     const otherType = t.paymongo.event('payment.failed', { id: 'pay_fakeUnrelated', type: 'payment', attributes: { status: 'failed' } });
     assert.equal((await t.sendWebhook(otherType)).status, 200);
+
+    // payment.paid (also subscribed on PetHub's webhook) is covered by checkout_session.payment.paid
+    const paymentPaid = t.paymongo.event('payment.paid', { id: 'pay_fakePaymentPaid', type: 'payment', attributes: { status: 'paid', amount: 10000, currency: 'PHP' } });
+    assert.equal((await t.sendWebhook(paymentPaid)).status, 200);
+    assert.ok(t.logs.some(line => line.includes('payments.webhook_ignored') && line.includes("reason: 'handled_by_checkout_session_event'")));
 
     const unknownSession = t.paymongo.event('checkout_session.payment.paid', {
       id: 'cs_fakeNotPetHub',
@@ -966,6 +1090,19 @@ describe('Expiry sweep', () => {
     assert.equal(onlyRow(overdue.id).payment_status, 'Expired');
     assert.equal(onlyRow(fresh.id).payment_status, 'Pending');
     assert.equal(onlyRow(unlinked.id).payment_status, 'Failed');
+  });
+});
+
+describe('Startup status', () => {
+  it('logs that deposits are on and checkout can reach PayMongo, with the methods every checkout offers', () => {
+    t.paymentsService.logStartupStatus();
+    const line = t.logs.filter(entry => entry.includes('payments.status')).pop() || '';
+    assert.match(line, /deposits: 'on'/);
+    assert.match(line, /payments_enabled_setting: 'true'/);
+    assert.match(line, /checkout_available: true/);
+    assert.match(line, /problems: \[\]/);
+    assert.match(line, /payment_methods: \[ 'card', 'gcash' \]/);
+    assert.match(line, /supabase_project: 'not_a_supabase_co_host'/);
   });
 });
 

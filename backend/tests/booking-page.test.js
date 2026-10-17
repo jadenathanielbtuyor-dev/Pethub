@@ -40,14 +40,14 @@ describe('Booking page: ₱100 deposit section', () => {
     }
   });
 
-  it('has "Continue to Secure Payment" as the only submit action, disabled until the page confirms payment is available', () => {
+  it('has "Continue to Secure Payment — ₱100.00" as the only submit action, disabled until the page confirms payment is available', () => {
     const form = getForm();
     const buttons = [...form.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)];
     assert.equal(buttons.length, 1, 'one button in the booking form');
     const [, attributes, label] = buttons[0];
     assert.match(attributes, /type="submit"/);
     assert.match(attributes, /\bdisabled\b/);
-    assert.equal(textOf(label), 'Continue to Secure Payment');
+    assert.equal(textOf(label), 'Continue to Secure Payment — ₱100.00');
     assert.doesNotMatch(textOf(form), /\bBook\b(?! Appointment)/, 'no plain "Book" action left in the form');
   });
 

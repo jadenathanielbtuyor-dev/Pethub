@@ -221,7 +221,7 @@ describe('Booking page in a browser (mocked API)', { skip }, () => {
       assert.equal(state.amount, '₱100.00 PHP');
       assert.ok(state.panelText.includes(DEPOSIT_SENTENCE));
       assert.equal(state.status, 'Checking payment availability...');
-      assert.equal(state.button, 'Continue to Secure Payment');
+      assert.equal(state.button, 'Continue to Secure Payment — ₱100.00');
       assert.equal(state.buttonDisabled, true);
       assert.deepEqual(tab.errors, []);
     } finally { await tab.close(); }
@@ -241,9 +241,11 @@ describe('Booking page in a browser (mocked API)', { skip }, () => {
       assert.equal(state.pet, 'Mochi');
       assert.equal(state.service, 'Checkup');
       assert.match(state.dateTime, /10:00 AM/);
+      // The end time follows the service's estimated duration (Checkup: 45 minutes)
+      assert.match(state.dateTime, /10:45 AM/);
       assert.match(state.duration, /45 min/);
       assert.equal(state.status, 'Not paid yet');
-      assert.equal(state.button, 'Continue to Secure Payment');
+      assert.equal(state.button, 'Continue to Secure Payment — ₱100.00');
       assert.equal(state.buttonDisabled, false);
 
       await tab.evaluate(fillForm({ serviceType: 'Grooming' }));

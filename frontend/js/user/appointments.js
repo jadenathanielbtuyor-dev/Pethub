@@ -31,7 +31,7 @@ const DEPOSIT_NOTICE_CLASSES = {
 const DEPOSIT_APPOINTMENT_ID_PATTERN = /^[A-Za-z0-9-]{1,64}$/;
 // Same orange as "Continue to Secure Payment" (deposit-pay-button in assets/css: white text keeps 5:1 contrast)
 const DEPOSIT_SUMMARY_PRIMARY_BUTTON_CLASS = "deposit-pay-button w-full py-3 font-semibold rounded-lg transition-all duration-200";
-const SECURE_PAYMENT_BUTTON_HTML = '<i class="ri-lock-line mr-2" aria-hidden="true"></i>Continue to Secure Payment';
+const SECURE_PAYMENT_BUTTON_HTML = '<i class="ri-lock-line mr-2" aria-hidden="true"></i>Continue to Secure Payment — ₱100.00';
 const PAYMENT_UNAVAILABLE_BUTTON_HTML = '<i class="ri-lock-line mr-2" aria-hidden="true"></i>Online payment unavailable';
 const BOOKING_DETAILS_HINTS = {
   incomplete: "Choose a pet, service, date and time to continue.",
@@ -1276,7 +1276,7 @@ function setupDepositPageRestore() {
     appointmentSubmitInProgress = false;
     bookingSummaryBusyStatus = "";
     const form = document.getElementById("appointmentForm");
-    setFormSubmitting(form, false, "Saving your booking...", "Continue to Secure Payment");
+    setFormSubmitting(form, false, "Saving your booking...", "Continue to Secure Payment — ₱100.00");
     updateSubmitButtonLabel();
     updateAppointmentPetBookingState();
 
@@ -1556,7 +1556,7 @@ function getDepositResultView(appointment, deposit, { outcome = "", errorMessage
       message: "We have not received PayMongo's confirmation yet, so the booking is not complete yet. This can take a minute; check again shortly. Do not pay twice.",
       actions: [
         { action: "check", label: "Check payment status", primary: true },
-        ...(deposit.can_pay ? [{ action: "pay", label: "Continue to Secure Payment" }] : []),
+        ...(deposit.can_pay ? [{ action: "pay", label: "Continue to Secure Payment — ₱100.00" }] : []),
         newBooking,
       ],
     };
@@ -1710,7 +1710,7 @@ async function bookAppointment(details) {
   if (!form || appointmentSubmitInProgress) return;
 
   appointmentSubmitInProgress = true;
-  setFormSubmitting(form, true, "Saving your booking...", "Continue to Secure Payment");
+  setFormSubmitting(form, true, "Saving your booking...", "Continue to Secure Payment — ₱100.00");
   setBookingSummaryBusyStatus("Saving your booking...");
   let redirecting = false;
 
@@ -1819,7 +1819,7 @@ async function bookAppointment(details) {
     if (!redirecting) {
       appointmentSubmitInProgress = false;
       bookingSummaryBusyStatus = "";
-      setFormSubmitting(form, false, "Saving your booking...", "Continue to Secure Payment");
+      setFormSubmitting(form, false, "Saving your booking...", "Continue to Secure Payment — ₱100.00");
       updateSubmitButtonLabel();
       updateAppointmentPetBookingState();
     }

@@ -111,6 +111,8 @@ app.use(errorHandler);
 if (process.env.PETHUB_DISABLE_LISTEN !== 'true') {
   app.listen(PORT, () => {
     logger.info('server.started', { port: PORT });
+    // payments.status: whether deposits are on and checkout can reach PayMongo (setting names and codes only)
+    paymentsService.logStartupStatus();
     // Closes deposit checkouts whose 30-minute window has passed (only runs with PayMongo test keys configured)
     paymentsService.startExpirySweep();
   });

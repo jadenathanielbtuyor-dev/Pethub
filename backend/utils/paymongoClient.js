@@ -10,8 +10,6 @@ const { PAYMONGO_REQUEST_TIMEOUT_MS } = require('../constants/payments');
 const PAYMONGO_API_BASE_URL = 'https://api.paymongo.com';
 const CHECKOUT_SESSION_CREATE_PATH = '/v1/checkout_sessions';
 const CHECKOUT_SESSIONS_PATH = '/v1/checkout_sessions';
-// Documented read-only endpoint; answers with a plain JSON array of method identifiers, e.g. ["qrph"]
-const PAYMENT_METHOD_CAPABILITIES_PATH = '/v1/merchants/capabilities/payment_methods';
 
 const CHECKOUT_SESSION_ID_PATTERN = /^cs_[A-Za-z0-9]+$/;
 const PAYMENT_ID_PATTERN = /^pay_[A-Za-z0-9]+$/;
@@ -145,15 +143,29 @@ function computeWebhookSignature(webhookSecret, timestamp, rawBody) {
 // Checks the Paymongo-Signature header (t=...,te=...,li=...) against the exact raw request bytes:
 // HMAC-SHA256 of "<t>.<raw body>" keyed with the webhook's secret. PetHub runs in test mode only,
 // so the test-mode signature (te) is compared; live-mode events never verify here.
-function verifyWebhookSignature({ rawBody, signatureHeader, webhookSecret }) {
-  if (!webhookSecret || !Buffer.isBuffer(rawBody)) return false;
+// Returns { valid, reason }; reason is a fixed code for the logs (never the header, body or secret):
+// missing_secret | body_not_raw | empty_body | missing_header | malformed_header | no_test_signature | signature_mismatch
+function checkWebhookSignature({ rawBody, signatureHeader, webhookSecret }) {
+  if (!webhookSecret) return { valid: false, reason: 'missing_secret' };
+  // A parsed body (JSON middleware ran first) no longer has the exact bytes PayMongo signed
+  if (!Buffer.isBuffer(rawBody)) return { valid: false, reason: 'body_not_raw' };
+  if (rawBody.length === 0) return { valid: false, reason: 'empty_body' };
+  if (!String(signatureHeader || '').trim()) return { valid: false, reason: 'missing_header' };
 
   const parsed = parseSignatureHeader(signatureHeader);
-  if (!parsed || !HEX_SIGNATURE_PATTERN.test(parsed.testSignature)) return false;
+  if (!parsed) return { valid: false, reason: 'malformed_header' };
+  // Only a live signature (li) means a live-mode event or endpoint, which this test-mode version never accepts
+  if (!HEX_SIGNATURE_PATTERN.test(parsed.testSignature)) return { valid: false, reason: 'no_test_signature' };
 
   const expected = Buffer.from(computeWebhookSignature(webhookSecret, parsed.timestamp, rawBody), 'hex');
   const received = Buffer.from(parsed.testSignature, 'hex');
-  return expected.length === received.length && crypto.timingSafeEqual(expected, received);
+  const valid = expected.length === received.length && crypto.timingSafeEqual(expected, received);
+  // A mismatch means a different webhook secret than the endpoint's, or a body changed on the way
+  return valid ? { valid: true, reason: '' } : { valid: false, reason: 'signature_mismatch' };
+}
+
+function verifyWebhookSignature(options) {
+  return checkWebhookSignature(options).valid;
 }
 
 // Event envelope: { data: { id: 'evt_...', type: 'event', attributes: { type, livemode, data: <resource>, created_at } } }
@@ -181,7 +193,7 @@ function createPayMongoClient({ secretKey, fetchImpl, baseUrl = PAYMONGO_API_BAS
   const authorization = `Basic ${Buffer.from(`${secretKey}:`, 'utf8').toString('base64')}`;
   const send = fetchImpl || ((...args) => globalThis.fetch(...args));
 
-  async function request(method, path, { body, idempotencyKey, expectArray = false } = {}) {
+  async function request(method, path, { body, idempotencyKey } = {}) {
     const headers = { Accept: 'application/json', Authorization: authorization };
     if (body !== undefined) headers['Content-Type'] = 'application/json';
     if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
@@ -213,13 +225,6 @@ function createPayMongoClient({ secretKey, fetchImpl, baseUrl = PAYMONGO_API_BAS
       const firstError = Array.isArray(payload?.errors) ? payload.errors[0] : null;
       const code = typeof firstError?.code === 'string' ? firstError.code.slice(0, 64) : '';
       throw new PayMongoError(`PayMongo responded with HTTP ${response.status}`, { status: response.status, code });
-    }
-
-    if (expectArray) {
-      if (!Array.isArray(payload)) {
-        throw new PayMongoError('PayMongo returned an unexpected response', { status: response.status, code: 'invalid_response' });
-      }
-      return payload;
     }
 
     if (!payload || typeof payload.data !== 'object' || payload.data === null) {
@@ -290,12 +295,6 @@ function createPayMongoClient({ secretKey, fetchImpl, baseUrl = PAYMONGO_API_BAS
 
     async expireCheckoutSession(sessionId) {
       return requireSession(await request('POST', toSessionPath(sessionId, '/expire')));
-    },
-
-    // Payment methods currently configured on the account; anything that is not a method identifier is dropped
-    async listPaymentMethodCapabilities() {
-      const methods = await request('GET', PAYMENT_METHOD_CAPABILITIES_PATH, { expectArray: true });
-      return [...new Set(methods.filter(method => typeof method === 'string' && METHOD_TYPE_PATTERN.test(method)))];
     }
   };
 }
@@ -303,7 +302,6 @@ function createPayMongoClient({ secretKey, fetchImpl, baseUrl = PAYMONGO_API_BAS
 module.exports = {
   PAYMONGO_API_BASE_URL,
   CHECKOUT_SESSION_CREATE_PATH,
-  PAYMENT_METHOD_CAPABILITIES_PATH,
   PayMongoError,
   getSecretKeyMode,
   isCheckoutSessionId,
@@ -314,6 +312,7 @@ module.exports = {
   normalizeRefund,
   parseSignatureHeader,
   computeWebhookSignature,
+  checkWebhookSignature,
   verifyWebhookSignature,
   parseWebhookEvent,
   createPayMongoClient
