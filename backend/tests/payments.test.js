@@ -682,3 +682,9 @@ describe('Secrets stay out of logs and responses', () => {
     assert.ok(!/te=[0-9a-f]{64}/.test(allLogs));
   });
 });
+
+describe('Verified schema', () => {
+  it('runs every payment flow above, the expiry sweep included, without a missing-column report', () => {
+    assert.ok(!t.logs.some(line => line.includes('payments.schema_missing')));
+  });
+});

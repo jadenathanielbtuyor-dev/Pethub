@@ -60,6 +60,7 @@ const {
 const { PENDING, PAID, EXPIRED, FAILED, REFUNDED } = PAYMENT_STATUSES;
 const PAYMENT_ROW_ID_PATTERN = /^[A-Za-z0-9-]{1,64}$/;
 const SCHEMA_WARNING_INTERVAL_MS = 5 * 60 * 1000;
+const SCHEMA_ERROR_TEXT_MAX_LENGTH = 200;
 const SWEEP_GLOBAL_KEY = Symbol.for('pethub.payments.expirySweep');
 
 // ==================== CONFIGURATION ====================
@@ -138,17 +139,64 @@ function logDatabaseError(event, error, details = {}) {
   });
 }
 
-let lastSchemaWarningAt = 0;
+// Database error text names tables and columns. It is still cut short, and anything shaped like an email address,
+// key, token or long id is masked, because it ends up in the server logs.
+function toSafeLogText(value) {
+  if (value === null || value === undefined || value === '') return undefined;
+  return String(value)
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .replace(/[^\s@'"]+@[^\s@'"]+/g, '[email]')
+    .replace(/\b(?:sk|pk|rk|whsk|sb_secret|sb_publishable)_[A-Za-z0-9_]+|\bxkeysib-[A-Za-z0-9-]+|\bAIza[A-Za-z0-9_-]+/g, '[key]')
+    .replace(/\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]*)?/g, '[token]')
+    .replace(/[A-Za-z0-9+/=-]{32,}/g, '[redacted]')
+    .slice(0, SCHEMA_ERROR_TEXT_MAX_LENGTH);
+}
+
+// "table.column" from PostgreSQL 42703 ("column payments.expires_at does not exist")
+// or PostgREST PGRST204 ("Could not find the 'expires_at' column of 'payments' in the schema cache")
+function findMissingColumn(error) {
+  const message = String(error?.message || '');
+  const undefinedColumn = /column "?([A-Za-z0-9_.]{1,128})"? does not exist/.exec(message);
+  if (undefinedColumn) return undefinedColumn[1];
+  const notInCache = /Could not find the '([A-Za-z0-9_]{1,64})' column of '([A-Za-z0-9_]{1,64})'/.exec(message);
+  return notInCache ? `${notInCache[2]}.${notInCache[1]}` : undefined;
+}
+
+// The project id from SUPABASE_URL (https://<project>.supabase.co, the same id as in the Supabase Dashboard URL),
+// so a schema error can be matched to the project where the columns were checked. Never the URL or a key.
+function getSupabaseProjectRef() {
+  try {
+    const match = /^([a-z0-9]{1,40})\.supabase\.co$/.exec(new URL(env.supabase.url).hostname);
+    return match ? match[1] : 'not_a_supabase_co_host';
+  } catch (error) {
+    return 'missing_or_invalid_url';
+  }
+}
+
+// Throttled per source and error code, so one failing query never hides another
+const lastSchemaWarningAt = new Map();
 
 function reportMissingSchema(source, error) {
+  const code = String(error?.code || 'unknown').slice(0, 64);
+  const key = `${source}:${code}`;
   const now = Date.now();
-  if (now - lastSchemaWarningAt < SCHEMA_WARNING_INTERVAL_MS) return;
-  lastSchemaWarningAt = now;
-  logger.error('payments.schema_missing', {
+  if (now - (lastSchemaWarningAt.get(key) || 0) < SCHEMA_WARNING_INTERVAL_MS) return;
+  lastSchemaWarningAt.set(key, now);
+
+  const details = {
     source,
-    code: String(error?.code || 'unknown').slice(0, 64),
-    hint: 'Apply backend/database/migrations/2026-10-17_paymongo_deposits.sql before turning PAYMENTS_ENABLED on'
+    code,
+    missing_column: findMissingColumn(error),
+    db_message: toSafeLogText(error?.message),
+    db_details: toSafeLogText(error?.details),
+    db_hint: toSafeLogText(error?.hint),
+    supabase_project: getSupabaseProjectRef(),
+    hint: 'A column this query needs is missing in the Supabase project above. Check that it is the project where backend/database/migrations/2026-10-17_paymongo_deposits.sql was applied before changing any schema.'
+  };
+  Object.keys(details).forEach(name => {
+    if (details[name] === undefined) delete details[name];
   });
+  logger.error('payments.schema_missing', details);
 }
 
 function toIso(value) {
