@@ -102,7 +102,7 @@ function getFriendlyDashboardErrorMessage(sectionName) {
   return `We couldn't load ${sectionName} right now. Please refresh the page or try again later.`;
 }
 
-function renderUserSectionError(containerId, sectionName, actionHref, actionLabel, iconClass = 'ri-alert-line') {
+function renderUserSectionError(containerId, sectionName, actionHref, actionLabel, iconClass = 'ri-error-warning-line') {
   const container = document.getElementById(containerId);
   if (!container) return;
 
@@ -215,7 +215,7 @@ function displayPets(pets) {
     petsContainer.innerHTML = `
       <div class="empty-state text-center py-8">
         <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
-          <i class="ri-paw-line text-2xl"></i>
+          <i class="ri-bear-smile-line text-2xl"></i>
         </div>
         <p class="font-medium text-gray-700">No pets added yet</p>
         <p class="text-sm text-gray-500 mt-2">Pet profiles you add will appear here and help connect appointments and records to the right pet.</p>
@@ -263,19 +263,19 @@ function getPetSummary(pet) {
 function getPetSpeciesIconClass(species) {
   const normalizedSpecies = String(species || '').toLowerCase().trim();
   const iconMap = {
-    dog: 'ri-paw-line',
-    cat: 'ri-paw-line',
-    bird: 'ri-paw-line',
-    fish: 'ri-paw-line',
-    rabbit: 'ri-paw-line',
-    hamster: 'ri-paw-line',
-    reptile: 'ri-paw-line',
-    snake: 'ri-paw-line',
-    horse: 'ri-paw-line',
-    other: 'ri-paw-line'
+    dog: 'ri-bear-smile-line',
+    cat: 'ri-bear-smile-line',
+    bird: 'ri-bear-smile-line',
+    fish: 'ri-bear-smile-line',
+    rabbit: 'ri-bear-smile-line',
+    hamster: 'ri-bear-smile-line',
+    reptile: 'ri-bear-smile-line',
+    snake: 'ri-bear-smile-line',
+    horse: 'ri-bear-smile-line',
+    other: 'ri-bear-smile-line'
   };
 
-  return iconMap[normalizedSpecies] || 'ri-paw-line';
+  return iconMap[normalizedSpecies] || 'ri-bear-smile-line';
 }
 
 function hasRecordedValue(value) {
@@ -404,7 +404,7 @@ function loadUserAppointments() {
     })
     .catch(error => {
       console.error('Error loading appointments:', error);
-      renderUserSectionError('recentAppointmentsContainer', 'appointments', 'appointments.html', 'Manage appointments', 'ri-calendar-event-line');
+      renderUserSectionError('recentAppointmentsContainer', 'appointments', 'appointments.html', 'Manage appointments');
       return [];
     });
 }
@@ -431,7 +431,7 @@ async function loadUserMedicalRecords() {
     return records;
   } catch (error) {
     console.error('Error loading medical records:', error);
-    renderUserSectionError('recentRecordsContainer', 'medical records', 'pets.html#medicalRecordsList', 'View records', 'ri-file-medical-line');
+    renderUserSectionError('recentRecordsContainer', 'medical records', 'pets.html#medicalRecordsList', 'View records');
     return [];
   }
 }
@@ -456,7 +456,7 @@ async function loadUserActivityLogs() {
     return logs;
   } catch (error) {
     console.error('Error loading recent activity:', error);
-    renderUserSectionError('recentActivityContainer', 'recent activity', '', '', 'ri-history-line');
+    renderUserSectionError('recentActivityContainer', 'recent activity', '', '');
     return [];
   }
 }
@@ -613,7 +613,7 @@ function displayRecentMedicalRecords(records) {
     recordsContainer.innerHTML = `
       <div class="text-center py-8">
         <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-green-100 text-green-500">
-          <i class="ri-file-medical-line text-2xl"></i>
+          <i class="ri-health-book-line text-2xl"></i>
         </div>
         <p class="text-gray-600 font-medium">No medical records yet</p>
         <p class="text-sm text-gray-500 mt-2">Official records are added by clinic staff after completed services, so nothing has been recorded here yet.</p>
@@ -692,7 +692,7 @@ function displayRecentActivity(logs) {
     return `
       <div class="flex items-start gap-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
         <div class="mt-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
-          <i class="ri-history-line"></i>
+          <i class="${getUserActivityIconClass(log.action)}" aria-hidden="true"></i>
         </div>
         <div class="min-w-0 flex-1">
           <p class="font-semibold text-gray-900">${escapeHtml(action)}</p>
@@ -702,6 +702,27 @@ function displayRecentActivity(logs) {
       </div>
     `;
   }).join('');
+}
+
+// Same icons as the admin activity log (admin/dashboard.js getActivityIcon) where the actions overlap;
+// actions without a mapping keep the generic history icon
+function getUserActivityIconClass(action) {
+  const iconMap = {
+    user_logged_in: 'ri-login-circle-line',
+    user_logged_out: 'ri-logout-circle-line',
+    user_registered: 'ri-user-add-line',
+    email_verified: 'ri-mail-check-line',
+    verification_code_resent: 'ri-mail-send-line',
+    registration_email_failed: 'ri-mail-close-line',
+    verification_email_failed: 'ri-mail-close-line',
+    password_reset_requested: 'ri-lock-password-line',
+    password_reset_code_failed: 'ri-lock-password-line',
+    password_reset_completed: 'ri-lock-password-line',
+    password_reset_failed: 'ri-lock-password-line',
+    password_reset_email_failed: 'ri-mail-close-line',
+    contact_message: 'ri-chat-3-line'
+  };
+  return Object.prototype.hasOwnProperty.call(iconMap, action) ? iconMap[action] : 'ri-history-line';
 }
 
 function formatActivityAction(action) {

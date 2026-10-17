@@ -53,7 +53,7 @@ function getActivityIcon(action) {
     user_logged_in: 'ri-login-circle-line text-blue-500',
     user_registered: 'ri-user-add-line text-green-500',
     email_verified: 'ri-mail-check-line text-teal-500',
-    pet_created: 'ri-paw-line text-orange-500',
+    pet_created: 'ri-bear-smile-line text-orange-500',
     appointment_booked: 'ri-calendar-check-line text-purple-500',
     appointment_completed: 'ri-check-double-line text-green-500',
     appointment_cancelled: 'ri-close-circle-line text-red-500'

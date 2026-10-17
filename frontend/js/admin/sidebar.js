@@ -42,6 +42,12 @@ function setupSidebarToggle() {
 
   const isMobileSidebar = () => !desktopMediaQuery.matches;
 
+  // The mobile drawer closes with an X; on desktop the icon shows whether the sidebar will fold or unfold
+  const setAdminSidebarToggleIcon = (iconClass) => {
+    const icon = adminSidebarToggle && adminSidebarToggle.querySelector('i');
+    if (icon) icon.className = `${iconClass} text-lg`;
+  };
+
   const setMobileToggleState = (isOpen) => {
     sidebarToggles.forEach((toggle) => {
       toggle.setAttribute('aria-expanded', String(isOpen));
@@ -68,6 +74,7 @@ function setupSidebarToggle() {
     if (isMobileSidebar() && adminSidebarToggle) {
       adminSidebarToggle.setAttribute('aria-expanded', String(shouldOpen));
       adminSidebarToggle.setAttribute('aria-label', 'Close sidebar');
+      setAdminSidebarToggleIcon('ri-close-line');
     }
 
     // Closing must not strand keyboard focus inside the now-inert sidebar
@@ -142,6 +149,7 @@ function setupSidebarToggle() {
       setSidebarOpen(false);
       if (adminSidebarToggle) {
         adminSidebarToggle.setAttribute('aria-label', 'Close sidebar');
+        setAdminSidebarToggleIcon('ri-close-line');
       }
       return;
     }
@@ -173,6 +181,7 @@ function setupSidebarToggle() {
     if (adminSidebarToggle) {
       adminSidebarToggle.setAttribute('aria-expanded', String(!isCollapsed));
       adminSidebarToggle.setAttribute('aria-label', isCollapsed ? 'Expand sidebar' : 'Collapse sidebar');
+      setAdminSidebarToggleIcon(isCollapsed ? 'ri-menu-unfold-line' : 'ri-menu-fold-line');
     }
   };
 
@@ -269,14 +278,14 @@ function renderAdminSidebar() {
         { href: 'dashboard.html#dashboardOverview', icon: 'ri-layout-grid-line', label: 'Overview', view: 'overview' },
         { href: 'dashboard.html#analyticsSummary', icon: 'ri-bar-chart-2-line', label: 'Analytics', view: 'analytics' },
         { href: 'dashboard.html#managementPanel', icon: 'ri-settings-4-line', label: 'Management', view: 'management' },
-        { href: 'dashboard.html#medicalRecordsSection', icon: 'ri-file-medical-line', label: 'Medical Records', view: 'medicalRecords' }
+        { href: 'dashboard.html#medicalRecordsSection', icon: 'ri-health-book-line', label: 'Medical Records', view: 'medicalRecords' }
       ]
     : [
         { href: 'dashboard.html', icon: 'ri-layout-grid-line', label: 'Dashboard', view: 'dashboard' },
         { href: 'users.html', icon: 'ri-team-line', label: 'Users', view: 'users' },
-        { href: 'pets.html', icon: 'ri-paw-line', label: 'Pets', view: 'pets' },
+        { href: 'pets.html', icon: 'ri-bear-smile-line', label: 'Pets', view: 'pets' },
         { href: 'appointments.html', icon: 'ri-calendar-event-line', label: 'Appointments', view: 'appointments' },
-        { href: 'dashboard.html#medicalRecordsSection', icon: 'ri-file-medical-line', label: 'Medical Records', view: 'medicalRecords' }
+        { href: 'dashboard.html#medicalRecordsSection', icon: 'ri-health-book-line', label: 'Medical Records', view: 'medicalRecords' }
       ];
 
   const systemItems = [
@@ -300,7 +309,7 @@ function renderAdminSidebar() {
             </div>
           </div>
           <button id="adminSidebarToggle" class="admin-sidebar-close" aria-label="Collapse sidebar" aria-expanded="true">
-            <i class="ri-close-line text-lg"></i>
+            <i class="ri-menu-fold-line text-lg"></i>
           </button>
         </div>
       </div>

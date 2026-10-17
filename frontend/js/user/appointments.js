@@ -758,6 +758,9 @@ function displayAppointments(appointments) {
   if (!appointments || appointments.length === 0) {
     container.innerHTML = `
       <div class="rounded-lg border border-gray-200 bg-white p-5 text-center text-gray-500">
+        <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 text-blue-500">
+          <i class="ri-calendar-event-line text-2xl" aria-hidden="true"></i>
+        </div>
         <p class="font-medium text-gray-700">No appointments yet</p>
         <p class="mt-1 text-sm">Appointments you book will appear here with their clinic status.</p>
       </div>

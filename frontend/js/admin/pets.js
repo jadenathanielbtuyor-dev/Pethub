@@ -83,7 +83,7 @@ function displayPetsTable(pets, users) {
     return `
       <tr class="border-t hover:bg-gray-50 transition-colors">
         <td class="p-4 font-semibold">${escapeHtml(pet.name || 'N/A')}</td>
-        <td class="p-4">${getAnimalEmoji(pet.species)} ${escapeHtml(pet.species || 'N/A')}</td>
+        <td class="p-4"><span aria-hidden="true">${getAnimalEmoji(pet.species)}</span> ${escapeHtml(pet.species || 'N/A')}</td>
         <td class="p-4">${escapeHtml(pet.breed || 'N/A')}</td>
         <td class="p-4">${escapeHtml(pet.age || pet.age === 0 ? `${pet.age} years` : 'N/A')}</td>
         <td class="p-4">${escapeHtml(ownerName || 'Unknown')}</td>

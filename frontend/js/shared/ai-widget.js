@@ -62,7 +62,8 @@
         width: 3.5rem;
         height: 3.5rem;
         border-radius: 50%;
-        background: linear-gradient(135deg, #FF8C42 0%, #FF7629 100%);
+        /* Darker oranges keep the white icons on the launcher, header and send button at 3:1 or more */
+        background: linear-gradient(135deg, #EA580C 0%, #C2410C 100%);
         border: none;
         color: white;
         font-size: 1.5rem;
@@ -111,7 +112,7 @@
 
       /* Header - REDESIGNED MINIMAL */
       .pethub-ai-header {
-        background: linear-gradient(135deg, #FF8C42 0%, #FF7629 100%);
+        background: linear-gradient(135deg, #C2410C 0%, #9A3412 100%);
         color: white;
         padding: 0.75rem 1rem;
         border-radius: 1.25rem 1.25rem 0 0;
@@ -364,7 +365,7 @@
       }
 
       .pethub-ai-input-area button {
-        background: #FF8C42;
+        background: #C2410C;
         color: white;
         border: none;
         border-radius: 50%;
@@ -380,7 +381,7 @@
       }
 
       .pethub-ai-input-area button:hover {
-        background: #FF7629;
+        background: #9A3412;
         transform: translateY(-1px);
         box-shadow: 0 4px 12px rgba(255, 140, 66, 0.3);
       }
@@ -552,7 +553,7 @@
 
         <!-- Footer -->
         <div class="pethub-ai-footer">
-          ⚠️ For emergencies visit a vet
+          <i class="ri-alert-line" aria-hidden="true"></i> For emergencies visit a vet
         </div>
       </div>
     `;

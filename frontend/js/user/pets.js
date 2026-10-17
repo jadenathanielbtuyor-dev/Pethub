@@ -101,7 +101,9 @@ function displayPetsList(pets) {
   if (!pets || pets.length === 0) {
     container.innerHTML = `
       <div class="text-center py-12 text-gray-500">
-        <p class="text-4xl mb-3">🐾</p>
+        <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
+          <i class="ri-bear-smile-line text-2xl" aria-hidden="true"></i>
+        </div>
         <p class="font-medium">No pets yet</p>
         <p class="text-sm">Add your first pet using the Add New Pet form</p>
       </div>
@@ -120,7 +122,7 @@ function displayPetsList(pets) {
         <div class="flex-1">
           <div class="flex flex-wrap items-center gap-3 mb-3">
             <h3 class="font-semibold text-lg text-gray-900 flex items-center gap-2">
-              <span class="pet-species-emoji">${getAnimalEmoji(pet.species)}</span>
+              <span class="pet-species-emoji" aria-hidden="true">${getAnimalEmoji(pet.species)}</span>
               ${escapeHtml(pet.name || 'Pet')}
             </h3>
             <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
