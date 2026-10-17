@@ -388,22 +388,70 @@ function getUpcomingAppointments(appointments, now = new Date()) {
   return getNotFinishedAppointments(appointments, now).filter(appointment => !isIncompleteDepositBooking(appointment));
 }
 
+const INCOMPLETE_BOOKINGS_SHOWN = 3;
+const DEPOSIT_APPOINTMENT_ID_PATTERN = /^[A-Za-z0-9-]{1,64}$/;
+
+// Each unfinished booking with its appointment status and payment status kept apart, and a link to the
+// Appointments page card where the deposit is paid or retried (PayMongo checkout is only started from that page)
 function getIncompleteBookingsNoticeHtml(appointments, now = new Date()) {
-  const count = getNotFinishedAppointments(appointments, now).filter(isIncompleteDepositBooking).length;
+  const incomplete = getNotFinishedAppointments(appointments, now).filter(isIncompleteDepositBooking);
+  const count = incomplete.length;
   if (count === 0) return '';
+
+  const items = incomplete.slice(0, INCOMPLETE_BOOKINGS_SHOWN).map(appointment => {
+    const appointmentId = String(appointment?.id || '');
+    const href = DEPOSIT_APPOINTMENT_ID_PATTERN.test(appointmentId) ? `appointments.html#appointment-${appointmentId}` : 'appointments.html';
+    const deposit = appointment.deposit;
+    const linkLabel = deposit.can_pay
+      ? (deposit.status === 'pending' ? 'Continue ₱100 deposit payment' : 'Pay ₱100 deposit')
+      : 'View booking';
+    return `
+      <li class="rounded-lg border border-orange-200 bg-white p-3 text-gray-700">
+        <p class="font-semibold text-gray-900">${escapeHtml(hasRecordedValue(appointment.pet_name) ? appointment.pet_name : 'N/A')} · ${escapeHtml(hasRecordedValue(appointment.service_type) ? appointment.service_type : 'N/A')}</p>
+        <p>${escapeHtml(formatAppointmentDate(appointment.appointment_date))}, ${escapeHtml(getAppointmentTimeRangeDisplay(appointment))}</p>
+        <p><span class="font-semibold text-slate-500">Appointment status:</span> Booking incomplete</p>
+        <p><span class="font-semibold text-slate-500">Payment:</span> ${escapeHtml(getAppointmentPaymentLabel(appointment))}</p>
+        <a href="${href}" class="mt-1 inline-flex font-semibold text-orange-700 hover:underline">${escapeHtml(linkLabel)}</a>
+      </li>
+    `;
+  }).join('');
+  const more = count > INCOMPLETE_BOOKINGS_SHOWN
+    ? `<p class="mt-2"><a href="appointments.html" class="font-semibold hover:underline">See all ${count} unfinished bookings</a></p>`
+    : '';
 
   return `
     <div id="incompleteBookingsNotice" class="mb-4 rounded-2xl border border-orange-200 bg-orange-50 p-4 text-left text-sm text-orange-700" role="status">
       <p class="font-semibold">${count} booking${count === 1 ? ' is' : 's are'} not complete</p>
-      <p class="mt-1">The ₱100 deposit has not been verified yet, so ${count === 1 ? 'it is' : 'they are'} not booked and the clinic has not received ${count === 1 ? 'it' : 'them'} for review. <a href="appointments.html" class="font-semibold hover:underline">Complete the payment</a></p>
+      <p class="mt-1">The ₱100 deposit has not been verified yet, so ${count === 1 ? 'it is' : 'they are'} not booked and the clinic has not received ${count === 1 ? 'it' : 'them'} for review.</p>
+      <ul class="mt-3 space-y-2">${items}</ul>
+      ${more}
     </div>
   `;
 }
 
+// The deposit's payment status, shown apart from the appointment status ('' for appointments without a deposit).
+// Verified by the backend: "Paid" only once PayMongo's payment was confirmed server-side.
 function getAppointmentPaymentLabel(appointment) {
   const deposit = appointment?.deposit;
   if (!deposit || deposit.required === false) return '';
-  return deposit.status === 'paid' ? 'Paid (₱100 deposit)' : 'Not verified (₱100 deposit)';
+
+  let label = 'Awaiting payment';
+  if (deposit.status === 'paid') label = deposit.refund_required ? 'Paid, refund due' : 'Paid';
+  else if (deposit.status === 'refunded') label = 'Refunded';
+  else if (deposit.status === 'pending') label = 'Payment pending';
+  else if (deposit.status === 'unavailable') label = 'Status unavailable';
+  else if (deposit.last_checkout_status === 'expired') label = 'Checkout expired';
+  else if (deposit.last_checkout_status === 'failed') label = 'Payment failed';
+  else if (getAppointmentStatusLabel(appointment.status) !== 'Pending') label = 'Not paid';
+  return `${label} (₱100.00 deposit)`;
+}
+
+// A Pending appointment whose deposit is verified waits only for the clinic; other statuses keep their labels
+function getDashboardAppointmentStatus(appointment) {
+  const status = getAppointmentStatusLabel(appointment?.status);
+  const deposit = appointment?.deposit;
+  const depositPaid = Boolean(deposit && deposit.required !== false && deposit.status === 'paid');
+  return status === 'Pending' && depositPaid ? 'Pending admin approval' : status;
 }
 
 // Same short reference as the Appointments page (the stored appointment_reference is empty)
@@ -413,7 +461,7 @@ function getAppointmentReference(appointment) {
 }
 
 function getAppointmentStatusNote(status) {
-  if (status === 'Pending') return 'Awaiting clinic approval';
+  if (status === 'Pending' || status === 'Pending admin approval') return 'Awaiting clinic approval';
   if (status === 'Approved') return 'Approved by the clinic';
   return '';
 }
@@ -536,7 +584,7 @@ function displayAppointments(appointments) {
 
   const apt = upcomingAppointments[0];
   const handledBy = getHandledByLabel(apt);
-  const status = getAppointmentStatusLabel(apt.status);
+  const status = getDashboardAppointmentStatus(apt);
   const paymentLabel = getAppointmentPaymentLabel(apt);
   const handledByRow = handledBy
     ? `<p><span class="font-semibold text-slate-500">Handled by:</span> ${escapeHtml(handledBy)}</p>`
@@ -605,6 +653,7 @@ function getAppointmentStatusLabel(status) {
 function getStatusBadgeClasses(status) {
   const classes = {
     'Pending': 'bg-yellow-50 text-yellow-600',
+    'Pending admin approval': 'bg-yellow-50 text-yellow-600',
     'Approved': 'bg-blue-50 text-blue-600',
     'Completed': 'bg-green-50 text-green-600',
     'Cancelled': 'bg-red-50 text-red-700'

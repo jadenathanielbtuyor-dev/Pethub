@@ -2213,3 +2213,24 @@ body.admin-dashboard-page .admin-dashboard-main {
     margin: 0 auto !important;
   }
 }
+
+/* Appointment deposit: "Continue to Secure Payment" and the payment-retry buttons (pages/user/appointments.html).
+   White text is 5.2:1 on #c2410c and 7.3:1 on #9a3412; the compiled Tailwind classes have no orange that dark. */
+.deposit-pay-button {
+  background-color: #c2410c;
+  color: #ffffff;
+}
+
+.deposit-pay-button:hover:not(:disabled) {
+  background-color: #9a3412;
+}
+
+.deposit-pay-button:focus-visible {
+  outline: 3px solid #fdba74;
+  outline-offset: 2px;
+}
+
+/* The paw on the deposit section keeps its light circle in dark mode too, like the navigation logo */
+.deposit-panel-paw {
+  background-color: #ffedd5;
+}

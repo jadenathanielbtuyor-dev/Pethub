@@ -8,7 +8,7 @@ still approves it, and only an approved appointment holds its time slot.
 
 | Step | Code |
 |---|---|
-| The booking form shows "₱100 deposit required" (from `deposit_policy` in `GET /appointments/userAppointments`) and a live summary (pet, service, date and time, deposit, payment status). "Continue to Secure Payment" is enabled once the details are valid and online payment is available; it books and opens the checkout. Until the deposit is verified, the booking is shown as "Booking incomplete", with its payment status shown apart. | `frontend/js/user/appointments.js` |
+| The booking form always shows the "Appointment Deposit — ₱100.00 PHP" section (in `pages/user/appointments.html` itself, so it shows before any API answer) with a live summary (pet, service, date and time, estimated duration, deposit payment status). "Continue to Secure Payment" is enabled once the details are valid and `deposit_policy` in `GET /appointments/userAppointments` says the deposit can be paid online; it books and opens the checkout. Without that (deposits off, checkout not configured, or the list failed) the section says online payment is unavailable and the form books nothing; it never books without the deposit. Until the deposit is verified, the booking is shown as "Booking incomplete", with its payment status shown apart. | `frontend/js/user/appointments.js` |
 | The user dashboard leaves unverified deposit bookings out of the upcoming appointments and shows them as "not complete", with a link to finish the payment. | `frontend/js/user/dashboard.js` |
 | Booking (`POST /appointments/create`) sets `deposit_required = true` while `PAYMENTS_ENABLED=true`. While deposits are on but none can be paid (PayMongo or `SUPABASE_SERVICE_KEY` not configured, or the migration missing), it refuses with 503 instead of booking without the deposit. Sending the same Pending booking again returns it (`already_booked`); copies that arrive at the same moment (two tabs, a double click) run one at a time per customer, so only one appointment is created. | `services/appointmentsService.js` |
 | `POST /payments/checkout {appointment_id}` opens (or resumes) a 30-minute PayMongo checkout for the owner's Pending appointment. The amount (10000 centavos) is a server constant. Payment methods = PetHub's list (`gcash`, `qrph`, `card`) limited to what `GET /v1/merchants/capabilities/payment_methods` reports (cached 10 minutes; the test account reported only `qrph` on 2026-10-17). | `services/paymentsService.js` `createCheckout` |
@@ -60,7 +60,7 @@ before changing `CHECKOUT_SESSION_CREATE_PATH` in `utils/paymongoClient.js`.
 
 | Variable | Value |
 |---|---|
-| `PAYMENTS_ENABLED` | `true` (any letter case): new bookings need the deposit (`POST /appointments/create` sets `deposit_required`, or refuses with 503 if it cannot be paid), the booking form shows the deposit (`deposit_policy`), and `POST /payments/checkout` opens checkouts. Unset or `false` = off (default): new bookings need no deposit and no checkout can be opened. Any other value (`1`, `yes`, `on`) is also off and logs `payments.flag_unrecognized` at startup. It never comes from the browser. Appointments already marked `deposit_required` keep their rules either way: approval needs a verified deposit, lists and `GET /payments/appointment/:id` show it, cancelling closes open checkouts, and webhooks, the expiry sweep and receipt emails keep running (the sweep runs whenever a test key and the service key are set). |
+| `PAYMENTS_ENABLED` | `true` (any letter case): new bookings need the deposit (`POST /appointments/create` sets `deposit_required`, or refuses with 503 if it cannot be paid), the booking form shows the deposit (`deposit_policy`), and `POST /payments/checkout` opens checkouts. Unset or `false` = off (default): the API books new appointments without a deposit and no checkout can be opened; the booking page shows online payment as unavailable and books nothing. Any other value (`1`, `yes`, `on`) is also off and logs `payments.flag_unrecognized` at startup. It never comes from the browser. Appointments already marked `deposit_required` keep their rules either way: approval needs a verified deposit, lists and `GET /payments/appointment/:id` show it, cancelling closes open checkouts, and webhooks, the expiry sweep and receipt emails keep running (the sweep runs whenever a test key and the service key are set). |
 | `PAYMONGO_SECRET_KEY` | Test secret key `sk_test_...` (Dashboard → Developers → API Keys). Live `sk_live_` keys are refused. |
 | `PAYMONGO_WEBHOOK_SECRET` | The `whsk_...` secret PayMongo shows once when you create the test webhook endpoint. |
 | `SUPABASE_SERVICE_KEY` | Service-role key. Payment rows are only read and written with it (`config/supabaseAdmin.js`). |
@@ -75,14 +75,16 @@ before changing `CHECKOUT_SESSION_CREATE_PATH` in `utils/paymongoClient.js`.
    default false; `payments.id` uuid, `amount` numeric NOT NULL, `payment_method` nullable).
 3. Confirm Railway's `SUPABASE_URL` is that same project (the `supabase_project` field of `payments.webhook_unmatched`
    or `payments.schema_missing` logs shows the project id Railway uses; no key is logged).
-4. Deploy the backend with `PAYMENTS_ENABLED` unset or `false`: nothing changes for new bookings.
+4. Deploy the backend with `PAYMENTS_ENABLED` unset or `false`: the API books as before, but the booking page shows
+   online payment as unavailable and books nothing until step 5.
 5. Add the test keys and `FRONTEND_URL`, register the test webhook, then set `PAYMENTS_ENABLED=true`.
 6. Run one real test-mode checkout end to end (see Testing), then decide whether to keep deposits on.
 7. After a test checkout and webhook work: PART 3 (RLS on `payments`, separate approval).
 
 The backend needs Node.js 20 or newer (`engines` in `package.json`; `@supabase/supabase-js` 2.99 requires it).
 
-Rollback: set `PAYMENTS_ENABLED=false` and restart. New bookings no longer need a deposit and checkout closes.
+Rollback: set `PAYMENTS_ENABLED=false` and restart. Checkout closes and the booking page pauses online booking
+("Online payment unavailable"); the API itself books without a deposit again.
 Appointments booked with the deposit still cannot be approved until it is verified (cancel them, or switch deposits back
 on so customers can pay); webhooks for payments already made are still recorded.
 
@@ -101,6 +103,9 @@ PayMongo: send a Dashboard test event and confirm the handler reads it before re
 ## Testing
 
 - `npm test` runs the automated suite (fake Supabase, fake PayMongo, fake Brevo; no network, no charges, no emails).
+- `PETHUB_BROWSER_TESTS=1 npm test` also opens the real booking page and user dashboard in headless Chrome or Edge
+  (`tests/booking-page.browser.test.js`; API mocked inside the page, network blocked, the PayMongo redirect recorded and
+  aborted). Set `CHROME_PATH` if the browser is not in its default place.
 - `PAYMONGO_SANDBOX_TESTS=1 npm test` also reads the account's payment methods, then creates, reads and expires a real
   test-mode session with them (no payment; every session it creates is expired again). It reports whether PayMongo
   honours `Idempotency-Key` (not documented by PayMongo) instead of requiring it. Result on 2026-10-17: account methods
