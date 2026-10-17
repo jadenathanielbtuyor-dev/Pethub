@@ -644,6 +644,136 @@ describe('Booking and appointment lists', () => {
   });
 });
 
+describe('Booking with the deposit (booking form -> checkout)', () => {
+  function bookingBody(user, pet, fields = {}) {
+    return {
+      user_id: user.id,
+      pet_id: pet.id,
+      pet_name: pet.name,
+      service_type: 'Checkup',
+      appointment_date: t.manilaDate(nextDay() + 100),
+      appointment_time: '14:00:00',
+      ...fields
+    };
+  }
+
+  function book(user, body) {
+    return t.api('POST', '/appointments/create', { token: user.token, body });
+  }
+
+  function appointmentsOf(user) {
+    return t.db.table('appointments').filter(row => row.user_id === user.id);
+  }
+
+  it('validates the booking on the server and creates nothing when it is refused', async () => {
+    const user = t.createUser();
+    const pet = t.createPet(user);
+    const stranger = t.createUser();
+    const strangersPet = t.createPet(stranger, 'Kuro');
+    const body = bookingBody(user, pet);
+
+    assert.equal((await book(user, { ...body, service_type: '' })).status, 400);
+    assert.equal((await book(user, { ...body, service_type: 'Massage' })).status, 400);
+    assert.equal((await book(user, { ...body, appointment_date: t.manilaDate(-1) })).status, 400);
+    assert.equal((await book(user, { ...body, pet_id: strangersPet.id, pet_name: strangersPet.name })).status, 404);
+    assert.equal((await book(user, { ...body, user_id: stranger.id })).status, 403);
+
+    const unverified = t.createUser({ verified: false });
+    const unverifiedPet = t.createPet(unverified);
+    assert.equal((await book(unverified, bookingBody(unverified, unverifiedPet))).status, 403);
+
+    // An approved appointment holds 14:00-14:45, so 14:30 is refused with the next free time
+    t.createAppointment(stranger, { pet: strangersPet, daysAhead: 0, status: 'Approved', depositRequired: false });
+    const taken = t.db.table('appointments').at(-1);
+    Object.assign(taken, { appointment_date: body.appointment_date, appointment_time: '14:00:00' });
+    const conflict = await book(user, { ...body, appointment_time: '14:30:00' });
+    assert.equal(conflict.status, 400);
+    assert.equal(conflict.body.suggested_time, '14:45');
+
+    assert.equal(appointmentsOf(user).length, 0);
+    assert.equal(appointmentsOf(unverified).length, 0);
+  });
+
+  it('ignores an amount, payment status or deposit flag sent by the browser', async () => {
+    const user = t.createUser();
+    const pet = t.createPet(user);
+    const response = await book(user, { ...bookingBody(user, pet), amount: 1, payment_status: 'Paid', deposit_required: false, status: 'Approved' });
+
+    assert.equal(response.status, 201);
+    assert.equal(response.body.appointment.status, 'Pending');
+    assert.equal(response.body.deposit.amount, 100);
+    assert.equal(response.body.deposit.status, 'unpaid');
+    assert.equal(t.appointmentRow(response.body.appointment.id).deposit_required, true);
+    assert.equal(t.paymentsFor(response.body.appointment.id).length, 0);
+  });
+
+  it('sending the same booking again returns the existing appointment, and its checkout resumes the same session', async () => {
+    const user = t.createUser();
+    const pet = t.createPet(user);
+    const body = bookingBody(user, pet);
+
+    const first = await book(user, body);
+    assert.equal(first.status, 201);
+    const appointmentId = first.body.appointment.id;
+    const firstCheckout = await checkout(user, appointmentId);
+    assert.equal(firstCheckout.status, 201);
+
+    // e.g. Back from PayMongo or a refresh, then "Continue to Secure Payment" again (time sent without seconds)
+    const again = await book(user, { ...body, appointment_time: '14:00' });
+    assert.equal(again.status, 200);
+    assert.equal(again.body.already_booked, true);
+    assert.equal(again.body.appointment.id, appointmentId);
+    assert.equal(again.body.deposit.status, 'pending');
+    assert.equal(again.body.deposit.can_pay, true);
+    assert.equal(appointmentsOf(user).length, 1);
+
+    const resumed = await checkout(user, appointmentId);
+    assert.equal(resumed.status, 200);
+    assert.equal(resumed.body.checkout_url, firstCheckout.body.checkout_url);
+    assert.equal(createRequests(appointmentId).length, 1);
+    assert.equal(t.paymentsFor(appointmentId).length, 1);
+  });
+
+  it('a booking sent again after its deposit was paid is returned as paid, with nothing left to pay', async () => {
+    const user = t.createUser();
+    const pet = t.createPet(user);
+    const body = bookingBody(user, pet);
+    const first = await book(user, body);
+    await checkout(user, first.body.appointment.id);
+    await payAndNotify(first.body.appointment.id);
+
+    const again = await book(user, body);
+    assert.equal(again.status, 200);
+    assert.equal(again.body.appointment.id, first.body.appointment.id);
+    assert.equal(again.body.deposit.status, 'paid');
+    assert.equal(again.body.deposit.can_pay, false);
+    assert.equal((await checkout(user, first.body.appointment.id)).status, 409);
+    assert.equal(appointmentsOf(user).length, 1);
+    assert.equal(t.appointmentRow(first.body.appointment.id).status, 'Pending');
+  });
+
+  it('a different pet, service or time, or a booking whose earlier copy was cancelled, is a new appointment', async () => {
+    const admin = t.createUser({ role: 'admin' });
+    const user = t.createUser();
+    const pet = t.createPet(user);
+    const otherPet = t.createPet(user, 'Kuro');
+    const body = bookingBody(user, pet);
+
+    const first = await book(user, body);
+    assert.equal(first.status, 201);
+    assert.equal((await book(user, { ...body, pet_id: otherPet.id, pet_name: otherPet.name })).status, 201);
+    assert.equal((await book(user, { ...body, service_type: 'Grooming' })).status, 201);
+    assert.equal((await book(user, { ...body, appointment_time: '16:00:00' })).status, 201);
+
+    const cancelled = await setStatusVia('admin', admin, first.body.appointment.id, 'Cancelled');
+    assert.equal(cancelled.status, 200);
+    const rebooked = await book(user, body);
+    assert.equal(rebooked.status, 201);
+    assert.notEqual(rebooked.body.appointment.id, first.body.appointment.id);
+    assert.equal(appointmentsOf(user).length, 5);
+  });
+});
+
 describe('Expiry sweep', () => {
   it('closes overdue checkouts, fails never-linked rows, and leaves fresh checkouts open', async () => {
     const user = t.createUser();

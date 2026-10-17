@@ -13,6 +13,7 @@ const {
   OCCUPIED_APPOINTMENT_STATUSES,
   getAppointmentTimeRange,
   normalizeAppointmentDate,
+  normalizeAppointmentTime,
   validateCreateAppointment,
   validateUserAppointmentsQuery,
   validateUpdateStatusRequest
@@ -28,6 +29,20 @@ async function getUserPetById(userId, petId) {
   }
 
   return Array.isArray(data) && data.length > 0 ? data[0] : null;
+}
+
+// The customer's Pending appointment for the same pet, service, date and time, if there is one
+async function findSamePendingAppointment(appointmentRecord) {
+  const { data, error } = await appointmentsRepository.listByUserId(appointmentRecord.user_id);
+  if (error) throw error;
+
+  return (data || []).find(appointment => (
+    appointment.status === 'Pending' &&
+    String(appointment.pet_id) === appointmentRecord.pet_id &&
+    appointment.service_type === appointmentRecord.service_type &&
+    normalizeAppointmentDate(appointment.appointment_date) === appointmentRecord.appointment_date &&
+    normalizeAppointmentTime(appointment.appointment_time) === appointmentRecord.appointment_time
+  )) || null;
 }
 
 function appointmentRangesOverlap(first, second) {
@@ -206,6 +221,22 @@ const createAppointment = async (req) => {
     // While deposits are on, new bookings are marked deposit_required; older appointments stay exempt
     const depositFields = paymentsService.getNewAppointmentDepositFields();
     let depositRequired = Object.keys(depositFields).length > 0;
+
+    // With the deposit, booking continues to PayMongo, so the same booking can arrive again (Back from the payment
+    // page, a refresh, a second click). It returns the existing Pending appointment, whose checkout then resumes.
+    if (depositRequired) {
+      const existing = await findSamePendingAppointment(appointmentRecord);
+      if (existing) {
+        const [{ deposit, ...appointment }] = await paymentsService.attachDepositSummaries([existing], { audience: 'user' });
+        return { statusCode: 200, body: {
+          success: true,
+          appointment,
+          already_booked: true,
+          ...(deposit && deposit.required !== false ? { deposit } : {})
+        } };
+      }
+    }
+
     let { data, error } = await appointmentsRepository.createAppointment({ ...appointmentRecord, ...depositFields });
 
     if (error && depositRequired && paymentsService.isMissingColumnError(error)) {

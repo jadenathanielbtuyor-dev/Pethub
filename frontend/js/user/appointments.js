@@ -30,9 +30,28 @@ const DEPOSIT_NOTICE_CLASSES = {
 };
 const DEPOSIT_APPOINTMENT_ID_PATTERN = /^[A-Za-z0-9-]{1,64}$/;
 const DEPOSIT_SUMMARY_PRIMARY_BUTTON_CLASS = "w-full py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold rounded-lg transition-all duration-200";
+const SECURE_PAYMENT_BUTTON_HTML = '<i class="ri-lock-line mr-2" aria-hidden="true"></i>Continue to Secure Payment';
+const BOOK_AND_PAY_LATER_BUTTON_HTML = '<i class="ri-check-line mr-2" aria-hidden="true"></i>Book and pay later';
+const BOOKING_DETAILS_HINTS = {
+  incomplete: "Choose a pet, service, date and time to continue.",
+  invalid: "Fix the date or time above to continue.",
+  unavailable: "That time is unavailable. Choose another time to continue.",
+};
+const DEPOSIT_STATUS_BADGE_CLASSES = {
+  success: "bg-green-100 text-green-700",
+  error: "bg-red-100 text-red-700",
+  info: "bg-blue-100 text-blue-700",
+  neutral: "bg-gray-100 text-gray-700",
+};
+// The appointment whose PayMongo checkout this tab opened last, so Back or a refresh shows its payment state
+// instead of inviting a second booking. Cleared once the deposit is settled or the customer starts a new booking.
+const DEPOSIT_CHECKOUT_STORAGE_KEY = "pethub.depositCheckoutAppointmentId";
 // Set from the appointment list response: { required, amount, currency, checkout_available } while deposits are on
 let depositPolicy = null;
-let depositSummaryDetails = null;
+// Whether the availability check flagged the selected time as taken
+let bookingSlotUnavailable = false;
+// "Payment status" text in the booking summary while the booking and its checkout are being prepared
+let bookingSummaryBusyStatus = "";
 
 // Initialize on page load
 document.addEventListener("DOMContentLoaded", initAppointments);
@@ -62,9 +81,10 @@ function initAppointments() {
   renderAppointmentPetOptions();
   updateAppointmentPetBookingState();
   loadAppointmentPets(currentUser.id);
+  setupBookingSummary();
   setupDepositActions();
   setupDepositPageRestore();
-  const depositReturn = readDepositCheckoutReturn();
+  const depositReturn = readDepositCheckoutReturn() || readStoredDepositCheckout();
   if (depositReturn) {
     handleDepositCheckoutReturn(depositReturn);
   } else {
@@ -291,11 +311,13 @@ function getAppointmentDateAvailabilityNoteElement() {
 }
 
 function setAppointmentDateAvailabilityNote(message) {
+  bookingSlotUnavailable = Boolean(message);
   const note = getAppointmentDateAvailabilityNoteElement();
-  if (!note) return;
-
-  note.textContent = message || "";
-  note.classList.toggle("hidden", !message);
+  if (note) {
+    note.textContent = message || "";
+    note.classList.toggle("hidden", !message);
+  }
+  updateAppointmentPetBookingState();
 }
 
 function getAppointmentRecordDateValue(dateValue) {
@@ -653,16 +675,21 @@ function updateAppointmentPetBookingState() {
   const form = document.getElementById("appointmentForm");
   const hasPets = currentUserPets.length > 0;
   const shouldDisableBooking = Boolean(appointmentPetsError) || !appointmentPetsLoaded || !hasPets;
+  // With the deposit, "Continue to Secure Payment" stays disabled until the booking details are complete and valid
+  const bookingDraft = getBookingDraft();
+  const shouldDisableSubmit = shouldDisableBooking || (Boolean(depositPolicy) && !bookingDraft.valid);
 
   if (petSelect) {
     petSelect.disabled = shouldDisableBooking;
   }
 
   if (submitButton && !appointmentSubmitInProgress && !isFormSubmitting(form)) {
-    submitButton.disabled = shouldDisableBooking;
-    submitButton.classList.toggle("opacity-60", shouldDisableBooking);
-    submitButton.classList.toggle("cursor-not-allowed", shouldDisableBooking);
+    submitButton.disabled = shouldDisableSubmit;
+    submitButton.classList.toggle("opacity-60", shouldDisableSubmit);
+    submitButton.classList.toggle("cursor-not-allowed", shouldDisableSubmit);
   }
+
+  renderBookingSummary(bookingDraft, { showHint: !shouldDisableBooking });
 
   if (!hint) return;
 
@@ -720,7 +747,7 @@ async function loadAppointmentPets(userId) {
 }
 
 /**
- * Load user appointments from backend
+ * Load user appointments from backend. Returns the loaded list ([] when it could not be loaded).
  */
 async function loadAppointments(userId) {
   const container = document.getElementById("appointmentsList");
@@ -737,13 +764,16 @@ async function loadAppointments(userId) {
     }
     
     const data = await response.json();
+    const appointments = Array.isArray(data.appointments) ? data.appointments : [];
     updateDepositPolicy(data.deposit_policy);
-    displayAppointments(data.appointments || []);
+    displayAppointments(appointments);
+    return appointments;
   } catch (error) {
     console.error("Error loading appointments:", error);
     if (container) {
       container.innerHTML = getUserAppointmentsErrorHtml(error.message);
     }
+    return [];
   }
 }
 
@@ -1078,6 +1108,7 @@ async function startDepositCheckout(button, appointmentId) {
   updateButtonState(button, true, "Opening payment page...");
   try {
     const checkoutUrl = await requestDepositCheckout(appointmentId);
+    rememberDepositCheckout(appointmentId);
     // PayMongo's hosted checkout handles the payment; PetHub never sees card or e-wallet details
     window.location.assign(checkoutUrl);
   } catch (error) {
@@ -1133,34 +1164,66 @@ function readDepositCheckoutReturn() {
   return DEPOSIT_APPOINTMENT_ID_PATTERN.test(appointmentId) ? { outcome, appointmentId } : null;
 }
 
+// Back from PayMongo (outcome "return" or "cancelled"), or a later visit in the same tab ("left"): the booking card
+// shows that appointment's deposit as the backend reports it
 async function handleDepositCheckoutReturn({ outcome, appointmentId }) {
-  showDepositNotice("Checking your deposit payment...", "info");
+  showDepositResult(null, null, { checking: true });
+  await refreshDepositResult(appointmentId, { outcome });
+}
+
+function readStoredDepositCheckout() {
+  let appointmentId = "";
   try {
-    const deposit = await fetchDepositStatus(appointmentId);
-    showDepositNotice(getDepositStatusMessage(deposit, outcome), deposit.status === "paid" ? "success" : "info");
+    appointmentId = sessionStorage.getItem(DEPOSIT_CHECKOUT_STORAGE_KEY) || "";
   } catch (error) {
-    showDepositNotice(error.message, "error");
+    appointmentId = "";
   }
-  await loadAppointments(currentUser.id);
+  return DEPOSIT_APPOINTMENT_ID_PATTERN.test(appointmentId) ? { outcome: "left", appointmentId } : null;
+}
+
+function rememberDepositCheckout(appointmentId) {
+  try {
+    sessionStorage.setItem(DEPOSIT_CHECKOUT_STORAGE_KEY, appointmentId);
+  } catch (error) {
+    // Without storage, Back from PayMongo still shows the deposit state in the appointments list
+  }
+}
+
+function forgetDepositCheckout() {
+  try {
+    sessionStorage.removeItem(DEPOSIT_CHECKOUT_STORAGE_KEY);
+  } catch (error) {
+    // Nothing stored
+  }
 }
 
 // Coming back with the browser's Back button from PayMongo can restore this page from memory, still showing
-// "Opening payment page...". Reset the booking controls and reload the list, which shows the current deposit state.
+// "Opening secure payment...". Reset the booking controls, then show the deposit state of the checkout that was opened.
 function setupDepositPageRestore() {
   window.addEventListener("pageshow", (event) => {
     if (!event.persisted || !currentUser) return;
     appointmentSubmitInProgress = false;
+    bookingSummaryBusyStatus = "";
     const form = document.getElementById("appointmentForm");
     setFormSubmitting(form, false, "Booking...", "Book");
-    hideDepositSummary();
+    updateSubmitButtonLabel();
+    updateAppointmentPetBookingState();
+
+    const storedCheckout = readStoredDepositCheckout();
+    if (storedCheckout) {
+      handleDepositCheckoutReturn(storedCheckout);
+      return;
+    }
+    hideDepositResult();
     loadAppointments(currentUser.id);
   });
 }
 
 // ==================== DEPOSIT BEFORE BOOKING ====================
-// While deposits are on, the booking form says so up front, and "Book" first shows a summary. "Pay Deposit and
-// Continue" then books the appointment and opens its PayMongo checkout. The appointment stays Pending, and the
-// clinic can only approve it once the backend has verified the payment.
+// While deposits are on, the booking form shows a live summary (pet, service, date and time, the ₱100 deposit and
+// its payment status) and "Continue to Secure Payment", enabled once the details are valid. It books the appointment
+// and opens its PayMongo checkout. The appointment stays Pending, and the clinic can only approve it once the
+// backend has verified the payment. After PayMongo, the booking card shows the deposit state the backend reports.
 
 function formatDepositAmount(policy) {
   const amount = Number(policy?.amount);
@@ -1184,8 +1247,14 @@ function getDepositRequirementNoticeElement() {
   return notice;
 }
 
+function isDepositCheckoutAvailable() {
+  return Boolean(depositPolicy) && depositPolicy.checkout_available !== false;
+}
+
 function updateDepositPolicy(policy) {
   depositPolicy = policy && policy.required === true ? policy : null;
+  updateSubmitButtonLabel();
+  updateAppointmentPetBookingState();
 
   const notice = getDepositRequirementNoticeElement();
   if (!notice) return;
@@ -1196,104 +1265,366 @@ function updateDepositPolicy(policy) {
   }
 
   const amount = escapeHtml(formatDepositAmount(depositPolicy));
-  notice.innerHTML = `
-    <p class="font-semibold">${amount} deposit required</p>
-    <p class="mt-1">After you review your booking, you pay a ${amount} deposit through PayMongo. Paying does not approve the appointment: the clinic still reviews and confirms it.</p>
-  `;
+  notice.innerHTML = isDepositCheckoutAvailable()
+    ? `
+      <p class="font-semibold">${amount} deposit required</p>
+      <p class="mt-1">The deposit is required to submit your booking for review. You pay it on PayMongo's secure payment page. Paying does not approve the appointment: the clinic still reviews and confirms it.</p>
+    `
+    : `
+      <p class="font-semibold">${amount} deposit required</p>
+      <p class="mt-1">Online payment is not available right now. You can still book, then pay the deposit from your appointments list so the clinic can review it.</p>
+    `;
   notice.classList.remove("hidden");
 }
 
-function getDepositSummaryElement() {
-  let summary = document.getElementById("depositSummary");
+// "Continue to Secure Payment" while deposits are on; the page's own "Book" button otherwise
+function updateSubmitButtonLabel() {
+  const button = getAppointmentSubmitButton();
+  if (!button || button.dataset.loading === "true") return;
+  if (!button.dataset.bookHtml) button.dataset.bookHtml = button.innerHTML;
+
+  let html = button.dataset.bookHtml;
+  if (depositPolicy) html = isDepositCheckoutAvailable() ? SECURE_PAYMENT_BUTTON_HTML : BOOK_AND_PAY_LATER_BUTTON_HTML;
+  if (button.innerHTML !== html) button.innerHTML = html;
+}
+
+// The booking details as currently selected, and whether they are complete and valid enough to continue
+function getBookingDraft() {
+  const petId = getAppointmentPetSelect()?.value.trim() || "";
+  const pet = getAppointmentPetById(petId);
+  const serviceType = document.getElementById("serviceType")?.value.trim() || "";
+  const appointmentDate = document.getElementById("appointmentDate")?.value.trim() || "";
+  const appointmentTime = document.getElementById("appointmentTime")?.value.trim() || "";
+  const complete = Boolean(pet && serviceType && isKnownAppointmentServiceType(serviceType) && appointmentDate && appointmentTime);
+
+  let problem = "";
+  if (!complete) problem = "incomplete";
+  else if (getAppointmentDateTimeValidation(appointmentDate, appointmentTime).message) problem = "invalid";
+  else if (bookingSlotUnavailable) problem = "unavailable";
+
+  return {
+    petId,
+    petName: String(pet?.name || "").trim(),
+    serviceType,
+    appointmentDate,
+    appointmentTime,
+    valid: !problem,
+    problem,
+  };
+}
+
+function getBookingDateTimeLabel(appointment) {
+  const dateValue = getAppointmentRecordDateValue(appointment?.appointment_date);
+  if (!dateValue || !isValidAppointmentDateValue(dateValue)) return "Not selected";
+
+  const date = formatAppointmentDateDisplay(dateValue);
+  const timeRange = getAppointmentTimeRangeDisplay({ ...appointment, appointment_date: dateValue });
+  if (timeRange !== "N/A") return `${date}, ${timeRange}`;
+  const time = formatSuggestedAppointmentTimeDisplay(appointment?.appointment_time);
+  return time ? `${date}, ${time}` : date;
+}
+
+function getBookingSummaryRowsHtml(rows) {
+  return rows.map(([label, valueHtml]) => `
+    <div>
+      <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">${escapeHtml(label)}</dt>
+      <dd class="mt-1 text-sm font-medium text-gray-700">${valueHtml}</dd>
+    </div>
+  `).join("");
+}
+
+function getBookingSummaryElement() {
+  let summary = document.getElementById("bookingSummary");
   if (summary) return summary;
+
+  const notice = getDepositRequirementNoticeElement();
+  if (!notice || !notice.parentNode) return null;
+
+  summary = document.createElement("div");
+  summary.id = "bookingSummary";
+  summary.className = "hidden rounded-lg border border-gray-200 p-4";
+  notice.parentNode.insertBefore(summary, notice);
+  return summary;
+}
+
+function getBookingDetailsHintElement() {
+  let hint = document.getElementById("bookingDetailsHint");
+  if (hint) return hint;
+
+  const submitButton = getAppointmentSubmitButton();
+  if (!submitButton || !submitButton.parentNode) return null;
+
+  hint = document.createElement("p");
+  hint.id = "bookingDetailsHint";
+  hint.className = "hidden text-sm font-medium text-slate-500";
+  hint.setAttribute("aria-live", "polite");
+  submitButton.insertAdjacentElement("afterend", hint);
+  return hint;
+}
+
+function renderBookingSummary(draft = getBookingDraft(), { showHint = true } = {}) {
+  const summary = getBookingSummaryElement();
+  const hint = getBookingDetailsHintElement();
+  if (!summary || !hint) return;
+
+  if (!depositPolicy) {
+    summary.classList.add("hidden");
+    summary.innerHTML = "";
+    hint.classList.add("hidden");
+    hint.textContent = "";
+    return;
+  }
+
+  const paymentStatus = bookingSummaryBusyStatus || "Not paid yet";
+  summary.innerHTML = `
+    <h3 class="text-sm font-bold text-gray-900">Booking summary</h3>
+    <dl class="mt-3 space-y-3">
+      ${getBookingSummaryRowsHtml([
+        ["Pet", escapeHtml(draft.petName || "Not selected")],
+        ["Service", escapeHtml(draft.serviceType || "Not selected")],
+        ["Date and time", escapeHtml(getBookingDateTimeLabel({
+          appointment_date: draft.appointmentDate,
+          appointment_time: draft.appointmentTime,
+          estimated_duration_minutes: getAppointmentDurationMinutes(draft.serviceType),
+        }))],
+        ["Required deposit", escapeHtml(formatDepositAmount(depositPolicy))],
+        ["Payment status", `<span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold ${bookingSummaryBusyStatus ? DEPOSIT_STATUS_BADGE_CLASSES.info : DEPOSIT_STATUS_BADGE_CLASSES.neutral}">${escapeHtml(paymentStatus)}</span>`],
+      ])}
+    </dl>
+  `;
+  summary.classList.remove("hidden");
+
+  const hintText = showHint && !bookingSummaryBusyStatus ? BOOKING_DETAILS_HINTS[draft.problem] || "" : "";
+  hint.textContent = hintText;
+  hint.classList.toggle("hidden", !hintText);
+}
+
+function setBookingSummaryBusyStatus(text) {
+  bookingSummaryBusyStatus = text || "";
+  renderBookingSummary(getBookingDraft(), { showHint: false });
+}
+
+function setupBookingSummary() {
+  ["petSelect", "serviceType", "appointmentDate", "appointmentTime"].forEach((id) => {
+    const input = document.getElementById(id);
+    if (!input) return;
+    input.addEventListener("change", updateAppointmentPetBookingState);
+    input.addEventListener("input", updateAppointmentPetBookingState);
+  });
+}
+
+// ==================== DEPOSIT PAYMENT STATE (BOOKING CARD) ====================
+
+function getDepositResultElement() {
+  let panel = document.getElementById("bookingPaymentResult");
+  if (panel) return panel;
 
   const form = document.getElementById("appointmentForm");
   if (!form || !form.parentNode) return null;
 
-  summary = document.createElement("div");
-  summary.id = "depositSummary";
-  summary.className = "hidden";
-  summary.setAttribute("aria-live", "polite");
-  form.parentNode.insertBefore(summary, form.nextSibling);
+  panel = document.createElement("div");
+  panel.id = "bookingPaymentResult";
+  panel.className = "hidden";
+  form.parentNode.insertBefore(panel, form.nextSibling);
 
-  summary.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-deposit-summary]");
-    if (!button || !summary.contains(button)) return;
-    if (button.dataset.depositSummary === "edit") {
-      hideDepositSummary();
-      getAppointmentSubmitButton()?.focus();
+  panel.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-payment-result]");
+    if (!button || !panel.contains(button) || button.dataset.loading === "true") return;
+
+    const appointmentId = String(panel.dataset.appointmentId || "");
+    const action = button.dataset.paymentResult;
+    if (action === "new") {
+      forgetDepositCheckout();
+      hideDepositResult();
+      resetAppointmentForm(form);
+      getAppointmentPetSelect()?.focus();
+      return;
     }
-    if (button.dataset.depositSummary === "pay" && depositSummaryDetails) {
-      bookAppointment(depositSummaryDetails, { payDeposit: true, payButton: button });
-    }
+    if (!DEPOSIT_APPOINTMENT_ID_PATTERN.test(appointmentId)) return;
+    if (action === "pay") retryDepositPayment(button, appointmentId);
+    if (action === "check") recheckDepositPayment(button, appointmentId);
   });
-  return summary;
+  return panel;
 }
 
-function showDepositSummary(details) {
-  const summary = getDepositSummaryElement();
+// What the booking card says about an appointment's deposit: badge, message and the actions offered
+function getDepositResultView(appointment, deposit, { outcome = "", errorMessage = "", openFailed = false, checking = false } = {}) {
+  if (checking) {
+    return { tone: "info", status: "Checking payment...", message: "Checking your deposit payment...", actions: [] };
+  }
+  if (!deposit || deposit.status === "unavailable") {
+    return {
+      tone: "neutral",
+      status: "Status unavailable",
+      message: errorMessage || "We could not check the deposit right now. Please try again in a moment.",
+      actions: [{ action: "check", label: "Check payment status", primary: true }, { action: "new", label: "Book another appointment" }],
+    };
+  }
+
+  const newBooking = { action: "new", label: "Book another appointment" };
+  if (deposit.status === "paid" && deposit.refund_required) {
+    return { tone: "error", status: "Refund due", message: getDepositStatusMessage(deposit), actions: [newBooking] };
+  }
+  if (deposit.status === "paid") {
+    return {
+      tone: "success",
+      status: "Paid",
+      message: "Payment received. Your ₱100 deposit is confirmed, and your appointment is now waiting for the clinic's review. Paying does not approve it; we email you the clinic's decision.",
+      actions: [newBooking],
+    };
+  }
+  if (deposit.status === "refunded") {
+    return { tone: "neutral", status: "Refunded", message: "The deposit for this appointment was refunded.", actions: [newBooking] };
+  }
+  if (deposit.status === "not_required") {
+    return { tone: "neutral", status: "No deposit needed", message: getDepositStatusMessage(deposit), actions: [newBooking] };
+  }
+  if (getAppointmentStatusLabel(appointment?.status) !== "Pending") {
+    return { tone: "neutral", status: "Not paid", message: "This appointment is no longer waiting for a deposit.", actions: [newBooking] };
+  }
+
+  const unavailableNote = "Online payment is not available right now. Please try again later or contact the clinic.";
+  const retry = label => (deposit.can_pay ? [{ action: "pay", label, primary: true }] : []);
+
+  if (deposit.status === "pending" && openFailed) {
+    return {
+      tone: "error",
+      status: "Not completed",
+      message: `The payment page could not be opened: ${errorMessage || "Please try again."} Your appointment is saved.`,
+      actions: [...retry("Retry payment"), { action: "check", label: "Check payment status" }, newBooking],
+    };
+  }
+  if (deposit.status === "pending" && (outcome === "cancelled" || outcome === "left")) {
+    return {
+      tone: "error",
+      status: "Not completed",
+      message: `You left the payment page before paying. Your appointment is saved; complete the ₱100 deposit so the clinic can review it.${deposit.can_pay ? "" : ` ${unavailableNote}`}`,
+      actions: [...retry("Retry payment"), { action: "check", label: "Check payment status" }, newBooking],
+    };
+  }
+  if (deposit.status === "pending") {
+    return {
+      tone: "info",
+      status: "Payment pending",
+      message: "We have not received PayMongo's confirmation yet. This can take a minute; check again shortly. Do not pay twice.",
+      actions: [
+        { action: "check", label: "Check payment status", primary: true },
+        ...(deposit.can_pay ? [{ action: "pay", label: "Continue to Secure Payment" }] : []),
+        newBooking,
+      ],
+    };
+  }
+
+  // Unpaid: the checkout could not be opened, expired, failed or was left
+  let reason = "The deposit has not been paid yet.";
+  if (openFailed) reason = `Your appointment was saved, but the payment page could not be opened: ${errorMessage || "Please try again."}`;
+  else if (outcome === "cancelled" || outcome === "left") reason = "You left the payment page before paying. Your appointment is saved.";
+  else if (deposit.last_checkout_status === "expired") reason = "Your checkout expired before payment. Your appointment is saved.";
+  else if (deposit.last_checkout_status === "failed") reason = "Your last checkout could not be completed. Your appointment is saved.";
+  return {
+    tone: "error",
+    status: "Not completed",
+    message: `${reason}${deposit.can_pay ? " You can retry the ₱100 deposit payment." : ` ${unavailableNote}`}`,
+    actions: [...retry("Retry payment"), newBooking],
+  };
+}
+
+function showDepositResult(appointment, deposit, options = {}) {
+  const panel = getDepositResultElement();
   const form = document.getElementById("appointmentForm");
-  if (!summary || !form) return false;
+  if (!panel || !form) return;
 
-  depositSummaryDetails = details;
-  const amount = formatDepositAmount(depositPolicy);
-  const checkoutAvailable = depositPolicy?.checkout_available !== false;
-  const timeRange = getAppointmentTimeRangeDisplay({
-    appointment_date: details.appointmentDate,
-    appointment_time: details.appointmentTime,
-    estimated_duration_minutes: getAppointmentDurationMinutes(details.serviceType),
-  });
-  const rows = [
-    ["Pet", details.petName],
-    ["Service", details.serviceType],
-    ["Date", formatAppointmentDateDisplay(details.appointmentDate)],
-    ["Time", timeRange],
-    ["Deposit", amount],
-    ["Payment status", "Not paid yet"],
-  ];
+  const view = getDepositResultView(appointment, deposit, options);
+  panel.dataset.appointmentId = getDepositAppointmentId(appointment);
+  const rows = appointment
+    ? getBookingSummaryRowsHtml([
+      ["Pet", escapeHtml(appointment.pet_name || "N/A")],
+      ["Service", escapeHtml(appointment.service_type || "N/A")],
+      ["Date and time", escapeHtml(getBookingDateTimeLabel(appointment))],
+      ["Required deposit", escapeHtml(formatDepositAmount(deposit || depositPolicy))],
+      ["Payment status", `<span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold ${DEPOSIT_STATUS_BADGE_CLASSES[view.tone]}">${escapeHtml(view.status)}</span>`],
+    ])
+    : "";
 
-  summary.innerHTML = `
-    <h3 id="depositSummaryHeading" class="text-lg font-bold text-gray-900" tabindex="-1">Review your booking</h3>
-    <dl class="mt-4 space-y-3">
-      ${rows.map(([label, value]) => `
-        <div>
-          <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">${escapeHtml(label)}</dt>
-          <dd class="mt-1 text-sm font-medium text-gray-700">${escapeHtml(value)}</dd>
-        </div>
-      `).join("")}
-    </dl>
-    <p class="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-700">
-      Paying the deposit does not approve your appointment. The clinic reviews it after your payment is confirmed, and we email you its decision.
+  panel.innerHTML = `
+    <h3 id="bookingPaymentResultHeading" class="text-lg font-bold text-gray-900" tabindex="-1">Your booking</h3>
+    ${rows ? `<dl class="mt-4 space-y-3">${rows}</dl>` : ""}
+    <p class="mt-4 rounded-lg border p-3 text-sm ${DEPOSIT_NOTICE_CLASSES[view.tone] || "border-gray-200 bg-white text-gray-700"}" role="${view.tone === "error" ? "alert" : "status"}">
+      ${escapeHtml(view.message)}
     </p>
-    ${checkoutAvailable ? "" : `
-      <p class="mt-3 rounded-lg border border-orange-200 bg-yellow-50 p-3 text-sm text-yellow-700">
-        Online payment is not available right now. You can still book, then pay the deposit later from your appointments list.
-      </p>
-    `}
-    <div class="mt-4 flex flex-col gap-2">
-      <button type="button" data-deposit-summary="pay" class="${DEPOSIT_SUMMARY_PRIMARY_BUTTON_CLASS}">
-        <i class="ri-bank-card-line mr-2" aria-hidden="true"></i>${checkoutAvailable ? "Pay Deposit and Continue" : "Book and pay later"}
-      </button>
-      <button type="button" data-deposit-summary="edit" class="${DEPOSIT_CHECK_BUTTON_CLASS}">
-        <i class="ri-edit-line" aria-hidden="true"></i><span>Edit details</span>
-      </button>
-    </div>
+    ${view.actions.length ? `
+      <div class="mt-4 flex flex-col gap-2">
+        ${view.actions.map(({ action, label, primary }) => `
+          <button type="button" data-payment-result="${action}" class="${primary ? DEPOSIT_SUMMARY_PRIMARY_BUTTON_CLASS : DEPOSIT_CHECK_BUTTON_CLASS}">${escapeHtml(label)}</button>
+        `).join("")}
+      </div>
+    ` : ""}
   `;
 
   form.classList.add("hidden");
-  summary.classList.remove("hidden");
-  document.getElementById("depositSummaryHeading")?.focus();
-  return true;
+  panel.classList.remove("hidden");
+  if (!options.checking) document.getElementById("bookingPaymentResultHeading")?.focus();
 }
 
-function hideDepositSummary() {
-  depositSummaryDetails = null;
-  const summary = document.getElementById("depositSummary");
-  if (summary) {
-    summary.classList.add("hidden");
-    summary.innerHTML = "";
+function hideDepositResult() {
+  const panel = document.getElementById("bookingPaymentResult");
+  if (panel) {
+    panel.classList.add("hidden");
+    panel.innerHTML = "";
+    delete panel.dataset.appointmentId;
   }
   document.getElementById("appointmentForm")?.classList.remove("hidden");
+}
+
+// Asks the backend for the deposit state (never trusting the redirect) and shows it with the appointment's details
+async function refreshDepositResult(appointmentId, options = {}) {
+  let deposit = null;
+  let errorMessage = options.errorMessage || "";
+  try {
+    deposit = await fetchDepositStatus(appointmentId);
+  } catch (error) {
+    errorMessage = errorMessage || error.message;
+  }
+
+  const appointments = await loadAppointments(currentUser.id);
+  const appointment = appointments.find(item => String(item?.id || "") === appointmentId) || null;
+  if (!appointment) {
+    // Not one of this customer's appointments (or the list did not load): the list area explains the rest
+    forgetDepositCheckout();
+    hideDepositResult();
+    if (deposit) showDepositNotice(getDepositStatusMessage(deposit, options.outcome), deposit.status === "paid" ? "success" : "info");
+    else if (errorMessage) showDepositNotice(errorMessage, "error");
+    return;
+  }
+
+  const settled = deposit && (["paid", "refunded", "not_required"].includes(deposit.status) ||
+    getAppointmentStatusLabel(appointment.status) !== "Pending");
+  if (settled) forgetDepositCheckout();
+  showDepositResult(appointment, deposit, { ...options, errorMessage });
+}
+
+function setDepositResultButtonsBusy(activeButton, loadingText) {
+  updateButtonState(activeButton, true, loadingText);
+  activeButton.parentNode?.querySelectorAll("button").forEach((button) => {
+    if (button !== activeButton) button.disabled = true;
+  });
+}
+
+async function retryDepositPayment(button, appointmentId) {
+  setDepositResultButtonsBusy(button, "Opening secure payment...");
+  try {
+    const checkoutUrl = await requestDepositCheckout(appointmentId);
+    rememberDepositCheckout(appointmentId);
+    window.location.assign(checkoutUrl);
+  } catch (error) {
+    console.error("Deposit checkout error:", error);
+    await refreshDepositResult(appointmentId, { errorMessage: error.message, openFailed: true });
+  }
+}
+
+async function recheckDepositPayment(button, appointmentId) {
+  setDepositResultButtonsBusy(button, "Checking...");
+  await refreshDepositResult(appointmentId, { outcome: "return" });
 }
 
 function resetAppointmentForm(form) {
@@ -1308,21 +1639,17 @@ function resetAppointmentForm(form) {
 
 /**
  * Books the appointment (POST /appointments/create). With payDeposit, a booking that needs the deposit continues
- * straight to its PayMongo checkout; if that cannot open, the appointment is kept and can be paid from the list.
+ * straight to its PayMongo checkout; if that cannot open, the appointment is kept and the booking card offers a retry.
+ * Sending the same booking again returns the existing appointment (already_booked), so its checkout is resumed.
  */
-async function bookAppointment(details, { payDeposit = false, payButton = null } = {}) {
+async function bookAppointment(details, { payDeposit = false } = {}) {
   const form = document.getElementById("appointmentForm");
   const messageContainer = document.getElementById("messageContainer");
   if (!form || appointmentSubmitInProgress) return;
 
   appointmentSubmitInProgress = true;
-  setFormSubmitting(form, true, "Booking...", "Book");
-  if (payButton) {
-    updateButtonState(payButton, true, "Booking...");
-    payButton.parentNode.querySelectorAll("button").forEach((button) => {
-      if (button !== payButton) button.disabled = true;
-    });
-  }
+  setFormSubmitting(form, true, payDeposit ? "Saving your booking..." : "Booking...", "Book");
+  if (payDeposit) setBookingSummaryBusyStatus("Saving your booking...");
   let redirecting = false;
 
   try {
@@ -1357,34 +1684,57 @@ async function bookAppointment(details, { payDeposit = false, payButton = null }
 
     const deposit = data.deposit && data.deposit.required ? data.deposit : null;
     const appointmentId = getDepositAppointmentId(data.appointment);
-    resetAppointmentForm(form);
+    // The details shown on the booking card if the payment cannot continue right away
+    const bookedAppointment = {
+      ...data.appointment,
+      pet_name: data.appointment?.pet_name || details.petName,
+      service_type: data.appointment?.service_type || details.serviceType,
+      appointment_date: data.appointment?.appointment_date || details.appointmentDate,
+      appointment_time: data.appointment?.appointment_time || details.appointmentTime,
+      estimated_duration_minutes: data.appointment?.estimated_duration_minutes || getAppointmentDurationMinutes(details.serviceType),
+      status: data.appointment?.status || "Pending",
+    };
 
-    if (payDeposit && deposit && deposit.can_pay && appointmentId) {
-      if (payButton) updateButtonState(payButton, true, "Opening payment page...");
-      showAppointmentFeedback(messageContainer, "Appointment saved. Opening the PayMongo payment page...", "success");
+    if (payDeposit && deposit && appointmentId && (deposit.can_pay || data.already_booked)) {
+      rememberDepositCheckout(appointmentId);
+      if (!deposit.can_pay) {
+        // The same booking was sent again and has nothing left to pay (for example, its deposit is already paid)
+        resetAppointmentForm(form);
+        hideAppointmentFeedback(messageContainer);
+        await refreshDepositResult(appointmentId, { outcome: "return" });
+        return;
+      }
+
+      setBookingSummaryBusyStatus("Opening secure payment...");
+      updateButtonState(getAppointmentSubmitButton(), true, "Opening secure payment...");
+      showAppointmentFeedback(
+        messageContainer,
+        data.already_booked
+          ? "You already booked this appointment. Opening its secure PayMongo payment page..."
+          : "Appointment saved. Opening the secure PayMongo payment page...",
+        "success"
+      );
       try {
         const checkoutUrl = await requestDepositCheckout(appointmentId);
         redirecting = true;
         window.location.assign(checkoutUrl);
       } catch (checkoutError) {
         console.error("Deposit checkout error:", checkoutError);
-        hideDepositSummary();
-        showAppointmentFeedback(
-          messageContainer,
-          `Your appointment was saved, but the payment page could not be opened: ${checkoutError.message} You can pay the deposit from your appointments list.`,
-          "error"
-        );
-        await loadAppointments(currentUser.id);
+        resetAppointmentForm(form);
+        hideAppointmentFeedback(messageContainer);
+        showDepositResult(bookedAppointment, deposit, { errorMessage: checkoutError.message, openFailed: true });
+        await refreshDepositResult(appointmentId, { errorMessage: checkoutError.message, openFailed: true });
       }
       return;
     }
 
-    hideDepositSummary();
-    let bookedMessage = "Appointment booked.";
+    resetAppointmentForm(form);
+    const booked = data.already_booked ? "You already booked this appointment." : "Appointment booked.";
+    let bookedMessage = booked;
     if (deposit) {
       bookedMessage = deposit.can_pay
-        ? "Appointment booked. Pay the ₱100 deposit from your appointments list so the clinic can review it."
-        : "Appointment booked. Online deposit payment is not available right now; you can pay it later from your appointments list.";
+        ? `${booked} Pay the ₱100 deposit from your appointments list so the clinic can review it.`
+        : `${booked} Online deposit payment is not available right now; you can pay it later from your appointments list.`;
     }
     showAppointmentFeedback(messageContainer, bookedMessage, "success");
     if (typeof showSuccess === "function") showSuccess(bookedMessage);
@@ -1392,9 +1742,8 @@ async function bookAppointment(details, { payDeposit = false, payButton = null }
     await loadAppointments(currentUser.id);
     setTimeout(() => hideAppointmentFeedback(messageContainer), 4000);
   } catch (error) {
-    // Nothing was booked: back to the form, which still holds the customer's choices
+    // Nothing was booked: the form still holds the customer's choices
     console.error("Booking error:", error);
-    hideDepositSummary();
     const errorMessage = getAppointmentBookingErrorMessage(error);
     applyServerAppointmentDateTimeError(errorMessage);
     showAppointmentFeedback(messageContainer, errorMessage, "error");
@@ -1403,7 +1752,9 @@ async function bookAppointment(details, { payDeposit = false, payButton = null }
     // While the browser leaves for PayMongo the controls stay busy, so the checkout cannot be started twice
     if (!redirecting) {
       appointmentSubmitInProgress = false;
+      bookingSummaryBusyStatus = "";
       setFormSubmitting(form, false, "Booking...", "Book");
+      updateSubmitButtonLabel();
       updateAppointmentPetBookingState();
     }
   }
@@ -1475,8 +1826,15 @@ function setupFormHandler() {
 
     const bookingDetails = { petId: selectedPetId, petName, serviceType, appointmentDate, appointmentTime };
 
-    // While deposits are on, the customer first reviews the booking and the ₱100 deposit
-    if (depositPolicy && showDepositSummary(bookingDetails)) return;
+    // While deposits are on, the live summary has shown the booking and the ₱100 deposit; continue to the payment
+    if (depositPolicy) {
+      if (bookingSlotUnavailable) {
+        showAppointmentFeedback(messageContainer, BOOKING_DETAILS_HINTS.unavailable, "error");
+        return;
+      }
+      await bookAppointment(bookingDetails, { payDeposit: isDepositCheckoutAvailable() });
+      return;
+    }
 
     await bookAppointment(bookingDetails);
   });
