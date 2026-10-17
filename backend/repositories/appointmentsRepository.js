@@ -123,8 +123,9 @@ function updateStatus(appointmentId, status, handledBy, expectedCurrentStatus) {
   return query.select(APPOINTMENT_SELECT);
 }
 
-// deposit_required comes from database/migrations/2026-10-17_paymongo_deposits.sql; these reads run
-// only while PAYMENTS_ENABLED is on (services/paymentsService.js), so nothing selects it before the migration.
+// deposit_required comes from database/migrations/2026-10-17_paymongo_deposits.sql. These reads run whatever
+// PAYMENTS_ENABLED says (services/paymentsService.js); before the migration they fail with 42703, which the service
+// treats as "no appointment needs a deposit" for lists and approvals.
 function findForDeposit(appointmentId) {
   return supabase
     .from('appointments')

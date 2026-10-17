@@ -7,8 +7,10 @@ const {
   SCHEDULE_CONFLICT_MESSAGE,
   OCCUPIED_APPOINTMENT_STATUSES,
   getAppointmentTimeRange,
+  normalizeAppointmentDate,
   validateAdminAppointmentStatusRequest
 } = require('../validators/appointmentsValidator');
+const { runExclusive } = require('../utils/keyedLock');
 const { validateAdminMedicalRecord } = require('../validators/medicalRecordsValidator');
 const { getVerifiedTotals } = require('../utils/accountVerification');
 const {
@@ -1183,22 +1185,35 @@ const updateAppointmentStatus = async (req) => {
       // Appointments booked while deposits are on need a paid deposit first (same check in appointmentsService.updateStatus)
       depositCheck = await paymentsService.checkDepositForApproval(existingData);
       if (!depositCheck.allowed) return depositCheck.result;
-
-      const conflict = await getAppointmentApprovalConflict(existingData, normalizedAppointmentId);
-      if (conflict.hasConflict) {
-        return { statusCode: 409, body: paymentsService.addRefundRequiredToConflict({
-          error: conflict.error || SCHEDULE_CONFLICT_MESSAGE,
-          suggested_time: conflict.suggested_time || null
-        }, depositCheck) };
-      }
     }
 
-    const { data, error } = await appointmentsRepository.updateStatus(
-      normalizedAppointmentId,
-      normalizedStatus,
-      normalizedAdminUserId,
-      currentStatus
-    );
+    const applyStatus = async () => {
+      if (normalizedStatus === 'Approved') {
+        const conflict = await getAppointmentApprovalConflict(existingData, normalizedAppointmentId);
+        if (conflict.hasConflict) {
+          return { refused: { statusCode: 409, body: paymentsService.addRefundRequiredToConflict({
+            error: conflict.error || SCHEDULE_CONFLICT_MESSAGE,
+            suggested_time: conflict.suggested_time || null
+          }, depositCheck) } };
+        }
+      }
+
+      return appointmentsRepository.updateStatus(
+        normalizedAppointmentId,
+        normalizedStatus,
+        normalizedAdminUserId,
+        currentStatus
+      );
+    };
+
+    // Approvals on the same date run one at a time (same key as appointmentsService.updateStatus), so two admins
+    // approving overlapping appointments at once cannot both pass the schedule check
+    const outcome = normalizedStatus === 'Approved'
+      ? await runExclusive(`schedule:${normalizeAppointmentDate(existingData.appointment_date)}`, applyStatus)
+      : await applyStatus();
+    if (outcome.refused) return outcome.refused;
+
+    const { data, error } = outcome;
 
     if (error) {
       console.error('Error updating appointment:', error);

@@ -476,7 +476,10 @@ describe('POST /payments/webhook', () => {
     const liveEvent = await t.sendWebhook(t.paymongo.checkoutPaidEvent(row.provider_checkout_session_id, { livemode: true }));
     assert.equal(liveEvent.status, 200);
     assert.equal(row.payment_status, 'Pending');
-    assert.ok(t.logs.some(line => line.includes('payments.webhook_mismatch')));
+    const mismatchLogs = t.logs.filter(line => line.includes('payments.webhook_mismatch'));
+    assert.ok(mismatchLogs.some(line => line.includes("reason: 'payment_details_mismatch'") && line.includes("'amount'")));
+    assert.ok(mismatchLogs.some(line => line.includes("reason: 'inconsistent_reference'") && line.includes("'metadata_appointment_id'")));
+    assert.ok(mismatchLogs.some(line => line.includes("reason: 'inconsistent_reference'") && line.includes("'reference_number'")));
 
     const genuine = await t.sendWebhook(t.paymongo.checkoutPaidEvent(row.provider_checkout_session_id));
     assert.equal(genuine.status, 200);
@@ -552,6 +555,7 @@ describe('POST /payments/webhook', () => {
     const failed = await t.sendWebhook(event);
     assert.equal(failed.status, 500);
     assert.equal(row.payment_status, 'Pending');
+    assert.ok(t.logs.some(line => line.includes('payments.webhook_failed') && line.includes("reason: 'database_error'")));
 
     const redelivered = await t.sendWebhook(event);
     assert.equal(redelivered.status, 200);

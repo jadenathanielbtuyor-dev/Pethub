@@ -3,6 +3,7 @@ const petsRepository = require('../repositories/petsRepository');
 const appointmentsRepository = require('../repositories/appointmentsRepository');
 const { isUserVerified, isAdminVerified } = require('../utils/accountVerification');
 const { logAdminActivity } = require('../utils/activityLogger');
+const { runExclusive } = require('../utils/keyedLock');
 const paymentsService = require('./paymentsService');
 const {
   hasValue
@@ -231,20 +232,31 @@ const createAppointment = async (req) => {
 
     // With the deposit, booking continues to PayMongo, so the same booking can arrive again (Back from the payment
     // page, a refresh, a second click). It returns the existing Pending appointment, whose checkout then resumes.
-    if (depositRequired) {
-      const existing = await findSamePendingAppointment(appointmentRecord);
-      if (existing) {
-        const [{ deposit, ...appointment }] = await paymentsService.attachDepositSummaries([existing], { audience: 'user' });
-        return { statusCode: 200, body: {
-          success: true,
-          appointment,
-          already_booked: true,
-          ...(deposit && deposit.required !== false ? { deposit } : {})
-        } };
+    const insertAppointment = async () => {
+      if (depositRequired) {
+        const existing = await findSamePendingAppointment(appointmentRecord);
+        if (existing) return { existing };
       }
+      return appointmentsRepository.createAppointment({ ...appointmentRecord, ...depositFields });
+    };
+
+    // Copies of one booking can also arrive at the same moment (two tabs, a double click): a customer's deposit
+    // bookings run one at a time, so a copy finds the first booking instead of creating a second one
+    const inserted = depositRequired
+      ? await runExclusive(`booking:${normalizedUserId}`, insertAppointment)
+      : await insertAppointment();
+
+    if (inserted.existing) {
+      const [{ deposit, ...appointment }] = await paymentsService.attachDepositSummaries([inserted.existing], { audience: 'user' });
+      return { statusCode: 200, body: {
+        success: true,
+        appointment,
+        already_booked: true,
+        ...(deposit && deposit.required !== false ? { deposit } : {})
+      } };
     }
 
-    const { data, error } = await appointmentsRepository.createAppointment({ ...appointmentRecord, ...depositFields });
+    const { data, error } = inserted;
 
     if (error && depositRequired && paymentsService.isMissingColumnError(error)) {
       // PAYMENTS_ENABLED is on but the deposit migration has not been applied: the deposit cannot be recorded,
@@ -384,23 +396,36 @@ const updateStatus = async (req) => {
       // Same deposit check as PUT /admin/dashboard/appointment-status, so this legacy route cannot bypass it
       depositCheck = await paymentsService.checkDepositForApproval(existingAppointment);
       if (!depositCheck.allowed) return depositCheck.result;
-
-      const conflict = await getScheduleConflict(
-        existingAppointment.appointment_date,
-        existingAppointment.appointment_time,
-        existingAppointment.estimated_duration_minutes,
-        normalizedAppointmentId
-      );
-
-      if (conflict.hasConflict) {
-        return { statusCode: 409, body: paymentsService.addRefundRequiredToConflict({
-          error: conflict.error || SCHEDULE_CONFLICT_MESSAGE,
-          suggested_time: conflict.suggested_time || null
-        }, depositCheck) };
-      }
     }
 
-    const { data, error } = await appointmentsRepository.updateStatus(normalizedAppointmentId, normalizedStatus, normalizedAdminId, currentStatus);
+    const applyStatus = async () => {
+      if (normalizedStatus === 'Approved') {
+        const conflict = await getScheduleConflict(
+          existingAppointment.appointment_date,
+          existingAppointment.appointment_time,
+          existingAppointment.estimated_duration_minutes,
+          normalizedAppointmentId
+        );
+
+        if (conflict.hasConflict) {
+          return { refused: { statusCode: 409, body: paymentsService.addRefundRequiredToConflict({
+            error: conflict.error || SCHEDULE_CONFLICT_MESSAGE,
+            suggested_time: conflict.suggested_time || null
+          }, depositCheck) } };
+        }
+      }
+
+      return appointmentsRepository.updateStatus(normalizedAppointmentId, normalizedStatus, normalizedAdminId, currentStatus);
+    };
+
+    // Approvals on the same date run one at a time (same key as adminService.updateAppointmentStatus), so two admins
+    // approving overlapping appointments at once cannot both pass the schedule check
+    const outcome = normalizedStatus === 'Approved'
+      ? await runExclusive(`schedule:${normalizeAppointmentDate(existingAppointment.appointment_date)}`, applyStatus)
+      : await applyStatus();
+    if (outcome.refused) return outcome.refused;
+
+    const { data, error } = outcome;
 
     if (error) {
       console.error('Error updating appointment:', error);

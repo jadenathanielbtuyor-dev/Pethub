@@ -104,6 +104,9 @@ function isCheckoutAvailable() {
 }
 
 const startupProblems = getConfigurationProblems();
+if (env.payments.enabledSetting === 'unrecognized') {
+  logger.warn('payments.flag_unrecognized', { reason: 'PAYMENTS_ENABLED must be "true" or "false"; any other value keeps deposits off' });
+}
 if (startupProblems.includes('paymongo_live_key_refused')) {
   logger.warn('payments.live_key_refused', { reason: 'PAYMONGO_SECRET_KEY is a live key; this version only runs PayMongo in test mode' });
 }
@@ -688,6 +691,13 @@ function evaluateSessionPayment(session, row) {
   return problems.length > 0 ? { state: 'mismatch', problems } : { state: 'paid', payment };
 }
 
+const REFERENCE_PROBLEMS = new Set(['metadata_payment_id', 'metadata_appointment_id', 'reference_number', 'checkout_session_id']);
+
+// Log category for a mismatch: the session points at another PetHub payment, or its payment details are wrong
+function describeMismatch(problems) {
+  return problems.some(problem => REFERENCE_PROBLEMS.has(problem)) ? 'inconsistent_reference' : 'payment_details_mismatch';
+}
+
 // appointments.payment_status follows the verified deposit ('Paid', or 'Refunded' once no paid payment remains), so the
 // appointment row agrees with the payments table, which stays the source of truth. Best effort: a database refusal
 // is logged and never undoes or blocks the payment change.
@@ -754,7 +764,7 @@ async function applySessionState(row, session) {
   }
   if (evaluation.state === 'mismatch') {
     // Never marked Paid or Expired automatically; the row stays Pending for a person to review
-    logger.error('payments.provider_payment_mismatch', { payment_row_id: row.id, problems: evaluation.problems });
+    logger.error('payments.provider_payment_mismatch', { payment_row_id: row.id, reason: describeMismatch(evaluation.problems), problems: evaluation.problems });
     return row;
   }
   if (session.status === 'expired') {
@@ -908,7 +918,7 @@ async function loadOwnedAppointment(appointmentId, userId) {
   if (error) {
     if (isInvalidIdError(error)) return { result: appointmentNotFound() };
     if (isMissingColumnError(error)) {
-      reportMissingSchema('appointments.deposit_required', error);
+      reportMissingDepositFlag(error);
       return { result: serviceUnavailable(PAYMENTS_UNAVAILABLE_MESSAGE) };
     }
     return { result: databaseFailure('payments.appointment_load_failed', error) };
@@ -1002,7 +1012,9 @@ async function startCheckout(appointment, userId, originHeader) {
       },
       successUrl: returnUrls.successUrl,
       cancelUrl: returnUrls.cancelUrl,
-      // Same key for the same PetHub payment row, so a repeated create returns the original session
+      // Sent for the record only: PayMongo does not document Idempotency-Key for checkout sessions, and a replay in the
+      // test sandbox created a second session. So a create is never retried; a failed or unanswered create closes this
+      // row as Failed, and the URL of any session PayMongo did create never reaches the customer.
       idempotencyKey: paymentRow.id
     });
   } catch (error) {
@@ -1100,13 +1112,14 @@ const createCheckout = async (req) => {
 /**
  * GET /payments/appointment/:appointmentId
  * Deposit state for the signed-in user's own appointment, rechecked with PayMongo while a checkout is open.
+ * Answers whatever PAYMENTS_ENABLED says: an appointment marked deposit_required keeps its deposit, and a customer
+ * coming back from PayMongo (or pressing "Check payment status") must still see it. Opening a checkout stays off.
  */
 const getAppointmentPaymentStatus = async (req) => {
   const validation = validatePaymentStatusRequest(req.params);
   if (validation.error) return validation.error;
 
   const userId = String(req.authUserId || '').trim();
-  if (!isDepositPolicyEnabled()) return serviceUnavailable(PAYMENTS_UNAVAILABLE_MESSAGE);
 
   const verified = await isUserVerified(userId);
   if (!verified) {
@@ -1347,7 +1360,7 @@ async function processCheckoutPaid(event, context) {
     return acknowledged();
   }
   if (evaluation.state === 'mismatch') {
-    logger.error('payments.webhook_mismatch', { ...rowContext, problems: evaluation.problems });
+    logger.error('payments.webhook_mismatch', { ...rowContext, reason: describeMismatch(evaluation.problems), problems: evaluation.problems });
     return acknowledged();
   }
 
@@ -1406,7 +1419,7 @@ async function processRefundEvent(event, context, resourceKind) {
   if (!row) {
     // The PayMongo payment id is stored when the payment is confirmed; a refund event that arrives first is retried
     const retry = isRecentEvent(event);
-    logger.warn('payments.webhook_refund_unmatched', { ...context, retry });
+    logger.warn('payments.webhook_refund_unmatched', { ...context, reason: 'payment_not_recorded', retry });
     return retry ? retryLater() : acknowledged();
   }
 
@@ -1484,8 +1497,11 @@ const handleWebhook = async (req) => {
         return acknowledged();
     }
   } catch (error) {
-    // Not stored durably, so PayMongo should deliver it again
-    logDatabaseError('payments.webhook_failed', error, context);
+    // Not stored durably, so PayMongo should deliver it again. Database errors carry a code; anything else is a bug.
+    if (isMissingColumnError(error)) reportMissingSchema('payments', error);
+    const isDatabaseError = Boolean(error) && !(error instanceof paymongo.PayMongoError) &&
+      Object.prototype.hasOwnProperty.call(error, 'code');
+    logDatabaseError('payments.webhook_failed', error, { ...context, reason: isDatabaseError ? 'database_error' : 'processing_error' });
     return { statusCode: 500, body: { received: false } };
   }
 };

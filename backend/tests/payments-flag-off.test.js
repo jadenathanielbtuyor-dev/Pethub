@@ -148,4 +148,38 @@ describe('payments switched off', () => {
     assert.equal(t.db.table('payments').filter(item => item.appointment_id === appointment.id).length, 1);
     assert.equal(t.appointmentRow(appointment.id).status, 'Pending');
   });
+
+  // The Appointments page still offers "Check payment status" for these appointments, and a customer coming back
+  // from PayMongo asks the same endpoint
+  it('the customer can still check the deposit of a deposit-required appointment, and a confirmed payment is recorded', async () => {
+    const user = t.createUser();
+    const appointment = t.createAppointment(user, { daysAhead: day += 1 });
+    const row = seedOpenCheckout(user, appointment);
+
+    const open = await t.api('GET', `/payments/appointment/${appointment.id}`, { token: user.token });
+    assert.equal(open.status, 200);
+    assert.equal(open.body.deposit.status, 'pending');
+    assert.equal(open.body.deposit.can_pay, false, 'no new checkout can be opened while deposits are off');
+
+    assert.equal(t.db.find('payments', item => item.id === row.id).payment_status, 'Pending');
+
+    // Paid at PayMongo, webhook not in yet: the status check confirms it with PayMongo and records it
+    const paidAppointment = t.createAppointment(user, { daysAhead: day += 1 });
+    const paidRow = seedOpenCheckout(user, paidAppointment);
+    t.paymongo.pay(paidRow.provider_checkout_session_id);
+    const paid = await t.api('GET', `/payments/appointment/${paidAppointment.id}`, { token: user.token });
+    assert.equal(paid.status, 200);
+    assert.equal(paid.body.deposit.status, 'paid');
+    assert.equal(t.db.find('payments', item => item.id === paidRow.id).payment_status, 'Paid');
+    assert.equal(t.appointmentRow(paidAppointment.id).payment_status, 'Paid');
+    assert.equal(t.appointmentRow(paidAppointment.id).status, 'Pending', 'paying never approves');
+
+    const exempt = t.createAppointment(user, { daysAhead: day += 1, depositRequired: false });
+    const notRequired = await t.api('GET', `/payments/appointment/${exempt.id}`, { token: user.token });
+    assert.equal(notRequired.status, 200);
+    assert.equal(notRequired.body.deposit.status, 'not_required');
+
+    const other = t.createUser();
+    assert.equal((await t.api('GET', `/payments/appointment/${appointment.id}`, { token: other.token })).status, 404);
+  });
 });
