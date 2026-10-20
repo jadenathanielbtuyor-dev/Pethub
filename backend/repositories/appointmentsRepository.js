@@ -75,15 +75,6 @@ function listAllAppointments() {
     .select(APPOINTMENT_SELECT));
 }
 
-// appointments.payment_status mirrors the verified deposit; the payments table stays the source of truth
-function updatePaymentStatus(appointmentId, paymentStatus) {
-  return supabase
-    .from('appointments')
-    .update({ payment_status: paymentStatus })
-    .eq('id', appointmentId)
-    .select('id');
-}
-
 function findById(appointmentId) {
   return supabase
     .from('appointments')
@@ -123,31 +114,6 @@ function updateStatus(appointmentId, status, handledBy, expectedCurrentStatus) {
   return query.select(APPOINTMENT_SELECT);
 }
 
-// deposit_required comes from database/migrations/2026-10-17_paymongo_deposits.sql. These reads run whatever
-// PAYMENTS_ENABLED says (services/paymentsService.js); before the migration they fail with 42703, which the service
-// treats as "no appointment needs a deposit" for lists and approvals.
-function findForDeposit(appointmentId) {
-  return supabase
-    .from('appointments')
-    .select('id, user_id, status, appointment_date, appointment_time, estimated_duration_minutes, deposit_required')
-    .eq('id', appointmentId)
-    .maybeSingle();
-}
-
-function listDepositFlagsByIds(appointmentIds) {
-  return supabase
-    .from('appointments')
-    .select('id, deposit_required')
-    .in('id', appointmentIds);
-}
-
-function listDepositRequiredIds() {
-  return supabase
-    .from('appointments')
-    .select('id')
-    .eq('deposit_required', true);
-}
-
 function listServiceTypes() {
   return supabase
     .from('appointments')
@@ -180,14 +146,10 @@ module.exports = {
   createAppointment,
   listByUserId,
   listAllAppointments,
-  updatePaymentStatus,
   findById,
   findStatusById,
   findForMedicalRecord,
   updateStatus,
-  findForDeposit,
-  listDepositFlagsByIds,
-  listDepositRequiredIds,
   listServiceTypes,
   listAppointmentDatesBetween,
   listUsersByAppointmentIds

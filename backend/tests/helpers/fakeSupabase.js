@@ -1,6 +1,7 @@
 // In-memory stand-in for the parts of supabase-js (PostgREST) that PetHub's repositories use. Tests only.
-// It mirrors the behaviour the payment code depends on: column checks (42703 / PGRST204), uuid checks (22P02),
+// It mirrors the behaviour the code depends on: column checks (42703 / PGRST204), uuid checks (22P02),
 // unique indexes (23505), conditional updates that return 0 rows, and returning-select after insert/update.
+// db.log records every query (table + action), so tests can check which tables a request touched.
 const crypto = require('crypto');
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -308,9 +309,10 @@ class FakeDatabase {
 const now = () => new Date().toISOString();
 const uuid = () => crypto.randomUUID();
 
-// PetHub tables as the code uses them. `migrated` adds the columns and indexes from
-// database/migrations/2026-10-17_paymongo_deposits.sql.
-function createPetHubDatabase({ migrated = true } = {}) {
+// PetHub tables as the code uses them. The legacy payment schema stays in the real database (the payments table and
+// appointments.deposit_required / payment_status, from database/migrations/2026-10-17_paymongo_deposits.sql), so it is
+// modelled here too: the application must work alongside it without reading or writing it.
+function createPetHubDatabase() {
   const definitions = {
     users: {
       columns: ['id', 'fullname', 'email', 'password', 'role', 'is_verified', 'created_at'],
@@ -331,37 +333,33 @@ function createPetHubDatabase({ migrated = true } = {}) {
       columns: [
         'id', 'user_id', 'pet_id', 'pet_name', 'service_type', 'estimated_duration_minutes', 'appointment_date',
         'appointment_time', 'status', 'handled_by', 'created_at', 'appointment_reference', 'payment_status',
-        'confirmed_at', 'cancelled_at', ...(migrated ? ['deposit_required'] : [])
+        'confirmed_at', 'cancelled_at', 'deposit_required'
       ],
       uuidColumns: ['id', 'user_id', 'pet_id', 'handled_by'],
+      // Database defaults (payment_status and deposit_required are legacy columns the application no longer sets)
       defaults: {
         id: uuid,
         created_at: now,
         status: () => 'Pending',
         payment_status: () => 'Pending',
-        ...(migrated ? { deposit_required: () => false } : {})
+        deposit_required: () => false
       }
     },
+    // Legacy table kept for its historical rows; nothing in the application uses it
     payments: {
       columns: [
         'id', 'appointment_id', 'user_id', 'amount', 'payment_method', 'payment_reference', 'payment_status',
         'receipt_url', 'paid_at', 'created_at',
-        ...(migrated ? ['provider_checkout_session_id', 'provider_payment_id', 'expires_at', 'receipt_email_sent_at'] : [])
+        'provider_checkout_session_id', 'provider_payment_id', 'expires_at', 'receipt_email_sent_at'
       ],
       uuidColumns: ['id', 'appointment_id', 'user_id'],
       defaults: { id: uuid, created_at: now, payment_status: () => 'Pending' },
-      uniqueIndexes: [
-        { name: 'payments_pkey', columns: ['id'] },
-        ...(migrated ? [
-          { name: 'payments_provider_checkout_session_id_key', columns: ['provider_checkout_session_id'] },
-          { name: 'payments_provider_payment_id_key', columns: ['provider_payment_id'] },
-          {
-            name: 'payments_one_pending_per_appointment',
-            columns: ['appointment_id'],
-            where: row => row.payment_status === 'Pending'
-          }
-        ] : [])
-      ]
+      uniqueIndexes: [{ name: 'payments_pkey', columns: ['id'] }]
+    },
+    password_resets: {
+      columns: ['id', 'user_id', 'reset_token', 'expires_at', 'used_at', 'attempts', 'created_at'],
+      uuidColumns: ['id', 'user_id'],
+      defaults: { id: uuid, created_at: now, used_at: () => null, attempts: () => 0 }
     },
     activity_logs: {
       columns: ['id', 'actor_id', 'user_id', 'target_table', 'target_id', 'action', 'details', 'created_at'],

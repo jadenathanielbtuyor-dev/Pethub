@@ -4,12 +4,11 @@ const appointmentsRepository = require('../repositories/appointmentsRepository')
 const { isUserVerified, isAdminVerified } = require('../utils/accountVerification');
 const { logAdminActivity } = require('../utils/activityLogger');
 const { runExclusive } = require('../utils/keyedLock');
-const paymentsService = require('./paymentsService');
+const appointmentNotificationsService = require('./appointmentNotificationsService');
 const {
   hasValue
 } = require('../validators/commonValidator');
 const { INVALID_APPOINTMENT_DATE_MESSAGE, APPOINTMENT_STATUS_CHANGED_MESSAGE } = require('../constants/appointments');
-const { DEPOSIT_BOOKING_UNAVAILABLE_MESSAGE } = require('../constants/payments');
 const {
   SCHEDULE_CONFLICT_MESSAGE,
   OCCUPIED_APPOINTMENT_STATUSES,
@@ -220,61 +219,30 @@ const createAppointment = async (req) => {
       status: 'Pending'
     };
 
-    // While deposits are on, new bookings are marked deposit_required; older appointments stay exempt
-    const depositFields = paymentsService.getNewAppointmentDepositFields();
-    const depositRequired = Object.keys(depositFields).length > 0;
-
-    // Deposits are required, but no deposit can be paid right now (PayMongo or the server-only database key is not
-    // configured): the booking is refused rather than created without its deposit
-    if (depositRequired && !paymentsService.isCheckoutAvailable()) {
-      return { statusCode: 503, body: { error: DEPOSIT_BOOKING_UNAVAILABLE_MESSAGE } };
-    }
-
-    // With the deposit, booking continues to PayMongo, so the same booking can arrive again (Back from the payment
-    // page, a refresh, a second click). It returns the existing Pending appointment, whose checkout then resumes.
+    // The same booking can arrive more than once (a double click, a second tab, a refresh after submitting): if the
+    // customer already has this exact Pending appointment, it is returned instead of creating a duplicate
     const insertAppointment = async () => {
-      if (depositRequired) {
-        const existing = await findSamePendingAppointment(appointmentRecord);
-        if (existing) return { existing };
-      }
-      return appointmentsRepository.createAppointment({ ...appointmentRecord, ...depositFields });
+      const existing = await findSamePendingAppointment(appointmentRecord);
+      if (existing) return { existing };
+      return appointmentsRepository.createAppointment(appointmentRecord);
     };
 
-    // Copies of one booking can also arrive at the same moment (two tabs, a double click): a customer's deposit
-    // bookings run one at a time, so a copy finds the first booking instead of creating a second one
-    const inserted = depositRequired
-      ? await runExclusive(`booking:${normalizedUserId}`, insertAppointment)
-      : await insertAppointment();
+    // Copies that arrive at the same moment run one at a time per customer, so a copy finds the first booking
+    // instead of creating a second one
+    const inserted = await runExclusive(`booking:${normalizedUserId}`, insertAppointment);
 
     if (inserted.existing) {
-      const [{ deposit, ...appointment }] = await paymentsService.attachDepositSummaries([inserted.existing], { audience: 'user' });
-      return { statusCode: 200, body: {
-        success: true,
-        appointment,
-        already_booked: true,
-        ...(deposit && deposit.required !== false ? { deposit } : {})
-      } };
+      return { statusCode: 200, body: { success: true, appointment: inserted.existing, already_booked: true } };
     }
 
     const { data, error } = inserted;
-
-    if (error && depositRequired && paymentsService.isMissingColumnError(error)) {
-      // PAYMENTS_ENABLED is on but the deposit migration has not been applied: the deposit cannot be recorded,
-      // so the booking is refused rather than created without it
-      paymentsService.reportMissingSchema('appointments.deposit_required', error);
-      return { statusCode: 503, body: { error: DEPOSIT_BOOKING_UNAVAILABLE_MESSAGE } };
-    }
 
     if (error) {
       console.error('Error creating appointment:', error);
       return { statusCode: 500, body: { error: 'Failed to create appointment' } };
     }
 
-    return { statusCode: 201, body: {
-      success: true,
-      appointment: data[0],
-      ...(depositRequired ? { deposit: paymentsService.getNewAppointmentDepositNotice() } : {})
-    } };
+    return { statusCode: 201, body: { success: true, appointment: data[0] } };
   } catch (error) {
     console.error('Create appointment error:', error);
     return { statusCode: 500, body: { error: 'Server error' } };
@@ -304,8 +272,7 @@ const getUserAppointments = async (req) => {
     }
 
     const appointmentsWithHandlers = await attachHandledByNames(appointments || []);
-    const appointmentsWithDeposits = await paymentsService.attachDepositSummaries(appointmentsWithHandlers, { audience: 'user' });
-    return { statusCode: 200, body: { success: true, appointments: appointmentsWithDeposits, ...paymentsService.getDepositPolicy() } };
+    return { statusCode: 200, body: { success: true, appointments: appointmentsWithHandlers } };
   } catch (error) {
     console.error('Get user appointments error:', error);
     return { statusCode: 500, body: { error: 'Server error' } };
@@ -391,13 +358,6 @@ const updateStatus = async (req) => {
       } };
     }
 
-    let depositCheck = null;
-    if (normalizedStatus === 'Approved') {
-      // Same deposit check as PUT /admin/dashboard/appointment-status, so this legacy route cannot bypass it
-      depositCheck = await paymentsService.checkDepositForApproval(existingAppointment);
-      if (!depositCheck.allowed) return depositCheck.result;
-    }
-
     const applyStatus = async () => {
       if (normalizedStatus === 'Approved') {
         const conflict = await getScheduleConflict(
@@ -408,10 +368,10 @@ const updateStatus = async (req) => {
         );
 
         if (conflict.hasConflict) {
-          return { refused: { statusCode: 409, body: paymentsService.addRefundRequiredToConflict({
+          return { refused: { statusCode: 409, body: {
             error: conflict.error || SCHEDULE_CONFLICT_MESSAGE,
             suggested_time: conflict.suggested_time || null
-          }, depositCheck) } };
+          } } };
         }
       }
 
@@ -442,15 +402,13 @@ const updateStatus = async (req) => {
 
     await logAdminActivity(normalizedAdminId, 'appointments', normalizedAppointmentId, `Updated appointment status to ${normalizedStatus}`);
 
-    // Cancelling closes any open deposit checkout and reports a paid deposit that now needs a refund;
-    // customers of deposit appointments are emailed the decision
-    const depositNotice = await paymentsService.handleAppointmentStatusChanged(existingAppointment, {
+    // Approving or cancelling emails the customer (in the background; a failed email never undoes the change)
+    appointmentNotificationsService.notifyAppointmentStatusChanged(existingAppointment, {
       previousStatus: currentStatus,
-      newStatus: normalizedStatus,
-      depositCheck
+      newStatus: normalizedStatus
     });
 
-    return { statusCode: 200, body: { success: true, message: 'Status updated', appointment: data[0], ...depositNotice } };
+    return { statusCode: 200, body: { success: true, message: 'Status updated', appointment: data[0] } };
   } catch (error) {
     console.error('Update status error:', error);
     return { statusCode: 500, body: { error: 'Server error' } };

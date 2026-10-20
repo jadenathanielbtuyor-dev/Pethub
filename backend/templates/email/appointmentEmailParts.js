@@ -1,4 +1,4 @@
-// Shared pieces of the appointment emails (deposit confirmation and appointment decision).
+// Shared pieces of the appointment emails (appointment approved and appointment cancelled).
 // Appointment dates and times are clinic (Asia/Manila) wall-clock values, so they are formatted without time zone conversion.
 
 function escapeHtml(value) {
@@ -32,19 +32,6 @@ function formatAppointmentTime(timeValue, durationMinutes) {
   return Number.isFinite(duration) && duration > 0
     ? `${formatClockTime(start)} – ${formatClockTime(start + duration)}`
     : formatClockTime(start);
-}
-
-function formatPaidAt(value) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return `${date.toLocaleString('en-US', {
-    timeZone: 'Asia/Manila',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit'
-  })} (Philippine time)`;
 }
 
 // The details every appointment email shows, as [label, value] pairs
@@ -117,7 +104,6 @@ function buildAppointmentEmail({ subject, heading, name, intro, details, paragra
 }
 
 module.exports = {
-  formatPaidAt,
   getAppointmentDetails,
   buildAppointmentEmail
 };

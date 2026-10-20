@@ -36,21 +36,10 @@ function uniqueValues(values = []) {
   return [...new Set(values.filter(Boolean))];
 }
 
-// On/off switches accept only "true" or "false" (any letter case, surrounding spaces ignored). Unset is off; any other
-// value is also off, and `setting` says it was not recognised so startup can report it (the value itself is never logged).
-function readSwitch(name) {
-  const value = readEnv(name).trim().toLowerCase();
-  if (value === 'true') return { enabled: true, setting: 'true' };
-  if (value === 'false') return { enabled: false, setting: 'false' };
-  return { enabled: false, setting: value === '' ? 'unset' : 'unrecognized' };
-}
-
 function parsePort(value) {
   const port = Number(value);
   return Number.isInteger(port) && port > 0 ? port : 5000;
 }
-
-const paymentsSwitch = readSwitch('PAYMENTS_ENABLED');
 
 const supabaseKey = readFirstEnv([
   'SUPABASE_ANON_KEY',
@@ -79,17 +68,8 @@ const env = {
   auth: {
     tokenSecret: readEnv('AUTH_TOKEN_SECRET')
   },
-  payments: {
-    // Appointment deposits stay off unless PAYMENTS_ENABLED is "true"
-    enabled: paymentsSwitch.enabled,
-    // 'true' | 'false' | 'unset' | 'unrecognized'
-    enabledSetting: paymentsSwitch.setting,
-    // Server-only PayMongo credentials (test mode only; live keys are refused in services/paymentsService.js)
-    paymongoSecretKey: readEnv('PAYMONGO_SECRET_KEY').trim(),
-    paymongoWebhookSecret: readEnv('PAYMONGO_WEBHOOK_SECRET').trim(),
-    // Where PayMongo sends the customer back after checkout (falls back to the request's allowed Origin)
-    frontendUrl: readEnv('FRONTEND_URL').trim()
-  },
+  // Frontend origin used for the My Appointments link in appointment emails (CORS below also allows it)
+  frontendUrl: readEnv('FRONTEND_URL').trim(),
   cors: {
     allowedOrigins: uniqueValues([
       ...DEFAULT_ALLOWED_ORIGINS,

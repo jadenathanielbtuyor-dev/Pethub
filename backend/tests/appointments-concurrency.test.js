@@ -1,6 +1,6 @@
-// Requests that arrive at the same moment: two admins approving overlapping appointments, and the same deposit
-// booking sent twice (two tabs, a double click). Each pair is started together, so without serialisation both
-// requests pass the "is it still free?" check before either one writes.
+// Requests that arrive at the same moment: two admins approving overlapping appointments, and the same booking sent
+// more than once (two tabs, a double click). Each group is started together, so without serialisation every request
+// passes the "is it still free?" / "is it already booked?" check before any of them writes.
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('path');
@@ -28,19 +28,6 @@ function approveVia(endpoint, admin, appointmentId) {
   return t.api('PUT', '/appointments/updateStatus', { token: admin.token, body: { id: appointmentId, status: 'Approved', user_id: admin.id } });
 }
 
-function seedPaidDeposit(user, appointment) {
-  return t.db.seed('payments', {
-    appointment_id: appointment.id,
-    user_id: user.id,
-    amount: 100,
-    payment_status: 'Paid',
-    paid_at: new Date().toISOString(),
-    provider_payment_id: `pay_conc${appointment.id.replace(/-/g, '').slice(0, 12)}`,
-    provider_checkout_session_id: `cs_conc${appointment.id.replace(/-/g, '').slice(0, 12)}`,
-    created_at: new Date().toISOString()
-  });
-}
-
 describe('simultaneous approvals of overlapping appointments', () => {
   for (const [first, second] of [['admin', 'admin'], ['admin', 'legacy'], ['legacy', 'legacy']]) {
     it(`${first} + ${second} endpoint: exactly one is approved, the other gets the schedule conflict`, async () => {
@@ -49,8 +36,8 @@ describe('simultaneous approvals of overlapping appointments', () => {
       const userA = t.createUser();
       const userB = t.createUser();
       const daysAhead = nextDay();
-      const a = t.createAppointment(userA, { daysAhead, time: '10:00:00', duration: 60, depositRequired: false });
-      const b = t.createAppointment(userB, { daysAhead, time: '10:30:00', duration: 60, depositRequired: false });
+      const a = t.createAppointment(userA, { daysAhead, time: '10:00:00', duration: 60 });
+      const b = t.createAppointment(userB, { daysAhead, time: '10:30:00', duration: 60 });
 
       const responses = await Promise.all([approveVia(first, adminA, a.id), approveVia(second, adminB, b.id)]);
       const statuses = responses.map(response => response.status).sort();
@@ -60,31 +47,13 @@ describe('simultaneous approvals of overlapping appointments', () => {
     });
   }
 
-  it('paid deposit appointments: one is approved, the other is refused with refund_required', async () => {
-    const adminA = t.createUser({ role: 'admin' });
-    const adminB = t.createUser({ role: 'admin' });
-    const userA = t.createUser();
-    const userB = t.createUser();
-    const daysAhead = nextDay();
-    const a = t.createAppointment(userA, { daysAhead, time: '14:00:00', duration: 45 });
-    const b = t.createAppointment(userB, { daysAhead, time: '14:00:00', duration: 45 });
-    seedPaidDeposit(userA, a);
-    seedPaidDeposit(userB, b);
-
-    const responses = await Promise.all([approveVia('admin', adminA, a.id), approveVia('legacy', adminB, b.id)]);
-    assert.deepEqual(responses.map(response => response.status).sort(), [200, 409]);
-    const refused = responses.find(response => response.status === 409);
-    assert.equal(refused.body.refund_required, true);
-    assert.equal([a, b].filter(appointment => t.appointmentRow(appointment.id).status === 'Approved').length, 1);
-  });
-
   it('approvals on different dates or at non-overlapping times are not held up by each other', async () => {
     const admin = t.createUser({ role: 'admin' });
     const user = t.createUser();
     const daysAhead = nextDay();
-    const morning = t.createAppointment(user, { daysAhead, time: '08:00:00', duration: 30, depositRequired: false });
-    const afternoon = t.createAppointment(user, { daysAhead, time: '15:00:00', duration: 30, depositRequired: false });
-    const otherDay = t.createAppointment(user, { daysAhead: nextDay(), time: '08:00:00', duration: 30, depositRequired: false });
+    const morning = t.createAppointment(user, { daysAhead, time: '08:00:00', duration: 30 });
+    const afternoon = t.createAppointment(user, { daysAhead, time: '15:00:00', duration: 30 });
+    const otherDay = t.createAppointment(user, { daysAhead: nextDay(), time: '08:00:00', duration: 30 });
 
     const responses = await Promise.all([morning, afternoon, otherDay].map(appointment => approveVia('admin', admin, appointment.id)));
     assert.deepEqual(responses.map(response => response.status), [200, 200, 200]);
@@ -93,7 +62,7 @@ describe('simultaneous approvals of overlapping appointments', () => {
   });
 });
 
-describe('the same deposit booking sent twice at once', () => {
+describe('the same booking sent more than once at the same moment', () => {
   it('creates one appointment; the second request gets it back as already booked', async () => {
     const user = t.createUser();
     const pet = t.createPet(user);
@@ -112,6 +81,8 @@ describe('the same deposit booking sent twice at once', () => {
     assert.equal(rows.length, 1, 'one appointment row');
     responses.forEach(response => assert.equal(response.body.appointment.id, rows[0].id));
     responses.filter(response => response.status === 200).forEach(response => assert.equal(response.body.already_booked, true));
+    const { pendingKeyCount } = require(path.join(__dirname, '..', 'utils', 'keyedLock.js'));
+    assert.equal(pendingKeyCount(), 0, 'no booking lock is left behind');
   });
 
   it('different bookings from the same customer are still all created', async () => {

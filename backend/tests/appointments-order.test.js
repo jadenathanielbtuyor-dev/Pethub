@@ -19,7 +19,6 @@ function seedAppointment(user, pet, label, appointmentDate, appointmentTime, cre
     appointment_date: appointmentDate,
     appointment_time: appointmentTime,
     status: 'Pending',
-    deposit_required: false,
     created_at: createdAt
   });
 }

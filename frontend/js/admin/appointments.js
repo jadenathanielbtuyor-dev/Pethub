@@ -22,8 +22,7 @@ function getAppointmentActionButtonClass(type) {
   const baseClasses = 'inline-flex items-center justify-center rounded px-3 py-1 text-sm font-semibold shadow-sm transition';
   const classes = {
     danger: 'bg-red-50 text-red-700 hover:bg-red-100',
-    success: 'bg-green-50 text-green-700 hover:bg-green-100',
-    locked: 'bg-slate-100 text-slate-500 cursor-not-allowed'
+    success: 'bg-green-50 text-green-700 hover:bg-green-100'
   };
 
   return `${baseClasses} ${classes[type] || classes.success}`;
@@ -32,8 +31,7 @@ function getAppointmentActionButtonClass(type) {
 function setAppointmentActionGroupLoading(button, isLoading, loadingText, defaultText) {
   if (!button) return;
 
-  // A locked Approve button (deposit not paid) stays disabled after another action finishes
-  const actionButtons = Array.from(button.closest('div')?.querySelectorAll('button:not([data-approval-locked])') || [button]);
+  const actionButtons = Array.from(button.closest('div')?.querySelectorAll('button') || [button]);
   actionButtons.forEach(actionButton => {
     if (actionButton === button) {
       updateButtonState(actionButton, isLoading, loadingText, defaultText);
@@ -133,7 +131,6 @@ function displayAppointmentsTable(appointments) {
           <span class="inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold ${getStatusBadgeClass(status)}">
             ${escapeHtml(status)}
           </span>
-          ${getDepositBadgesHtml(apt, status)}
         </td>
         <td class="p-4 text-slate-700">${handledBy ? escapeHtml(handledBy) : '<span class="text-slate-500">-</span>'}</td>
         <td class="p-4">
@@ -310,16 +307,9 @@ function renderAppointmentActions(status, appointment) {
     return '<span class="text-xs text-gray-500">No action</span>';
   }
 
-  const approvalLockReason = isPending ? getApprovalLockReason(appointment) : '';
-
   return `
     <div class="flex flex-wrap gap-2">
-      ${isPending && approvalLockReason ? `
-        <button type="button" disabled data-approval-locked="true" title="${escapeHtml(approvalLockReason)}" aria-label="Approve: ${escapeHtml(approvalLockReason)}" class="${getAppointmentActionButtonClass('locked')}">
-          Approve
-        </button>
-      ` : ''}
-      ${isPending && !approvalLockReason ? `
+      ${isPending ? `
         <button onclick="updateAppointmentStatus(this, '${safeAppointmentId}', 'Approved')" class="${getAppointmentActionButtonClass('success')}">
           Approve
         </button>
@@ -753,52 +743,6 @@ function getStatusBadgeClass(status) {
   return classes[status] || 'bg-slate-100 text-slate-700';
 }
 
-// Deposit state comes from the backend (payments table); appointments booked before deposits show nothing here
-function getDepositBadges(deposit, appointmentStatus) {
-  if (!deposit || deposit.required === false) return [];
-
-  if (deposit.status === 'paid') {
-    const paidLabel = appointmentStatus === 'Pending' && !deposit.refund_required ? 'Paid — awaiting approval' : 'Deposit paid';
-    const badges = [{ label: deposit.late_payment ? `${paidLabel} (late)` : paidLabel, className: 'bg-green-50 text-green-700' }];
-    if (deposit.refund_required) {
-      badges.push({ label: deposit.slot_conflict ? 'Slot taken: refund required' : 'Refund required', className: 'bg-red-50 text-red-700' });
-    }
-    return badges;
-  }
-
-  if (deposit.status === 'refunded') return [{ label: 'Refunded', className: 'bg-slate-100 text-slate-700' }];
-  if (deposit.status === 'unavailable') return [{ label: 'Deposit status unavailable', className: 'bg-slate-100 text-slate-700' }];
-  if (appointmentStatus !== 'Pending') return [{ label: 'No deposit paid', className: 'bg-slate-100 text-slate-700' }];
-
-  const badges = deposit.status === 'pending'
-    ? [{ label: 'Payment pending', className: 'bg-blue-50 text-blue-600' }]
-    : [{ label: 'Awaiting payment', className: 'bg-yellow-50 text-yellow-700' }];
-  if (deposit.slot_conflict) badges.push({ label: 'Slot taken', className: 'bg-slate-100 text-slate-700' });
-  return badges;
-}
-
-// Approval needs a verified deposit for appointments booked while deposits are on. The backend refuses it too;
-// this only explains why the Approve button cannot be used.
-function getApprovalLockReason(appointment) {
-  const deposit = appointment?.deposit;
-  if (!deposit || deposit.required === false || deposit.status === 'paid') return '';
-  if (deposit.status === 'unavailable') return 'Deposit status unavailable. Refresh and try again.';
-  return 'Approval needs a paid ₱100 deposit.';
-}
-
-function getDepositBadgesHtml(appointment, appointmentStatus) {
-  const badges = getDepositBadges(appointment?.deposit, appointmentStatus);
-  if (badges.length === 0) return '';
-
-  return `
-    <div class="mt-2 flex flex-wrap gap-1">
-      ${badges.map(badge => `
-        <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${badge.className}">${escapeHtml(badge.label)}</span>
-      `).join('')}
-    </div>
-  `;
-}
-
 function formatSuggestedAppointmentTimeDisplay(timeValue) {
   const match = String(timeValue || '').trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
   if (!match) return '';
@@ -817,10 +761,6 @@ function formatSuggestedAppointmentTimeDisplay(timeValue) {
 }
 
 function getAppointmentStatusUpdateErrorMessage(error) {
-  // Deposit refusals (unpaid deposit, or a paid deposit that now needs a refund) keep the backend's explanation
-  if (error?.depositRelated) {
-    return error.message || 'Could not update appointment.';
-  }
   const suggestedTime = formatSuggestedAppointmentTimeDisplay(error?.suggestedTime);
   if (suggestedTime) {
     return `Selected time is unavailable. Next available time: ${suggestedTime}.`;
@@ -868,7 +808,6 @@ async function updateAppointmentStatus(button, appointmentId, newStatus) {
     if (!response.ok || data.success === false) {
       const updateError = new Error(data.error || 'Could not update appointment.');
       updateError.suggestedTime = data.suggested_time;
-      updateError.depositRelated = data.refund_required === true || data.deposit_required === true;
       throw updateError;
     }
 
@@ -877,19 +816,15 @@ async function updateAppointmentStatus(button, appointmentId, newStatus) {
     }
 
     await loadAppointments();
-    showSuccess(getAppointmentStatusFeedback(newStatus, data), data.refund_required ? 8000 : undefined);
+    showSuccess(getAppointmentStatusFeedback(newStatus));
   } catch (error) {
     console.error('Error updating appointment:', error);
     setAppointmentActionGroupLoading(button, false, 'Updating...', originalText);
-    showError(getAppointmentStatusUpdateErrorMessage(error), error?.depositRelated ? 8000 : undefined);
-    if (error?.depositRelated) await loadAppointments();
+    showError(getAppointmentStatusUpdateErrorMessage(error));
   }
 }
 
-function getAppointmentStatusFeedback(status, data = {}) {
-  if (status === 'Cancelled' && data.refund_required) {
-    return 'Appointment cancelled. Its ₱100 deposit was paid: refund it in the PayMongo Dashboard.';
-  }
+function getAppointmentStatusFeedback(status) {
   const messages = {
     Approved: 'Appointment approved.',
     Completed: 'Appointment completed.',

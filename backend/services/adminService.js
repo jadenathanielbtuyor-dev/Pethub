@@ -32,7 +32,7 @@ const appointmentsRepository = require('../repositories/appointmentsRepository')
 const medicalRecordsRepository = require('../repositories/medicalRecordsRepository');
 const activityLogsRepository = require('../repositories/activityLogsRepository');
 const contactRepository = require('../repositories/contactRepository');
-const paymentsService = require('./paymentsService');
+const appointmentNotificationsService = require('./appointmentNotificationsService');
 const { APPOINTMENT_STATUS_CHANGED_MESSAGE } = require('../constants/appointments');
 
 // "Due soon" = Pending or Approved vaccination appointments from today through today + 7 days (inclusive)
@@ -617,7 +617,7 @@ const getDashboardOverview = async (req) => {
       },
       users,
       pets: normalizedPets,
-      appointments: await paymentsService.attachDepositSummaries(normalizedAppointments, { audience: 'admin' }),
+      appointments: normalizedAppointments,
       medicalRecords: normalizedMedicalRecords,
       petTypes: {
         labels: Object.keys(petTypeCounts),
@@ -954,9 +954,8 @@ const getAllAppointments = async (req) => {
       normalizeAppointmentNames(appointmentsList, userMap),
       appointmentMedicalRecordState
     );
-    const appointmentsWithDeposits = await paymentsService.attachDepositSummaries(normalizedAppointments, { audience: 'admin' });
 
-    return { statusCode: 200, body: { success: true, appointments: appointmentsWithDeposits } };
+    return { statusCode: 200, body: { success: true, appointments: normalizedAppointments } };
   } catch (error) {
     console.error('Get all appointments error:', error);
     return { statusCode: 500, body: { error: 'Server error' } };
@@ -1180,21 +1179,14 @@ const updateAppointmentStatus = async (req) => {
       } };
     }
 
-    let depositCheck = null;
-    if (normalizedStatus === 'Approved') {
-      // Appointments booked while deposits are on need a paid deposit first (same check in appointmentsService.updateStatus)
-      depositCheck = await paymentsService.checkDepositForApproval(existingData);
-      if (!depositCheck.allowed) return depositCheck.result;
-    }
-
     const applyStatus = async () => {
       if (normalizedStatus === 'Approved') {
         const conflict = await getAppointmentApprovalConflict(existingData, normalizedAppointmentId);
         if (conflict.hasConflict) {
-          return { refused: { statusCode: 409, body: paymentsService.addRefundRequiredToConflict({
+          return { refused: { statusCode: 409, body: {
             error: conflict.error || SCHEDULE_CONFLICT_MESSAGE,
             suggested_time: conflict.suggested_time || null
-          }, depositCheck) } };
+          } } };
         }
       }
 
@@ -1235,15 +1227,13 @@ const updateAppointmentStatus = async (req) => {
       `Updated appointment status from ${currentStatus} to ${normalizedStatus}`
     );
 
-    // Cancelling closes any open deposit checkout and reports a paid deposit that now needs a refund;
-    // customers of deposit appointments are emailed the decision
-    const depositNotice = await paymentsService.handleAppointmentStatusChanged(existingData, {
+    // Approving or cancelling emails the customer (in the background; a failed email never undoes the change)
+    appointmentNotificationsService.notifyAppointmentStatusChanged(existingData, {
       previousStatus: currentStatus,
-      newStatus: normalizedStatus,
-      depositCheck
+      newStatus: normalizedStatus
     });
 
-    return { statusCode: 200, body: { success: true, appointment: data[0], ...depositNotice } };
+    return { statusCode: 200, body: { success: true, appointment: data[0] } };
   } catch (error) {
     console.error('Update appointment status error:', error);
     return { statusCode: 500, body: { error: 'Server error' } };

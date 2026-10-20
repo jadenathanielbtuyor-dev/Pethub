@@ -2,11 +2,10 @@ require('./env'); // loads backend/.env into process.env, like the other config 
 const { createClient } = require('@supabase/supabase-js');
 const logger = require('../utils/logger');
 
-// Server-only Supabase client for password reset and payment data
-// (repositories/passwordResetsRepository.js and repositories/paymentsRepository.js only).
+// Server-only Supabase client for password reset data (repositories/passwordResetsRepository.js only).
 // It uses the service-role key, which bypasses RLS, so it must never be used by other repositories or reach the browser.
-// There is deliberately no fallback to the anon key: without SUPABASE_SERVICE_KEY, password reset and deposit payments
-// are unavailable, while the rest of the backend (shared client in config/supabase.js) keeps working.
+// There is deliberately no fallback to the anon key: without SUPABASE_SERVICE_KEY, password reset is unavailable,
+// while the rest of the backend (shared client in config/supabase.js) keeps working.
 
 let adminClient = null;
 
@@ -40,7 +39,7 @@ function getSupabaseAdmin() {
 
   const { url, serviceKey } = readAdminConfig();
   if (!url || !serviceKey) {
-    throw new Error('Server-only database access (password reset, payments) is not configured. Set SUPABASE_SERVICE_KEY (the service role key) on the server.');
+    throw new Error('Password reset database access is not configured. Set SUPABASE_SERVICE_KEY (the service role key) on the server.');
   }
 
   adminClient = createClient(url, serviceKey, {
@@ -50,9 +49,9 @@ function getSupabaseAdmin() {
 }
 
 if (process.env.SUPABASE_SERVICE_KEY && isPublicKey(process.env.SUPABASE_SERVICE_KEY)) {
-  logger.warn('supabase.service_key_rejected', { reason: 'SUPABASE_SERVICE_KEY holds the public anon key', affects: 'password reset and payments only' });
+  logger.warn('supabase.service_key_rejected', { reason: 'SUPABASE_SERVICE_KEY holds the public anon key', affects: 'password reset only' });
 } else if (!isSupabaseAdminConfigured()) {
-  logger.warn('supabase.service_key_missing', { affects: 'password reset and payments only' });
+  logger.warn('supabase.service_key_missing', { affects: 'password reset only' });
 }
 
 module.exports = {

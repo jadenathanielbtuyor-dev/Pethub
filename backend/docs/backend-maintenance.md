@@ -10,7 +10,7 @@ Environment variables are centralized in `config/env.js`. Railway should continu
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY` or `SUPABASE_SERVICE_KEY`
 - `SUPABASE_SERVICE_KEY` (also required by password reset, which reads it only in `config/supabaseAdmin.js` and never falls back to the anon key; without it, password reset is unavailable but the rest of the backend still runs. Server-side only: never put it in frontend code or Vercel.)
-- `BREVO_API_KEY` (Brevo transactional email API key; verification emails are sent through Brevo)
+- `BREVO_API_KEY` (Brevo transactional email API key; verification, password reset and appointment approved/cancelled emails are sent through Brevo)
 - `SENDGRID_FROM_EMAIL` (sender address for Brevo emails; the name is kept from the earlier SendGrid setup and must be a sender verified in Brevo)
 - `SENDGRID_FROM_NAME` (sender display name for Brevo emails; defaults to `PetHub`)
 - `GEMINI_API_KEY`
@@ -19,8 +19,10 @@ Environment variables are centralized in `config/env.js`. Railway should continu
 
 Optional frontend origin settings:
 
-- `FRONTEND_URL`
+- `FRONTEND_URL` (frontend origin; allowed by CORS and used for the My Appointments link in appointment emails, which is left out when it is not set)
 - `CORS_ORIGINS` as a comma-separated list
+
+Online payments (PayMongo deposits) were removed from PetHub. `PAYMENTS_ENABLED`, `PAYMONGO_SECRET_KEY`, `PAYMONGO_WEBHOOK_SECRET` and `PAYMONGO_API_URL` are no longer read and can be deleted wherever they are still set. The old `/payments/*` endpoints answer with the API 404. The database keeps the `payments` table and the `appointments.deposit_required` / `appointments.payment_status` columns (historical data, see `database/migrations/2026-10-17_paymongo_deposits.sql`); the application no longer reads or writes them.
 
 ## Folder Roles
 
@@ -42,7 +44,7 @@ Backend JavaScript files use lower camelCase for multiword modules, matching the
 
 ## Future Feature Prep
 
-Forgot password, notifications, payments, and reminders should follow the same shape:
+New features such as notifications and reminders should follow the same shape:
 
 - add constants for statuses and timing first;
 - add validators for request payloads;
@@ -51,4 +53,4 @@ Forgot password, notifications, payments, and reminders should follow the same s
 - keep controllers thin;
 - place reusable email or notification copy under `templates/`.
 
-Do not put provider-specific payment or notification code directly in controllers.
+Do not put provider-specific notification code directly in controllers.
