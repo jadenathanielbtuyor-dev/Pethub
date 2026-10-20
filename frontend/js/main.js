@@ -6,7 +6,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function initializeApp() {
   initializeDarkMode();
-  
+
+  setupSiteNavigation();
   updateNavigationState();
   setupLogoutHandlers();
 
@@ -96,14 +97,85 @@ function updateDarkModeIcon() {
   }
 }
 
+// Public and sign-in pages (header .ph-nav): below 768px the links sit in a menu that the button opens and closes.
+// Escape, choosing a link, clicking outside the header or moving keyboard focus out of it closes the menu.
+function setupSiteNavigation() {
+  document.querySelectorAll('[data-nav-toggle]').forEach(toggle => {
+    const nav = toggle.closest('.ph-nav');
+    const menu = document.getElementById(toggle.getAttribute('aria-controls'));
+    if (!nav || !menu || toggle.dataset.ready === 'true') return;
+    toggle.dataset.ready = 'true';
+    nav.classList.add('is-enhanced');
+
+    const icon = toggle.querySelector('i');
+    const isOpen = () => toggle.getAttribute('aria-expanded') === 'true';
+    const setOpen = open => {
+      menu.classList.toggle('is-open', open);
+      toggle.setAttribute('aria-expanded', String(open));
+      toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+      if (icon) icon.className = open ? 'ri-close-line' : 'ri-menu-line';
+    };
+
+    toggle.addEventListener('click', () => setOpen(!isOpen()));
+    menu.addEventListener('click', event => {
+      if (event.target.closest('a')) setOpen(false);
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && isOpen()) {
+        setOpen(false);
+        toggle.focus();
+      }
+    });
+    document.addEventListener('click', event => {
+      if (isOpen() && !nav.contains(event.target)) setOpen(false);
+    });
+    nav.addEventListener('focusout', event => {
+      if (isOpen() && event.relatedTarget && !nav.contains(event.relatedTarget)) setOpen(false);
+    });
+
+    const desktop = window.matchMedia('(min-width: 768px)');
+    const closeOnDesktop = () => {
+      if (desktop.matches) setOpen(false);
+    };
+    if (desktop.addEventListener) desktop.addEventListener('change', closeOnDesktop);
+    else if (desktop.addListener) desktop.addListener(closeOnDesktop);
+  });
+}
+
 // Navigation Updates
 function updateNavigationState() {
+  const user = getUser();
+  const signedIn = Boolean(user && isLoggedIn());
+
+  // Header .ph-nav: when signed in, "Log in" becomes "My dashboard" with a "Log out" link beside it, and customers'
+  // booking links go straight to the booking page (keeping the service a Services page link names)
+  if (signedIn) {
+    const isAdmin = String(user.role || '').toLowerCase() === 'admin';
+    document.querySelectorAll('[data-auth-link]').forEach(link => {
+      link.textContent = 'My dashboard';
+      link.href = isAdmin ? PATHS.adminDashboard : PATHS.userDashboard;
+      if (!link.parentElement.querySelector('[data-logout-link]')) {
+        const logoutLink = document.createElement('a');
+        logoutLink.href = '#logout';
+        logoutLink.className = 'ph-nav-login';
+        logoutLink.dataset.logoutLink = 'true';
+        logoutLink.textContent = 'Log out';
+        link.insertAdjacentElement('afterend', logoutLink);
+      }
+    });
+    if (!isAdmin) {
+      document.querySelectorAll('a[data-book-link]').forEach(link => {
+        const service = new URL(link.href, window.location.href).searchParams.get('service');
+        link.href = service ? `${PATHS.userAppointments}?service=${encodeURIComponent(service)}` : PATHS.userAppointments;
+      });
+    }
+  }
+
+  // Older header markup (.nav-links): the Login link becomes Logout
   const navLinks = document.querySelector('.nav-links');
   if (!navLinks) return;
-  
-  const user = getUser();
-  
-  if (user && isLoggedIn()) {
+
+  if (signedIn) {
     // User is logged in - show Logout button
     const loginLink = navLinks.querySelector('.btn-login') || navLinks.querySelector('a[href*="login"]');
     

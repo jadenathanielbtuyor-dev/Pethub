@@ -10,21 +10,35 @@ const {
   FULLNAME_MAX_LENGTH,
   EMAIL_MAX_LENGTH,
   GENDER_OPTIONS,
+  PROFILE_COLUMNS,
   ADDRESS_MAX_LENGTHS,
+  POSTAL_CODE_PATTERN,
   EARLIEST_DATE_OF_BIRTH,
   CLINIC_TIME_ZONE
 } = require('../constants/userProfile');
 
 const CONTROL_CHARACTERS = /[\u0000-\u001F\u007F]/;
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+// Letters of any script (with their accents), spaces, and the punctuation names use: hyphen, apostrophes, period, comma
+const NAME_PATTERN = /^[\p{L}\p{M}][\p{L}\p{M} '’.,-]*$/u;
 const ADDRESS_LABELS = Object.freeze({
-  address_line: 'House/Unit/Street',
+  address_line: 'House/unit number and street',
   barangay: 'Barangay',
-  city_municipality: 'City/Municipality',
+  city_municipality: 'City/municipality',
   province: 'Province'
 });
+// Account fields a profile update must never change; each has its own workflow (or none) instead
+const PROTECTED_PROFILE_FIELDS = Object.freeze({
+  email: 'Your email address cannot be changed here.',
+  password: 'Use Forgot Password on the login page to change your password.',
+  confirm_password: 'Use Forgot Password on the login page to change your password.',
+  role: 'Your account type cannot be changed here.',
+  is_verified: 'Your verification status cannot be changed here.'
+});
+// The signed-in account's own id may accompany any request (middleware/requireAuth.js checks it against the token)
+const IDENTITY_FIELDS = Object.freeze(['user_id', 'userId']);
 
-// 400 naming the field it is about, so the registration form can show the message beside that field
+// 400 naming the field it is about, so the form can show the message beside that field
 function fieldError(field, message) {
   return { error: { statusCode: 400, body: { success: false, error: message, field } } };
 }
@@ -39,6 +53,10 @@ function readText(body, field) {
 
 function collapseSpaces(value) {
   return value.replace(/\s+/g, ' ');
+}
+
+function asObject(body) {
+  return body && typeof body === 'object' && !Array.isArray(body) ? body : {};
 }
 
 function getClinicDate(date = new Date()) {
@@ -59,12 +77,84 @@ function isCalendarDate(value) {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 }
 
-// Philippine mobile numbers written the usual ways (0917 123 4567, +63 917 123 4567, 639171234567),
-// stored as +639XXXXXXXXX. Entering a number does not verify it.
-function normalizePhilippineMobile(value) {
-  if (value.length > 20) return '';
-  const match = /^(?:\+?63|0)(9\d{9})$/.exec(value.replace(/[\s().-]/g, ''));
-  return match ? `+63${match[1]}` : '';
+// Philippine mobile (0917 123 4567) and landline (02 8123 4567, 032 123 4567) numbers, written with 0, 63 or +63, are
+// stored as +63 and the national number. Numbers from other countries must start with + (or 00) and the country code,
+// and are stored as + and 8 to 15 digits (the international maximum). Entering a number does not verify it.
+function normalizeContactNumber(value) {
+  if (value.length > 25) return '';
+  let compact = value.replace(/[\s().-]/g, '');
+  if (compact.startsWith('00')) compact = `+${compact.slice(2)}`;
+
+  const philippine = /^(?:(?:\+?63)0?|0)(9\d{9}|[2-8]\d{8})$/.exec(compact);
+  if (philippine) return `+63${philippine[1]}`;
+
+  const international = /^\+([1-9]\d{7,14})$/.exec(compact);
+  if (international && !international[1].startsWith('63')) return `+${international[1]}`;
+  return '';
+}
+
+function validateFullName(input) {
+  const name = readText(input, 'fullname');
+  const cleanName = collapseSpaces(name.value);
+  if (name.invalid || !cleanName) return fieldError('fullname', 'Full legal name is required.');
+  if (cleanName.length > FULLNAME_MAX_LENGTH) {
+    return fieldError('fullname', `Full legal name must be ${FULLNAME_MAX_LENGTH} characters or fewer.`);
+  }
+  if (CONTROL_CHARACTERS.test(cleanName) || !NAME_PATTERN.test(cleanName)) {
+    return fieldError('fullname', 'Enter your full legal name using letters, spaces, hyphens, apostrophes or periods.');
+  }
+  return { cleanName };
+}
+
+// Every personal and contact detail, in the order the forms show them; the first problem is reported
+function validateProfileDetails(input) {
+  const profile = {};
+
+  const dateOfBirth = readText(input, 'date_of_birth');
+  if (!dateOfBirth.invalid && !dateOfBirth.value) return fieldError('date_of_birth', 'Date of birth is required.');
+  if (dateOfBirth.invalid || !isCalendarDate(dateOfBirth.value)) {
+    return fieldError('date_of_birth', 'Enter a valid date of birth.');
+  }
+  if (dateOfBirth.value > getClinicDate()) return fieldError('date_of_birth', 'Date of birth cannot be in the future.');
+  if (dateOfBirth.value < EARLIEST_DATE_OF_BIRTH) return fieldError('date_of_birth', 'Enter a date of birth from 1900 onwards.');
+  profile.date_of_birth = dateOfBirth.value;
+
+  const gender = readText(input, 'gender');
+  if (!gender.invalid && !gender.value) {
+    return fieldError('gender', 'Gender is required. "Prefer not to say" is a valid choice.');
+  }
+  const genderOption = GENDER_OPTIONS.find(option => option.toLowerCase() === gender.value.toLowerCase());
+  if (gender.invalid || !genderOption) return fieldError('gender', 'Choose one of the listed options.');
+  profile.gender = genderOption;
+
+  const phone = readText(input, 'phone_number');
+  if (!phone.invalid && !phone.value) return fieldError('phone_number', 'Contact number is required.');
+  const phoneNumber = phone.invalid ? '' : normalizeContactNumber(phone.value);
+  if (!phoneNumber) {
+    return fieldError('phone_number', 'Enter a mobile or landline number, such as 0917 123 4567 or 02 8123 4567. For a number outside the Philippines, start with + and the country code.');
+  }
+  profile.phone_number = phoneNumber;
+
+  for (const [field, maxLength] of Object.entries(ADDRESS_MAX_LENGTHS)) {
+    const label = ADDRESS_LABELS[field];
+    const text = readText(input, field);
+    const value = collapseSpaces(text.value);
+    if (!text.invalid && !value) return fieldError(field, `${label} is required.`);
+    if (text.invalid || CONTROL_CHARACTERS.test(value) || !/[\p{L}\p{N}]/u.test(value)) {
+      return fieldError(field, `Enter a valid ${label.toLowerCase()}.`);
+    }
+    if (value.length > maxLength) return fieldError(field, `${label} must be ${maxLength} characters or fewer.`);
+    profile[field] = value;
+  }
+
+  const postalCode = readText(input, 'postal_code');
+  if (!postalCode.invalid && !postalCode.value) return fieldError('postal_code', 'Postal code is required.');
+  if (postalCode.invalid || !POSTAL_CODE_PATTERN.test(postalCode.value)) {
+    return fieldError('postal_code', 'Enter a 4-digit postal code.');
+  }
+  profile.postal_code = postalCode.value;
+
+  return { profile };
 }
 
 function validateLogin(body = {}) {
@@ -86,20 +176,14 @@ function validateLogin(body = {}) {
   return { normalizedEmail, cleanPassword };
 }
 
-// Fields are checked in the order the registration form shows them, and the first problem is reported.
-// Only the fields below are read: role, is_verified and anything else in the body are ignored.
+// Every field is required. Fields are checked in the order the registration form shows them, and the first problem is
+// reported. Only the fields below are read: role, is_verified and anything else in the body are ignored.
 function validateRegister(body = {}) {
-  const input = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  const input = asObject(body);
 
-  const name = readText(input, 'fullname');
-  const cleanName = collapseSpaces(name.value);
-  if (name.invalid || !cleanName) return fieldError('fullname', 'Full name is required.');
-  if (cleanName.length > FULLNAME_MAX_LENGTH) {
-    return fieldError('fullname', `Full name must be ${FULLNAME_MAX_LENGTH} characters or fewer.`);
-  }
-  if (CONTROL_CHARACTERS.test(cleanName) || !/\p{L}/u.test(cleanName)) {
-    return fieldError('fullname', 'Enter your full name using letters.');
-  }
+  const name = validateFullName(input);
+  if (name.error) return name;
+  const { cleanName } = name;
 
   const email = readText(input, 'email');
   const normalizedEmail = email.value.toLowerCase();
@@ -122,55 +206,39 @@ function validateRegister(body = {}) {
     return fieldError('password', `Password must be ${PASSWORD_MAX_LENGTH} characters or fewer.`);
   }
 
-  // Optional: earlier versions of the form did not send it. Checked here, never stored.
+  // Checked here, never stored
   const confirmation = input.confirm_password;
-  if (confirmation !== undefined && confirmation !== null && confirmation !== cleanPassword) {
-    return fieldError('confirm_password', 'Passwords do not match.');
+  if (confirmation === undefined || confirmation === null || confirmation === '') {
+    return fieldError('confirm_password', 'Confirm your password.');
+  }
+  if (confirmation !== cleanPassword) return fieldError('confirm_password', 'Passwords do not match.');
+
+  const details = validateProfileDetails(input);
+  if (details.error) return details;
+
+  return { cleanName, normalizedEmail, cleanPassword, profile: details.profile };
+}
+
+// PUT /auth/profile: the full legal name and every personal detail, all required (the form always sends them all).
+// Email, password, role and verification status have their own workflows and are refused here, as is any other field.
+function validateProfileUpdate(body = {}) {
+  const input = asObject(body);
+  const editable = new Set(['fullname', ...PROFILE_COLUMNS, ...IDENTITY_FIELDS]);
+
+  for (const field of Object.keys(input)) {
+    if (Object.prototype.hasOwnProperty.call(PROTECTED_PROFILE_FIELDS, field)) {
+      return fieldError(field, PROTECTED_PROFILE_FIELDS[field]);
+    }
+    if (!editable.has(field)) return fieldError(field, 'This detail cannot be changed here.');
   }
 
-  // Optional profile details: blank ones are left out, so they stay NULL
-  const profile = {};
+  const name = validateFullName(input);
+  if (name.error) return name;
 
-  const dateOfBirth = readText(input, 'date_of_birth');
-  if (dateOfBirth.invalid || (dateOfBirth.value && !isCalendarDate(dateOfBirth.value))) {
-    return fieldError('date_of_birth', 'Enter a valid date of birth.');
-  }
-  if (dateOfBirth.value) {
-    if (dateOfBirth.value > getClinicDate()) return fieldError('date_of_birth', 'Date of birth cannot be in the future.');
-    if (dateOfBirth.value < EARLIEST_DATE_OF_BIRTH) return fieldError('date_of_birth', 'Enter a date of birth from 1900 onwards.');
-    profile.date_of_birth = dateOfBirth.value;
-  }
+  const details = validateProfileDetails(input);
+  if (details.error) return details;
 
-  const gender = readText(input, 'gender');
-  const genderOption = GENDER_OPTIONS.find(option => option.toLowerCase() === gender.value.toLowerCase());
-  if (gender.invalid || (gender.value && !genderOption)) {
-    return fieldError('gender', 'Choose one of the listed options.');
-  }
-  if (genderOption) profile.gender = genderOption;
-
-  const phone = readText(input, 'phone_number');
-  if (phone.invalid || phone.value) {
-    const phoneNumber = phone.invalid ? '' : normalizePhilippineMobile(phone.value);
-    if (!phoneNumber) return fieldError('phone_number', 'Enter a Philippine mobile number, for example 0917 123 4567.');
-    profile.phone_number = phoneNumber;
-  }
-
-  for (const [field, maxLength] of Object.entries(ADDRESS_MAX_LENGTHS)) {
-    const label = ADDRESS_LABELS[field];
-    const text = readText(input, field);
-    const value = collapseSpaces(text.value);
-    if (text.invalid || CONTROL_CHARACTERS.test(value)) return fieldError(field, `Enter a valid ${label}.`);
-    if (value.length > maxLength) return fieldError(field, `${label} must be ${maxLength} characters or fewer.`);
-    if (value) profile[field] = value;
-  }
-
-  const postalCode = readText(input, 'postal_code');
-  if (postalCode.invalid || (postalCode.value && !/^\d{4}$/.test(postalCode.value))) {
-    return fieldError('postal_code', 'Enter a 4-digit postal code.');
-  }
-  if (postalCode.value) profile.postal_code = postalCode.value;
-
-  return { cleanName, normalizedEmail, cleanPassword, profile };
+  return { cleanName: name.cleanName, profile: details.profile };
 }
 
 function validateVerifyEmail(body = {}) {
@@ -281,6 +349,8 @@ function validateRequiredUserId(value) {
 module.exports = {
   validateLogin,
   validateRegister,
+  validateProfileUpdate,
+  normalizeContactNumber,
   validateVerifyEmail,
   validateResendVerificationCode,
   validatePasswordResetRequest,

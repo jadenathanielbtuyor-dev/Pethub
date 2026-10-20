@@ -8,6 +8,7 @@ const verifyEmail = createControllerHandler(authService.verifyEmail, 'verifyEmai
 const resendVerificationCode = createControllerHandler(authService.resendVerificationCode, 'resendVerificationCode', 'auth');
 const logout = createControllerHandler(authService.logout, 'logout', 'auth');
 const getUserStatus = createControllerHandler(authService.getUserStatus, 'getUserStatus', 'auth');
+const updateProfile = createControllerHandler(authService.updateProfile, 'updateProfile', 'auth');
 const getActivityLogs = createControllerHandler(authService.getActivityLogs, 'getActivityLogs', 'auth');
 const requestPasswordReset = createControllerHandler(passwordResetService.requestPasswordReset, 'requestPasswordReset', 'auth');
 const resetPassword = createControllerHandler(passwordResetService.resetPassword, 'resetPassword', 'auth');
@@ -19,6 +20,7 @@ module.exports = {
   resendVerificationCode,
   logout,
   getUserStatus,
+  updateProfile,
   getActivityLogs,
   requestPasswordReset,
   resetPassword

@@ -38,7 +38,7 @@ function bookingBody(user, pet, fields = {}) {
     user_id: user.id,
     pet_id: pet.id,
     pet_name: pet.name,
-    service_type: 'Checkup',
+    service_type: 'Dog & Cat Full Check Up',
     appointment_date: t.manilaDate(nextDay()),
     appointment_time: '10:00:00',
     ...fields
@@ -105,7 +105,7 @@ describe('Booking without payments', () => {
   it('stores the duration of the chosen service, whatever the browser sends', async () => {
     const user = t.createUser();
     const pet = t.createPet(user);
-    const response = await book(user, bookingBody(user, pet, { service_type: 'Grooming', estimated_duration_minutes: 5 }));
+    const response = await book(user, bookingBody(user, pet, { service_type: 'Full Grooming', estimated_duration_minutes: 5 }));
     assert.equal(response.status, 201);
     assert.equal(response.body.appointment.estimated_duration_minutes, 240);
     assert.equal(t.appointmentRow(response.body.appointment.id).estimated_duration_minutes, 240);
@@ -188,8 +188,8 @@ describe('Booking without payments', () => {
     assert.equal(overlapping.body.error, 'Selected time is unavailable.');
     assert.equal(overlapping.body.suggested_time, '14:45');
 
-    // Grooming takes 4 hours, so 11:00 runs into the 14:00 appointment
-    const longService = await book(user, bookingBody(user, pet, { appointment_date: date, appointment_time: '11:00:00', service_type: 'Grooming' }));
+    // Full Grooming takes 4 hours in these tests (test-only durations), so 11:00 runs into the 14:00 appointment
+    const longService = await book(user, bookingBody(user, pet, { appointment_date: date, appointment_time: '11:00:00', service_type: 'Full Grooming' }));
     assert.equal(longService.status, 400);
 
     // 13:15 + 45 minutes ends exactly when the approved appointment starts
@@ -215,7 +215,7 @@ describe('Booking without payments', () => {
     const otherPet = t.createPet(user, 'Kuro');
     assert.equal((await book(user, { ...body, appointment_time: '15:00:00' })).status, 201);
     assert.equal((await book(user, { ...body, pet_id: otherPet.id, pet_name: otherPet.name })).status, 201);
-    assert.equal((await book(user, { ...body, service_type: 'Vaccination' })).status, 201);
+    assert.equal((await book(user, { ...body, service_type: 'Bath' })).status, 201);
     t.appointmentRow(first.body.appointment.id).status = 'Cancelled';
     const rebooked = await book(user, body);
     assert.equal(rebooked.status, 201);

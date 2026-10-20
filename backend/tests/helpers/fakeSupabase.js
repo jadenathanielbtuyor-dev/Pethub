@@ -32,9 +32,10 @@ function compare(stored, expected) {
   return 0;
 }
 
-function likeToRegExp(pattern) {
+// LIKE is case-sensitive and ILIKE is not, as in PostgreSQL
+function likeToRegExp(pattern, { caseSensitive = false } = {}) {
   const escaped = String(pattern).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.');
-  return new RegExp(`^${escaped}$`, 'i');
+  return new RegExp(`^${escaped}$`, caseSensitive ? '' : 'i');
 }
 
 class FakeQuery {
@@ -98,8 +99,15 @@ class FakeQuery {
   ilike(column, pattern) { return this.addFilter(column, [], stored => likeToRegExp(pattern).test(String(stored ?? ''))); }
 
   not(column, operator, value) {
-    if (operator !== 'is') throw new Error(`Fake Supabase: not(${operator}) is not supported`);
-    return this.addFilter(column, [], stored => !(value === null ? stored === null || stored === undefined : stored === value));
+    if (operator === 'is') {
+      return this.addFilter(column, [], stored => !(value === null ? stored === null || stored === undefined : stored === value));
+    }
+    if (operator === 'like') {
+      // NOT (NULL LIKE ...) is NULL in SQL, so rows without a value never match
+      return this.addFilter(column, [], stored => stored !== null && stored !== undefined &&
+        !likeToRegExp(value, { caseSensitive: true }).test(String(stored)));
+    }
+    throw new Error(`Fake Supabase: not(${operator}) is not supported`);
   }
 
   // PostgreSQL puts NULLs last when ascending and first when descending, unless nullsFirst says otherwise

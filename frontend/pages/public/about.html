@@ -4,151 +4,152 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PetHub | About</title>
-
-  <!-- CSS -->
+  <meta name="description" content="What PetHub is: the clinic's online system for dog and cat owners to book grooming and check-ups and keep their pets' records.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800&amp;display=swap">
   <link rel="stylesheet" href="../../assets/css/style.css">
-
-  <!-- Icons -->
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet">
 </head>
-<body class="flex flex-col min-h-screen">
+<body class="ph-site flex flex-col min-h-screen">
+  <!-- Apply the saved theme before first paint; main.js still owns the toggle -->
+  <script>try { if (localStorage.getItem('darkMode') === 'true') { document.documentElement.classList.add('dark'); document.body.classList.add('dark-mode'); } } catch (e) {}</script>
+  <a href="#main" class="ph-skip-link">Skip to main content</a>
 
-  <!-- ================= NAVIGATION ================= -->
-  <nav class="nav">
-    <div class="nav-container">
-
-      <!-- Logo -->
-      <a href="../../index.html" class="logo">
-        <img src="../../assets/images/paw.png" alt="PetHub">
-        <h1>PetHub</h1>
-      </a>
-
-      <!-- Links -->
-      <ul class="nav-links">
-        <li><a href="../../index.html">Home</a></li>
-        <li><a href="about.html" class="active">About</a></li>
-        <li><a href="services.html">Services</a></li>
-        <li><a href="contact.html">Contact</a></li>
-        <li><a href="../auth/login.html" class="btn-login">Login</a></li>
-      </ul>
-
-    </div>
-  </nav>
-
-  <!-- ================= MAIN CONTENT ================= -->
-  <main class="flex-grow">
-
-  <!-- ================= PAGE HEADER ================= -->
-  <header class="bg-gradient-to-br from-orange-50 via-white to-blue-50 py-24 px-4">
-    <div class="max-w-6xl mx-auto text-center space-y-4">
-      <h1 class="text-6xl md:text-7xl font-bold text-gray-900 mb-6">
-        About PetHub
-      </h1>
-      <p class="text-2xl text-orange-600 font-semibold max-w-2xl mx-auto">
-        PetHub is a practical pet care system built around real features, not empty promises.
-      </p>
-    </div>
+  <!-- ================= SITE HEADER (shared by the public and sign-in pages; main.js runs the mobile menu) ================= -->
+  <header class="ph-header">
+    <nav class="ph-nav" aria-label="Main">
+      <div class="ph-nav-inner">
+        <a href="../../index.html" class="ph-brand">
+          <img src="../../assets/images/paw.png" alt="" width="40" height="40">
+          <span>PetHub</span>
+        </a>
+        <button type="button" class="ph-nav-toggle" data-nav-toggle aria-controls="siteNavMenu" aria-expanded="false" aria-label="Open menu">
+          <i class="ri-menu-line" aria-hidden="true"></i>
+        </button>
+        <div id="siteNavMenu" class="ph-nav-menu">
+          <ul class="ph-nav-links">
+            <li><a href="../../index.html">Home</a></li>
+            <li><a href="../../pages/public/about.html" aria-current="page">About</a></li>
+            <li><a href="../../pages/public/services.html">Services</a></li>
+            <li><a href="../../pages/public/contact.html">Contact</a></li>
+          </ul>
+          <div class="ph-nav-actions">
+            <a href="../../pages/auth/login.html" class="ph-nav-login" data-auth-link>Log in</a>
+            <a href="../../pages/auth/login.html?next=appointments" class="ph-btn ph-btn-primary ph-btn-sm" data-book-link>
+              <i class="ri-calendar-check-line" aria-hidden="true"></i>Book an Appointment
+            </a>
+          </div>
+        </div>
+      </div>
+    </nav>
   </header>
 
-  <!-- ================= ABOUT CONTENT ================= -->
-  <section class="bg-white py-24 px-4">
-    <div class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
+  <!-- ================= MAIN CONTENT ================= -->
+  <main id="main" class="flex-grow" tabindex="-1">
 
-      <div class="space-y-8">
-        <h2 class="text-5xl font-bold text-gray-900 leading-tight">
-          A real platform for pet care management
-        </h2>
-        <div class="space-y-6">
-          <p class="text-lg text-gray-600 leading-relaxed">
-            PetHub was developed to help pet owners and administrators manage animals, appointments, and health records in one place.
-          </p>
-          <p class="text-lg text-gray-600 leading-relaxed">
-            The system uses Supabase for database storage and secure record retrieval, while Node and Express power sign-in and the API behind the dashboard.
-          </p>
-          <p class="text-lg text-gray-600 leading-relaxed">
-            Users can register, verify their email, manage pets, book appointments, and review care records without leaving the platform.
-          </p>
-        </div>
+    <section class="ph-page-hero" aria-labelledby="pageTitle">
+      <div class="ph-container">
+        <p class="ph-eyebrow"><i class="ri-heart-3-line" aria-hidden="true"></i>About</p>
+        <h1 id="pageTitle" class="ph-display">About PetHub</h1>
+        <p class="ph-lead">PetHub is the clinic's online system for dog and cat owners: book grooming or a check-up, keep a profile for each pet, and read the records the clinic adds after each visit.</p>
       </div>
+    </section>
 
-      <div class="flex justify-center transform hover:scale-105 transition-transform duration-300">
-        <img src="../../assets/images/logo.jpg" alt="About PetHub" class="w-full max-w-xs md:max-w-sm lg:max-w-md h-auto rounded-3xl object-cover shadow-2xl">
+    <section class="ph-section" aria-labelledby="doTitle">
+      <div class="ph-container">
+        <div class="ph-section-head">
+          <h2 id="doTitle" class="ph-title">What you can do with PetHub</h2>
+        </div>
+        <div class="ph-card-grid ph-card-grid-4">
+          <article class="ph-card">
+            <span class="ph-icon"><i class="ri-calendar-check-line" aria-hidden="true"></i></span>
+            <h3 class="ph-card-title">Book online</h3>
+            <p class="ph-card-text">Request grooming or a full check-up for a date and time that suits you.</p>
+          </article>
+          <article class="ph-card">
+            <span class="ph-icon"><i class="ri-checkbox-circle-line" aria-hidden="true"></i></span>
+            <h3 class="ph-card-title">Follow each booking</h3>
+            <p class="ph-card-text">Bookings stay pending until the clinic approves them; you are emailed when that happens.</p>
+          </article>
+          <article class="ph-card">
+            <span class="ph-icon"><i class="ri-bear-smile-line" aria-hidden="true"></i></span>
+            <h3 class="ph-card-title">Keep pet profiles</h3>
+            <p class="ph-card-text">A profile for each dog or cat you bring to the clinic.</p>
+          </article>
+          <article class="ph-card">
+            <span class="ph-icon"><i class="ri-health-book-line" aria-hidden="true"></i></span>
+            <h3 class="ph-card-title">Read medical records</h3>
+            <p class="ph-card-text">See what the clinic recorded after your pet's completed visits.</p>
+          </article>
+        </div>
+        <p class="ph-lead">PetHub also has a chat assistant for general pet-care questions and help using the site. It does not diagnose and does not replace a veterinarian.</p>
       </div>
+    </section>
 
-    </div>
-  </section>
-
-  <!-- ================= FEATURES SECTION ================= -->
-  <section class="bg-gradient-to-r from-orange-50 to-blue-50 py-24 px-4">
-    <div class="max-w-6xl mx-auto">
-      <h2 class="text-5xl font-bold text-center text-gray-900 mb-16">
-        What PetHub includes
-      </h2>
-      
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div class="bg-white p-8 rounded-2xl shadow-lg text-center hover:shadow-xl transition-shadow">
-          <div class="w-12 h-12 bg-orange-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <i class="ri-bear-smile-line text-2xl text-orange-600"></i>
-          </div>
-          <h3 class="text-xl font-bold text-gray-900 mb-2">Pet records</h3>
-          <p class="text-gray-600">Complete pet profiles with medical notes, weight, vaccine details, and treatments.</p>
+    <section class="ph-section ph-section-white" aria-labelledby="clinicTitle">
+      <div class="ph-container">
+        <div class="ph-section-head">
+          <h2 id="clinicTitle" class="ph-title">About the clinic</h2>
+          <p class="ph-lead">The clinic offers grooming for dogs and cats and the Dog &amp; Cat Full Check Up. See the <a href="services.html" class="ph-link-arrow">services</a>.</p>
         </div>
-        <div class="bg-white p-8 rounded-2xl shadow-lg text-center hover:shadow-xl transition-shadow">
-          <div class="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <i class="ri-calendar-check-line text-2xl text-blue-600"></i>
-          </div>
-          <h3 class="text-xl font-bold text-gray-900 mb-2">Appointments</h3>
-          <p class="text-gray-600">Book and review appointments, then update status from the admin dashboard.</p>
-        </div>
-        <div class="bg-white p-8 rounded-2xl shadow-lg text-center hover:shadow-xl transition-shadow">
-          <div class="w-12 h-12 bg-green-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <i class="ri-settings-5-line text-2xl text-green-600"></i>
-          </div>
-          <h3 class="text-xl font-bold text-gray-900 mb-2">Admin management</h3>
-          <p class="text-gray-600">Admins can access user lists, pet lists, appointment overviews, and analytics summary endpoints.</p>
-        </div>
+        <p><span class="ph-placeholder" data-placeholder="clinic-profile"><span class="ph-placeholder-tag">Placeholder</span>The clinic's name, story and team: to be provided by the clinic</span></p>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- ================= HOW IT WORKS SECTION ================= -->
-  <section class="bg-white py-24 px-4">
-    <div class="max-w-6xl mx-auto text-center space-y-8">
-      <h2 class="text-5xl font-bold text-gray-900">
-        How the system works
-      </h2>
-      <p class="text-xl text-gray-600 leading-relaxed">
-        PetHub is designed around the actual workflows needed for pet care: account creation, verification, secure records, and meaningful admin oversight.
-      </p>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div class="bg-slate-50 p-8 rounded-3xl shadow-lg border border-slate-200">
-          <h3 class="text-2xl font-semibold text-gray-900 mb-3">Register</h3>
-          <p class="text-gray-600">Create your account and verify your email to start using the app.</p>
-        </div>
-        <div class="bg-slate-50 p-8 rounded-3xl shadow-lg border border-slate-200">
-          <h3 class="text-2xl font-semibold text-gray-900 mb-3">Manage pets</h3>
-          <p class="text-gray-600">Add pets, review care records, and keep their health history organized.</p>
-        </div>
-        <div class="bg-slate-50 p-8 rounded-3xl shadow-lg border border-slate-200">
-          <h3 class="text-2xl font-semibold text-gray-900 mb-3">Book appointments</h3>
-          <p class="text-gray-600">Schedule visits and review appointment statuses directly in the dashboard.</p>
-        </div>
+    <section id="photo-credits" class="ph-section ph-section-alt" aria-labelledby="creditsTitle">
+      <div class="ph-container ph-prose">
+        <h2 id="creditsTitle" class="ph-title">Photo credits</h2>
+        <p>These photos are used under Creative Commons licences. They show the kind of service only and were not taken at the clinic.</p>
+        <ul>
+          <li>"Dog Stylin'" by j.tobias (japanese_craft_construction), <a href="https://commons.wikimedia.org/wiki/File:Dog_Stylin%27_(3406880422).jpg">source</a>, licensed under <a href="https://creativecommons.org/licenses/by/2.0">CC BY 2.0</a>.</li>
+          <li>"Pet being groomed" by Reba Spike, <a href="https://commons.wikimedia.org/wiki/File:Pet_being_groomed_(51289097699).jpg">source</a>, licensed under <a href="https://creativecommons.org/licenses/by/2.0">CC BY 2.0</a>.</li>
+          <li>"Stethoscope examination of an orange cat in Newark, New Jersey" by Veterinarian Pet Alliance, <a href="https://commons.wikimedia.org/wiki/File:Stethoscope_examination_of_an_orange_cat_in_Newark,_New_Jersey.jpg">source</a>, licensed under <a href="https://creativecommons.org/licenses/by/4.0">CC BY 4.0</a>.</li>
+        </ul>
       </div>
-    </div>
-  </section>
+    </section>
 
   </main>
 
   <!-- ================= FOOTER ================= -->
-  <footer class="footer">
-    <p>&copy; 2026 PetHub. Caring for Your Pet's Health. All rights reserved.</p>
+  <footer class="footer ph-footer">
+    <div class="ph-container">
+      <div class="ph-footer-inner">
+        <div>
+          <a href="../../index.html" class="ph-brand">
+            <img src="../../assets/images/paw.png" alt="" width="40" height="40">
+            <span>PetHub</span>
+          </a>
+          <p class="mt-3">Online booking for grooming and check-ups for dogs and cats, with your pets' profiles and records in one place.</p>
+        </div>
+        <nav aria-label="Footer">
+          <p class="ph-footer-title">Explore</p>
+          <ul class="ph-footer-links">
+            <li><a href="../../index.html">Home</a></li>
+            <li><a href="../../pages/public/about.html">About</a></li>
+            <li><a href="../../pages/public/services.html">Services</a></li>
+            <li><a href="../../pages/public/contact.html">Contact</a></li>
+          </ul>
+        </nav>
+        <div>
+          <p class="ph-footer-title">Your account</p>
+          <ul class="ph-footer-links">
+            <li><a href="../../pages/auth/login.html?next=appointments" data-book-link>Book an appointment</a></li>
+            <li><a href="../../pages/auth/login.html">Log in</a></li>
+            <li><a href="../../pages/auth/register.html">Create an account</a></li>
+            <li><a href="../../pages/public/privacy.html">Privacy notice</a></li>
+          </ul>
+        </div>
+      </div>
+      <p class="ph-footer-legal">&copy; 2026 PetHub. All rights reserved. Photos are used under Creative Commons licences; see the <a href="../../pages/public/about.html#photo-credits">photo credits</a>.</p>
+    </div>
   </footer>
 
   <!-- ================= DARK MODE TOGGLE ================= -->
   <button id="darkModeToggle" class="dark-mode-toggle" title="Toggle Dark Mode">
     <i class="ri-moon-line"></i>
   </button>
-  
+
   <!-- JS -->
   <script src="../../js/core/api.js"></script>
   <script src="../../js/core/utils.js"></script>

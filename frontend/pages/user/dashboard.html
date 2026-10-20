@@ -57,6 +57,18 @@
     <section class="px-4 py-8">
       <div class="max-w-6xl mx-auto space-y-6">
 
+        <!-- ================= COMPLETE YOUR DETAILS (accounts created before the details were required) ================= -->
+        <section id="profileCompletionBanner" class="ph-alert ph-alert-warning" aria-labelledby="profileCompletionTitle" hidden>
+          <i class="ri-user-follow-line ph-alert-icon" aria-hidden="true"></i>
+          <div class="ph-alert-body">
+            <h2 id="profileCompletionTitle" class="ph-alert-title">Complete your details</h2>
+            <p>PetHub now asks every customer for their date of birth, gender, contact number and home address. Please add yours so the clinic can reach you about your appointments.</p>
+          </div>
+          <button type="button" id="completeDetailsButton" class="ph-btn ph-btn-primary ph-btn-sm">
+            <i class="ri-edit-line" aria-hidden="true"></i>Complete your details
+          </button>
+        </section>
+
         <!-- ================= QUICK ACTIONS SECTION ================= -->
         <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm" aria-labelledby="quickActionsTitle">
           <div class="mb-5">
@@ -166,13 +178,19 @@
         </section>
 
         <!-- ================= YOUR DETAILS SECTION ================= -->
-        <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm" aria-labelledby="accountDetailsTitle">
-          <div class="mb-5">
-            <h2 id="accountDetailsTitle" class="flex items-center gap-2 text-xl font-bold text-gray-900">
+        <!-- Shown by js/user/dashboard.js; "Edit details" opens the form below, which saves through PUT /auth/profile -->
+        <section id="accountDetails" class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm" aria-labelledby="accountDetailsTitle">
+          <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 id="accountDetailsTitle" class="flex items-center gap-2 text-xl font-bold text-gray-900" tabindex="-1">
               <i class="ri-contacts-book-2-line text-orange-600" aria-hidden="true"></i>
               Your details
             </h2>
+            <button type="button" id="editAccountDetailsButton" class="ph-btn ph-btn-secondary ph-btn-sm" aria-controls="accountDetailsForm" aria-expanded="false" hidden>
+              <i class="ri-edit-line" aria-hidden="true"></i>Edit details
+            </button>
           </div>
+
+          <p id="accountDetailsMessage" class="ph-form-status" role="status" aria-live="polite"></p>
 
           <div id="accountDetailsContainer" class="text-sm text-gray-600">
             <div class="dashboard-loading-state" role="status" aria-live="polite">
@@ -183,6 +201,82 @@
               </div>
             </div>
           </div>
+
+          <form id="accountDetailsForm" class="ph-form" novalidate hidden aria-labelledby="accountDetailsTitle">
+            <p class="ph-help">Every field is required (marked <span class="ph-required" aria-hidden="true">*</span><span class="sr-only">with an asterisk</span>). Your email address cannot be changed here; to change your password, use Forgot Password on the login page.</p>
+
+            <div class="ph-form-grid">
+              <div class="ph-field ph-span-2">
+                <label for="profileFullname" class="ph-label">Full legal name<span class="ph-required" aria-hidden="true">*</span></label>
+                <input type="text" id="profileFullname" name="fullname" class="ph-input" autocomplete="name" maxlength="100" required aria-describedby="profileFullnameError">
+                <p id="profileFullnameError" class="ph-field-error" hidden></p>
+              </div>
+
+              <div class="ph-field">
+                <label for="profileDateOfBirth" class="ph-label">Date of birth<span class="ph-required" aria-hidden="true">*</span></label>
+                <input type="date" id="profileDateOfBirth" name="date_of_birth" class="ph-input" autocomplete="bday" min="1900-01-01" required aria-describedby="profileDateOfBirthError">
+                <p id="profileDateOfBirthError" class="ph-field-error" hidden></p>
+              </div>
+
+              <div class="ph-field">
+                <label for="profileGender" class="ph-label">Gender<span class="ph-required" aria-hidden="true">*</span></label>
+                <select id="profileGender" name="gender" class="ph-input" autocomplete="sex" required aria-describedby="profileGenderHelp profileGenderError">
+                  <option value="">Select an option</option>
+                  <option value="Female">Female</option>
+                  <option value="Male">Male</option>
+                  <option value="Non-binary">Non-binary</option>
+                  <option value="Other">Other</option>
+                  <option value="Prefer not to say">Prefer not to say</option>
+                </select>
+                <p id="profileGenderHelp" class="ph-help">You can choose "Prefer not to say".</p>
+                <p id="profileGenderError" class="ph-field-error" hidden></p>
+              </div>
+
+              <div class="ph-field ph-span-2">
+                <label for="profilePhoneNumber" class="ph-label">Contact number<span class="ph-required" aria-hidden="true">*</span></label>
+                <input type="tel" id="profilePhoneNumber" name="phone_number" class="ph-input" autocomplete="tel" inputmode="tel" maxlength="25" required aria-describedby="profilePhoneNumberHelp profilePhoneNumberError" placeholder="0917 123 4567">
+                <p id="profilePhoneNumberHelp" class="ph-help">Mobile or landline, such as 0917 123 4567 or 02 8123 4567. Outside the Philippines? Start with + and the country code.</p>
+                <p id="profilePhoneNumberError" class="ph-field-error" hidden></p>
+              </div>
+
+              <div class="ph-field ph-span-2">
+                <label for="profileAddressLine" class="ph-label">House/unit number and street<span class="ph-required" aria-hidden="true">*</span></label>
+                <input type="text" id="profileAddressLine" name="address_line" class="ph-input" autocomplete="address-line1" maxlength="150" required aria-describedby="profileAddressLineError">
+                <p id="profileAddressLineError" class="ph-field-error" hidden></p>
+              </div>
+
+              <div class="ph-field">
+                <label for="profileBarangay" class="ph-label">Barangay<span class="ph-required" aria-hidden="true">*</span></label>
+                <input type="text" id="profileBarangay" name="barangay" class="ph-input" autocomplete="address-level3" maxlength="100" required aria-describedby="profileBarangayError">
+                <p id="profileBarangayError" class="ph-field-error" hidden></p>
+              </div>
+
+              <div class="ph-field">
+                <label for="profileCityMunicipality" class="ph-label">City/municipality<span class="ph-required" aria-hidden="true">*</span></label>
+                <input type="text" id="profileCityMunicipality" name="city_municipality" class="ph-input" autocomplete="address-level2" maxlength="100" required aria-describedby="profileCityMunicipalityError">
+                <p id="profileCityMunicipalityError" class="ph-field-error" hidden></p>
+              </div>
+
+              <div class="ph-field">
+                <label for="profileProvince" class="ph-label">Province<span class="ph-required" aria-hidden="true">*</span></label>
+                <input type="text" id="profileProvince" name="province" class="ph-input" autocomplete="address-level1" maxlength="100" required aria-describedby="profileProvinceError">
+                <p id="profileProvinceError" class="ph-field-error" hidden></p>
+              </div>
+
+              <div class="ph-field">
+                <label for="profilePostalCode" class="ph-label">Postal code<span class="ph-required" aria-hidden="true">*</span></label>
+                <input type="text" id="profilePostalCode" name="postal_code" class="ph-input" autocomplete="postal-code" inputmode="numeric" maxlength="4" required aria-describedby="profilePostalCodeError">
+                <p id="profilePostalCodeError" class="ph-field-error" hidden></p>
+              </div>
+            </div>
+
+            <div id="accountDetailsFormMessage" class="ph-form-message" aria-live="assertive"></div>
+
+            <div class="ph-form-actions">
+              <button type="submit" class="ph-btn ph-btn-primary"><i class="ri-save-3-line" aria-hidden="true"></i>Save details</button>
+              <button type="button" id="cancelAccountDetailsButton" class="ph-btn ph-btn-secondary">Cancel</button>
+            </div>
+          </form>
         </section>
 
         <!-- ================= RECENT ACTIVITY SECTION ================= -->
@@ -228,6 +322,7 @@
   <script src="../../js/core/storage.js"></script>
   <script src="../../js/main.js"></script>
   <script src="../../js/shared/appointment-durations.js"></script>
+  <script src="../../js/shared/profile-fields.js"></script>
   <script src="../../js/user/dashboard.js"></script>
   <script src="../../js/shared/ai-widget.js"></script>
 

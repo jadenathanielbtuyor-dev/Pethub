@@ -7,6 +7,16 @@ document.addEventListener('DOMContentLoaded', () => {
   setupLoginForm();
 });
 
+// Show/hide buttons beside password fields. Their accessible name follows the state ("Show password" /
+// "Hide password"), and aria-pressed says whether the password is visible.
+function setPasswordToggleState(button, visible) {
+  const showLabel = button.dataset.showLabel || button.getAttribute('aria-label') || 'Show password';
+  button.dataset.showLabel = showLabel;
+  button.setAttribute('aria-label', visible ? showLabel.replace(/^Show\b/, 'Hide') : showLabel);
+  button.setAttribute('aria-pressed', String(visible));
+  button.innerHTML = `<i class="${visible ? 'ri-eye-off-line' : 'ri-eye-line'}" aria-hidden="true"></i>`;
+}
+
 function setupPasswordToggles() {
   const togglePairs = [
     { fieldId: 'password', buttonId: 'togglePassword' },
@@ -18,12 +28,12 @@ function setupPasswordToggles() {
     const button = document.getElementById(buttonId);
     if (!field || !button) return;
 
+    setPasswordToggleState(button, false);
     button.addEventListener('click', (event) => {
       event.preventDefault();
-      const isPassword = field.type === 'password';
-      field.type = isPassword ? 'text' : 'password';
-      button.innerHTML = isPassword ? '<i class="ri-eye-off-line"></i>' : '<i class="ri-eye-line"></i>';
-      button.setAttribute('aria-pressed', String(isPassword));
+      const show = field.type === 'password';
+      field.type = show ? 'text' : 'password';
+      setPasswordToggleState(button, show);
     });
   });
 }
@@ -62,18 +72,11 @@ function clearPendingVerificationCode() {
 }
 
 // ==================== REGISTRATION ====================
-// pages/auth/register.html. The rules below match backend validators/authValidator.js (constants/userProfile.js);
-// they give immediate messages beside each field, and the server checks everything again.
+// pages/auth/register.html. Every field is required. The rules match backend validators/authValidator.js
+// (constants/userProfile.js): the password rules are here, the name and personal-detail rules are shared with the
+// dashboard in shared/profile-fields.js. They give immediate messages beside each field; the server checks again.
 const REGISTER_PASSWORD_MIN_LENGTH = 8;
 const REGISTER_PASSWORD_MAX_LENGTH = 128;
-const REGISTER_EARLIEST_DATE_OF_BIRTH = '1900-01-01';
-const REGISTER_GENDER_OPTIONS = ['Female', 'Male', 'Non-binary', 'Other', 'Prefer not to say'];
-const REGISTER_ADDRESS_LIMITS = {
-  address_line: { label: 'House/Unit/Street', max: 150 },
-  barangay: { label: 'Barangay', max: 100 },
-  city_municipality: { label: 'City/Municipality', max: 100 },
-  province: { label: 'Province', max: 100 }
-};
 
 // Input id -> field name sent to POST /auth/register (and returned as `field` in its errors). Error elements are `${id}Error`.
 const REGISTER_FIELDS = [
@@ -90,24 +93,7 @@ const REGISTER_FIELDS = [
   { id: 'province', name: 'province' },
   { id: 'postalCode', name: 'postal_code' }
 ];
-const REGISTER_OPTIONAL_FIELDS = ['date_of_birth', 'gender', 'phone_number', 'address_line', 'barangay', 'city_municipality', 'province', 'postal_code'];
 const EMAIL_ALREADY_REGISTERED_MESSAGE = 'Email already registered';
-
-function getLocalDateInputValue(date = new Date()) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-
-function isCalendarDateValue(value) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) return false;
-  const [year, month, day] = match.slice(1).map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
-}
-
-function isPhilippineMobileNumber(value) {
-  return value.length <= 20 && /^(?:\+?63|0)9\d{9}$/.test(value.replace(/[\s().-]/g, ''));
-}
 
 function readRegisterValues() {
   const read = id => document.getElementById(id)?.value ?? '';
@@ -134,11 +120,7 @@ function readRegisterValues() {
 function getRegisterFieldError(name, values) {
   const value = values[name] || '';
 
-  if (name === 'fullname') {
-    if (!value) return 'Enter your full name.';
-    if (value.length > 100) return 'Full name must be 100 characters or fewer.';
-    return /\p{L}/u.test(value) ? '' : 'Enter your full name using letters.';
-  }
+  if (name === 'fullname') return window.PetHubProfileFields.getFullNameError(value);
   if (name === 'email') {
     if (!value) return 'Enter your email address.';
     return value.length <= 254 && isValidEmail(value) ? '' : 'Enter a valid email address, such as name@example.com.';
@@ -152,24 +134,7 @@ function getRegisterFieldError(name, values) {
     if (!value) return 'Type your password again.';
     return value === values.password ? '' : 'Passwords do not match.';
   }
-  if (name === 'date_of_birth') {
-    if (!value) return '';
-    if (!isCalendarDateValue(value)) return 'Enter a valid date of birth.';
-    if (value > getLocalDateInputValue()) return 'Date of birth cannot be in the future.';
-    return value >= REGISTER_EARLIEST_DATE_OF_BIRTH ? '' : 'Enter a date of birth from 1900 onwards.';
-  }
-  if (name === 'gender') {
-    return !value || REGISTER_GENDER_OPTIONS.includes(value) ? '' : 'Choose one of the listed options.';
-  }
-  if (name === 'phone_number') {
-    return !value || isPhilippineMobileNumber(value) ? '' : 'Enter a Philippine mobile number, such as 0917 123 4567.';
-  }
-  if (name === 'postal_code') {
-    return !value || /^\d{4}$/.test(value) ? '' : 'Enter a 4-digit postal code.';
-  }
-  const address = REGISTER_ADDRESS_LIMITS[name];
-  if (address && value.length > address.max) return `${address.label} must be ${address.max} characters or fewer.`;
-  return '';
+  return window.PetHubProfileFields.getProfileFieldError(name, value);
 }
 
 function setRegisterFieldError(field, message) {
@@ -186,20 +151,22 @@ function setRegisterFieldError(field, message) {
   }
 }
 
-// Returns true when the field has a problem (and shows it)
+// Returns true when the field has a problem (and shows it). A message from the server (such as "already registered")
+// stays until the value it was about changes: leaving the field unchanged must not clear it.
 function validateRegisterField(field, values = readRegisterValues()) {
+  const input = document.getElementById(field.id);
+  if (input && input.dataset.serverValue !== undefined) {
+    if (input.value === input.dataset.serverValue) return true;
+    delete input.dataset.serverValue;
+  }
   const message = getRegisterFieldError(field.name, values);
   setRegisterFieldError(field, message);
   return Boolean(message);
 }
 
-// Optional fields sit in a collapsible section, so it is opened before focusing one of them
 function focusRegisterField(field) {
   const input = document.getElementById(field.id);
-  if (!input) return;
-  const section = input.closest('details');
-  if (section && !section.open) section.open = true;
-  input.focus();
+  if (input) input.focus();
 }
 
 function updatePasswordGuidance() {
@@ -234,28 +201,16 @@ function clearRegisterPasswords() {
       input.value = '';
       input.type = 'password';
     }
-    if (button) {
-      button.setAttribute('aria-pressed', 'false');
-      button.innerHTML = '<i class="ri-eye-line" aria-hidden="true"></i>';
-    }
+    if (button) setPasswordToggleState(button, false);
   });
   REGISTER_FIELDS.filter(field => field.name === 'password' || field.name === 'confirm_password')
     .forEach(field => setRegisterFieldError(field, ''));
   updatePasswordGuidance();
 }
 
-// Only the expected fields are sent; optional details only when filled in
+// Exactly the form's fields are sent, every one of them (the server requires them all)
 function buildRegisterPayload(values) {
-  const payload = {
-    fullname: values.fullname,
-    email: values.email,
-    password: values.password,
-    confirm_password: values.confirm_password
-  };
-  REGISTER_OPTIONAL_FIELDS.forEach(name => {
-    if (values[name]) payload[name] = values[name];
-  });
-  return payload;
+  return Object.fromEntries(REGISTER_FIELDS.map(field => [field.name, values[field.name]]));
 }
 
 // variant: 'sent' (code emailed) | 'delayed' | 'not_sent' (account created, code still to be sent from the verification page)
@@ -310,7 +265,7 @@ function setupRegisterForm() {
   if (!registerForm) return;
 
   const dateOfBirthInput = document.getElementById('dateOfBirth');
-  if (dateOfBirthInput) dateOfBirthInput.max = getLocalDateInputValue();
+  if (dateOfBirthInput) dateOfBirthInput.max = window.PetHubProfileFields.getClinicDate();
 
   const continueLink = document.getElementById('registerContinueLink');
   if (continueLink && typeof PATHS !== 'undefined' && PATHS.verifyEmail) continueLink.href = PATHS.verifyEmail;
@@ -391,6 +346,8 @@ function setupRegisterForm() {
       const fieldName = data.field || (errorMessage === EMAIL_ALREADY_REGISTERED_MESSAGE ? 'email' : '');
       const field = REGISTER_FIELDS.find(entry => entry.name === fieldName);
       if (field) {
+        const input = document.getElementById(field.id);
+        if (input) input.dataset.serverValue = input.value;
         setRegisterFieldError(field, getRegisterServerFieldMessage(field, errorMessage));
         displayMessage(messageContainer, 'Please check the highlighted field, then enter your password again.', 'error');
         focusRegisterField(field);
@@ -411,9 +368,53 @@ function setupRegisterForm() {
   });
 }
 
+// "Book an Appointment" links send signed-out visitors here with ?next=appointments (and optionally &service=...).
+// After logging in, customers continue to the booking page. That is the only destination accepted, so the parameter
+// can't send anyone elsewhere; the service name is only used to preselect a matching option on the booking page.
+function getPostLoginDestination(role) {
+  if (role === 'admin') return '';
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('next') !== 'appointments') return '';
+  const service = (params.get('service') || '').trim();
+  const query = service && service.length <= 60 ? `?service=${encodeURIComponent(service)}` : '';
+  return `${PATHS.userAppointments}${query}`;
+}
+
+// pages/auth/login.html: problems with what was typed are shown beside the field; the server's answer (which never
+// says whether the email or the password was wrong) is shown below the form
+function setLoginFieldError(id, message) {
+  const input = document.getElementById(id);
+  const error = document.getElementById(`${id}Error`);
+  if (input) {
+    input.classList.toggle('is-invalid', Boolean(message));
+    if (message) input.setAttribute('aria-invalid', 'true');
+    else input.removeAttribute('aria-invalid');
+  }
+  if (error) {
+    error.textContent = message || '';
+    error.hidden = !message;
+  }
+}
+
+function getLoginFieldErrors(email, password) {
+  return {
+    email: !email ? 'Enter your email address.' : (isValidEmail(email) ? '' : 'Enter a valid email address, such as name@example.com.'),
+    password: password ? '' : 'Enter your password.'
+  };
+}
+
 function setupLoginForm() {
   const loginForm = document.getElementById('loginForm');
   if (!loginForm) return;
+
+  ['email', 'password'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', () => {
+      if (document.getElementById(id).getAttribute('aria-invalid') === 'true') {
+        const errors = getLoginFieldErrors(document.getElementById('email').value.trim(), document.getElementById('password').value);
+        setLoginFieldError(id, errors[id]);
+      }
+    });
+  });
 
   loginForm.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -423,20 +424,20 @@ function setupLoginForm() {
     const email = document.getElementById('email').value.trim();
     const password = document.getElementById('password').value;
     const messageContainer = document.getElementById('formMessageContainer');
+    clearMessage(messageContainer);
 
-    if (!email || !password) {
-      displayMessage(messageContainer, 'Enter your email and password to continue.', 'error');
+    const errors = getLoginFieldErrors(email, password);
+    setLoginFieldError('email', errors.email);
+    setLoginFieldError('password', errors.password);
+    const firstInvalid = ['email', 'password'].find(id => errors[id]);
+    if (firstInvalid) {
+      displayMessage(messageContainer, errors.email && errors.password ? 'Please fix the 2 highlighted fields.' : 'Please fix the highlighted field.', 'error');
+      document.getElementById(firstInvalid).focus();
       loginRequestInProgress = false;
       return;
     }
 
-    if (!isValidEmail(email)) {
-      displayMessage(messageContainer, 'Enter a valid email address.', 'error');
-      loginRequestInProgress = false;
-      return;
-    }
-
-    setFormSubmitting(loginForm, true, 'Logging in...', 'Login');
+    setFormSubmitting(loginForm, true, 'Logging in...', 'Log in');
     let redirecting = false;
 
     try {
@@ -459,8 +460,11 @@ function setupLoginForm() {
       setAuthToken(data.token);
       displayMessage(messageContainer, 'Login successful! Redirecting...', 'success');
       redirecting = true;
+      const role = String(data.user?.role || 'user').toLowerCase();
+      const destination = getPostLoginDestination(role);
       setTimeout(() => {
-        redirectToDashboardForRole(String(data.user?.role || 'user').toLowerCase());
+        if (destination) window.location.replace(destination);
+        else redirectToDashboardForRole(role);
       }, 400);
     } catch (error) {
       console.error('Login failed:', error);
@@ -480,7 +484,7 @@ function setupLoginForm() {
       // Keep the form locked while redirecting so a second click can't resubmit
       if (!redirecting) {
         loginRequestInProgress = false;
-        setFormSubmitting(loginForm, false, 'Logging in...', 'Login');
+        setFormSubmitting(loginForm, false, 'Logging in...', 'Log in');
       }
     }
   });

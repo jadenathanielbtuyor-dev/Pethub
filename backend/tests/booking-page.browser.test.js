@@ -1,6 +1,10 @@
-// The booking page and the user dashboard in headless Chrome: the booking summary, "Book Appointment" (enabled by
-// valid booking details only, never by payment availability), booking straight through POST /appointments/create,
-// repeated clicks, refused bookings, contrast and phone width, and the dashboard's next appointment.
+// The booking page and the user dashboard in headless Chrome: the clinic's services loaded from the API (grouped,
+// with services not offered for the pet's species or not yet bookable shown disabled), the booking summary,
+// "Book Appointment" (enabled by valid booking details only, never by payment availability), booking straight through
+// POST /appointments/create, repeated clicks, refused bookings, contrast and phone width, and the dashboard's next
+// appointment.
+// The service list served to the page uses the harness's MADE-UP test-only durations and a test-only "Puppy Cut for
+// dogs only" rule; neither is clinic policy.
 // MOCKED: the page's fetch is replaced before core/api.js loads, Railway, Vercel and CDN hosts are blocked, and any
 // navigation to paymongo.com is recorded and aborted, so nothing leaves the machine.
 // Opt-in (needs Chrome or Edge): PETHUB_BROWSER_TESTS=1 node --test tests/booking-page.browser.test.js
@@ -19,6 +23,20 @@ const DASHBOARD_PAGE = pathToFileURL(path.join(FRONTEND, 'pages', 'user', 'dashb
 const APPOINTMENT_ID = 'b0000000-0000-4000-8000-000000000001';
 const USER = { id: 'u1', role: 'user', email: 'owner@example.test', fullname: 'Owner', is_verified: true };
 const PAYMENT_WORDING = /deposit|payment|paymongo|checkout|refund|₱/i;
+const { TEST_ONLY_SERVICE_DURATIONS } = require('./helpers/harness');
+const { SERVICE_CATALOG, SERVICE_CATEGORIES } = require('../constants/services');
+// What GET /appointments/services would return with the test-only durations and species rule
+const SERVICES = SERVICE_CATALOG.map(entry => ({
+  name: entry.name,
+  category: entry.category,
+  category_label: SERVICE_CATEGORIES[entry.category],
+  description: entry.description,
+  species: entry.name === 'Puppy Cut' ? ['Dog'] : [...entry.species],
+  duration_minutes: TEST_ONLY_SERVICE_DURATIONS[entry.name],
+  bookable: true
+}));
+const CHECK_UP = 'Dog & Cat Full Check Up';
+const PETS = [{ id: 'p1', user_id: 'u1', name: 'Mochi', species: 'Dog' }, { id: 'p2', user_id: 'u1', name: 'Luna', species: 'Cat' }];
 
 function findBrowser() {
   const candidates = [
@@ -64,7 +82,11 @@ const FETCH_STUB = `(() => {
       if (scenario.listStatus) return reply(scenario.listStatus, { error: 'Failed to fetch appointments' }, scenario.listDelay || 0);
       return reply(200, { success: true, appointments: scenario.appointments || [] }, scenario.listDelay || 0);
     }
-    if (route === '/pets/userPets') return reply(200, { success: true, pets: [{ id: 'p1', user_id: 'u1', name: 'Mochi', species: 'Dog' }] });
+    if (route === '/pets/userPets') return reply(200, { success: true, pets: scenario.pets });
+    if (route === '/appointments/services') {
+      if (scenario.servicesStatus) return reply(scenario.servicesStatus, { error: 'Server error' });
+      return reply(200, { success: true, services: scenario.services, species: ['Dog', 'Cat'] }, scenario.servicesDelay || 0);
+    }
     if (route === '/appointments/all') return reply(200, { success: true, appointments: [] });
     if (route === '/appointments/create') return reply(scenario.createStatus || 201, scenario.createBody || { success: true, appointment: {} }, scenario.createDelay ?? 100);
     if (route === '/pets/medical-records') return reply(200, { success: true, records: [] });
@@ -138,6 +160,7 @@ async function openTab({ url, scenario = {}, dark = false, width = 1280 }) {
   await send('Network.setBlockedURLs', { urls: ['*railway.app*', '*vercel.app*', '*jsdelivr.net*', '*googleapis.com*'] });
   await send('Fetch.enable', { patterns: [{ urlPattern: '*paymongo.com*' }] });
   await send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: width < 500 });
+  scenario = { services: SERVICES, pets: PETS, ...scenario };
   await send('Page.addScriptToEvaluateOnNewDocument', {
     source: `try { localStorage.setItem('darkMode', ${JSON.stringify(String(dark))}); localStorage.setItem('__scenario', ${JSON.stringify(JSON.stringify(scenario))}); sessionStorage.setItem('authToken', 'test-token'); sessionStorage.setItem('user', ${JSON.stringify(JSON.stringify(USER))}); } catch (e) {}\n${FETCH_STUB}`
   });
@@ -172,7 +195,7 @@ const summaryState = `(() => {
   };
 })()`;
 const fillForm = (fields = {}) => `(() => {
-  const values = ${JSON.stringify({ petSelect: 'p1', serviceType: 'Checkup', appointmentDate: FUTURE, appointmentTime: '10:00', ...fields })};
+  const values = ${JSON.stringify({ petSelect: 'p1', serviceType: CHECK_UP, appointmentDate: FUTURE, appointmentTime: '10:00', ...fields })};
   for (const [id, value] of Object.entries(values)) {
     const element = document.getElementById(id);
     element.value = value;
@@ -184,7 +207,9 @@ const fillForm = (fields = {}) => `(() => {
 const formValues = `(() => Object.fromEntries(['petSelect', 'serviceType', 'appointmentDate', 'appointmentTime'].map(id => [id, document.getElementById(id).value])))()`;
 const requests = (method, route) => `window.__requests.filter(r => r.method === '${method}' && r.route.startsWith('${route}'))`;
 const paymentRequests = `window.__requests.filter(r => /payment|checkout|deposit/i.test(r.route))`;
-const petsLoaded = 'document.getElementById("petSelect").options.length > 1';
+const petsLoaded = 'document.getElementById("petSelect").options.length > 1 && document.querySelectorAll("#serviceType option[value]:not([value=\'\'])").length > 0';
+const serviceOptions = `[...document.querySelectorAll('#serviceType optgroup')].map(group => ({ label: group.label, options: [...group.querySelectorAll('option')].map(option => ({ value: option.value, text: option.textContent, disabled: option.disabled })) }))`;
+const serviceHint = `(() => { const hint = document.getElementById('serviceTypeHint'); return hint.classList.contains('hidden') ? '' : hint.textContent.trim(); })()`;
 const CONTRAST = `
   const luminance = color => { const [r, g, b] = color.match(/[\\d.]+/g).map(Number).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
   const background = element => { for (let e = element; e; e = e.parentElement) { const color = getComputedStyle(e).backgroundColor; if (color && !/rgba\\(0, 0, 0, 0\\)|transparent/.test(color)) return color; } return 'rgb(255, 255, 255)'; };
@@ -226,17 +251,19 @@ describe('Booking page in a browser (mocked API)', { skip }, () => {
       await tab.evaluate(fillForm());
       state = await tab.evaluate(summaryState);
       assert.equal(state.pet, 'Mochi');
-      assert.equal(state.service, 'Checkup');
+      assert.equal(state.service, CHECK_UP);
       assert.match(state.dateTime, /10:00 AM/);
-      // The end time follows the service's estimated duration (Checkup: 45 minutes)
+      // The end time follows the duration the server gave for the service (45 test-only minutes)
       assert.match(state.dateTime, /10:45 AM/);
       assert.match(state.duration, /45 min/);
+      assert.equal(await tab.evaluate(serviceHint), 'A full veterinary check-up for your dog or cat.');
       assert.equal(state.hint, '');
       assert.equal(state.button, 'Book Appointment');
       assert.equal(state.buttonDisabled, false, 'valid details are enough to book');
 
-      await tab.evaluate(fillForm({ serviceType: 'Grooming' }));
-      assert.equal((await tab.evaluate(summaryState)).service, 'Grooming');
+      await tab.evaluate(fillForm({ serviceType: 'Full Grooming' }));
+      assert.equal((await tab.evaluate(summaryState)).service, 'Full Grooming');
+      assert.match((await tab.evaluate(summaryState)).duration, /4 hours/);
       await tab.evaluate(fillForm({ appointmentDate: futureDate(-2) }));
       state = await tab.evaluate(summaryState);
       assert.equal(state.buttonDisabled, true, 'a past date disables the button again');
@@ -255,7 +282,7 @@ describe('Booking page in a browser (mocked API)', { skip }, () => {
 
       const [booking] = await tab.evaluate(requests('POST', '/appointments/create'));
       assert.deepEqual(JSON.parse(booking.body), {
-        user_id: 'u1', pet_id: 'p1', pet_name: 'Mochi', service_type: 'Checkup', appointment_date: FUTURE, appointment_time: '10:00:00'
+        user_id: 'u1', pet_id: 'p1', pet_name: 'Mochi', service_type: CHECK_UP, appointment_date: FUTURE, appointment_time: '10:00:00'
       });
       const state = await tab.evaluate(summaryState);
       assert.equal(state.feedback, 'Appointment booked. It is pending clinic approval.');
@@ -291,7 +318,7 @@ describe('Booking page in a browser (mocked API)', { skip }, () => {
       assert.ok(await tab.waitFor(`document.getElementById('messageContainer').textContent.includes('Next available time')`));
       const state = await tab.evaluate(summaryState);
       assert.equal(state.feedback, 'That slot is unavailable. Next available time: 10:45 AM.');
-      assert.deepEqual(await tab.evaluate(formValues), { petSelect: 'p1', serviceType: 'Checkup', appointmentDate: FUTURE, appointmentTime: '10:00' });
+      assert.deepEqual(await tab.evaluate(formValues), { petSelect: 'p1', serviceType: CHECK_UP, appointmentDate: FUTURE, appointmentTime: '10:00' });
       assert.equal(state.button, 'Book Appointment');
       assert.equal(state.buttonDisabled, false, 'the customer can try again');
       assert.deepEqual(tab.errors, []);
@@ -309,6 +336,59 @@ describe('Booking page in a browser (mocked API)', { skip }, () => {
     } finally { await tab.close(); }
   });
 
+  it('lists the clinic\'s services from the server, grouped, and disables those not offered for the selected pet', async () => {
+    const tab = await openTab({ url: BOOKING_PAGE });
+    try {
+      assert.ok(await tab.waitFor(petsLoaded));
+      const groups = await tab.evaluate(serviceOptions);
+      assert.deepEqual(groups.map(group => group.label), ['Grooming', 'Veterinary check-up']);
+      assert.deepEqual(groups.flatMap(group => group.options.map(option => option.value)), SERVICE_CATALOG.map(entry => entry.name));
+      assert.ok(groups.flatMap(group => group.options).every(option => !option.disabled), 'before a pet is chosen nothing is ruled out');
+
+      await tab.evaluate(fillForm({ petSelect: 'p2', serviceType: '' }));
+      let options = (await tab.evaluate(serviceOptions)).flatMap(group => group.options);
+      assert.deepEqual(options.filter(option => option.disabled).map(option => option.text), ['Puppy Cut (not offered for cats)']);
+      assert.equal(await tab.evaluate(serviceHint), 'Services marked "not offered for cats" can\'t be booked for this pet.');
+
+      // A service picked for the dog is cleared when a cat is chosen
+      await tab.evaluate(fillForm({ petSelect: 'p1', serviceType: 'Puppy Cut' }));
+      assert.equal(await tab.evaluate(`document.getElementById('serviceType').value`), 'Puppy Cut');
+      await tab.evaluate(fillForm({ petSelect: 'p2', serviceType: 'Puppy Cut', appointmentDate: FUTURE, appointmentTime: '10:00' }));
+      const state = await tab.evaluate(summaryState);
+      assert.equal(state.buttonDisabled, true, 'Puppy Cut cannot be booked for a cat');
+      await tab.evaluate(`${SUBMIT}.disabled = false; document.getElementById('appointmentForm').requestSubmit()`);
+      assert.equal((await tab.evaluate(requests('POST', '/appointments/create'))).length, 0, 'nothing is sent');
+      options = (await tab.evaluate(serviceOptions)).flatMap(group => group.options);
+      assert.equal(options.find(option => option.value === 'Puppy Cut').disabled, true);
+      assert.deepEqual(tab.errors, []);
+    } finally { await tab.close(); }
+  });
+
+  it('while no duration is confirmed, shows every service as not open for online booking and keeps the button disabled', async () => {
+    const unconfirmed = SERVICES.map(service => ({ ...service, duration_minutes: null, bookable: false }));
+    const tab = await openTab({ url: BOOKING_PAGE, scenario: { services: unconfirmed } });
+    try {
+      assert.ok(await tab.waitFor(petsLoaded));
+      const options = (await tab.evaluate(serviceOptions)).flatMap(group => group.options);
+      assert.ok(options.every(option => option.disabled && option.text.endsWith('(online booking not open yet)')));
+      assert.equal(await tab.evaluate(serviceHint), 'Online booking opens once the clinic confirms how long each service takes. Until then, please contact the clinic to book.');
+      await tab.evaluate(fillForm({ serviceType: 'Bath' }));
+      const state = await tab.evaluate(summaryState);
+      assert.equal(state.buttonDisabled, true);
+      assert.equal(state.duration, 'Not selected');
+    } finally { await tab.close(); }
+  });
+
+  it('if the services cannot be loaded, says so and keeps booking disabled', async () => {
+    const tab = await openTab({ url: BOOKING_PAGE, scenario: { servicesStatus: 500 } });
+    try {
+      assert.ok(await tab.waitFor(`document.getElementById('serviceType').options[0].textContent === 'Unable to load services'`));
+      assert.equal(await tab.evaluate(`document.getElementById('serviceType').disabled`), true);
+      assert.match(await tab.evaluate(serviceHint), /could not load the clinic's services/);
+      assert.equal((await tab.evaluate(summaryState)).buttonDisabled, true);
+    } finally { await tab.close(); }
+  });
+
   it('lists appointments with their reference and clinic status only', async () => {
     const tab = await openTab({
       url: BOOKING_PAGE,
@@ -323,6 +403,10 @@ describe('Booking page in a browser (mocked API)', { skip }, () => {
       assert.match(list, /Approved/);
       assert.doesNotMatch(list, PAYMENT_WORDING);
       assert.equal(await tab.evaluate(`document.querySelectorAll('#appointmentsList button').length`), 0, 'no payment buttons on the cards');
+      // Status badges use the shared, readable status colours
+      assert.deepEqual(await tab.evaluate(`[...document.querySelectorAll('#appointmentsList .ph-status')].map(badge => badge.className.match(/ph-status-(\\w+)/)[1]).sort()`), ['approved', 'pending']);
+      assert.ok(await tab.waitFor('document.getAnimations().length === 0'));
+      assert.deepEqual(await tab.evaluate(lowContrastIn('#appointmentsList')), []);
     } finally { await tab.close(); }
   });
 

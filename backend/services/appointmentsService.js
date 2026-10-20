@@ -9,6 +9,8 @@ const {
   hasValue
 } = require('../validators/commonValidator');
 const { INVALID_APPOINTMENT_DATE_MESSAGE, APPOINTMENT_STATUS_CHANGED_MESSAGE } = require('../constants/appointments');
+const { SERVICE_SPECIES } = require('../constants/services');
+const { getService, isServiceAvailableForSpecies, describeSpecies, listServicesForClient } = require('../utils/serviceCatalog');
 const {
   SCHEDULE_CONFLICT_MESSAGE,
   OCCUPIED_APPOINTMENT_STATUSES,
@@ -196,6 +198,11 @@ const createAppointment = async (req) => {
       return { statusCode: 400, body: { error: 'Selected pet does not have a valid name.' } };
     }
 
+    // Checked here, not only by hiding options on the booking page
+    if (!isServiceAvailableForSpecies(serviceType, pet.species)) {
+      return { statusCode: 400, body: { error: `${serviceType} is offered for ${describeSpecies(getService(serviceType).species)} only.` } };
+    }
+
     const conflict = await getScheduleConflict(
       normalizedAppointmentDate,
       normalizedAppointmentTime,
@@ -248,6 +255,15 @@ const createAppointment = async (req) => {
     return { statusCode: 500, body: { error: 'Server error' } };
   }
 };
+
+/**
+ * The clinic's services for the booking page: name, category, description, species, and the confirmed duration
+ * (null, with bookable false, until the clinic confirms it)
+ */
+const listServices = async () => ({
+  statusCode: 200,
+  body: { success: true, services: listServicesForClient(), species: [...SERVICE_SPECIES] }
+});
 
 /**
  * Get all appointments for a specific user
@@ -416,6 +432,7 @@ const updateStatus = async (req) => {
 };
 
 module.exports = {
+  listServices,
   createAppointment,
   getUserAppointments,
   getAllAppointments,

@@ -1,4 +1,4 @@
-require('./env'); // loads backend/.env into process.env, like the other config modules
+const { getSupabaseKeyRole } = require('./env'); // also loads backend/.env into process.env, like the other config modules
 const { createClient } = require('@supabase/supabase-js');
 const logger = require('../utils/logger');
 
@@ -11,15 +11,7 @@ let adminClient = null;
 
 // The public anon/publishable key must never be used here, even if it is pasted into SUPABASE_SERVICE_KEY by mistake
 function isPublicKey(key) {
-  if (key === process.env.SUPABASE_ANON_KEY || key.startsWith('sb_publishable_')) return true;
-
-  const parts = key.split('.');
-  if (parts.length !== 3) return false;
-  try {
-    return JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')).role === 'anon';
-  } catch (error) {
-    return false;
-  }
+  return key === process.env.SUPABASE_ANON_KEY || getSupabaseKeyRole(key) === 'anon';
 }
 
 function readAdminConfig() {

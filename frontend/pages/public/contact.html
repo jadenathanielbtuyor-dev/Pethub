@@ -4,144 +4,178 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PetHub | Contact</title>
-
-  <!-- CSS -->
+  <meta name="description" content="Send the clinic a message about bookings, your PetHub account or your pets' records.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800&amp;display=swap">
   <link rel="stylesheet" href="../../assets/css/style.css">
-
-  <!-- Icons -->
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet">
 </head>
-<body class="flex flex-col min-h-screen">
+<body class="ph-site flex flex-col min-h-screen">
+  <!-- Apply the saved theme before first paint; main.js still owns the toggle -->
+  <script>try { if (localStorage.getItem('darkMode') === 'true') { document.documentElement.classList.add('dark'); document.body.classList.add('dark-mode'); } } catch (e) {}</script>
+  <a href="#main" class="ph-skip-link">Skip to main content</a>
 
-  <!-- ================= NAVIGATION ================= -->
-  <nav class="nav">
-    <div class="nav-container">
-
-      <!-- Logo -->
-      <a href="../../index.html" class="logo">
-        <img src="../../assets/images/paw.png" alt="PetHub">
-        <h1>PetHub</h1>
-      </a>
-
-      <!-- Links -->
-      <ul class="nav-links">
-        <li><a href="../../index.html">Home</a></li>
-        <li><a href="about.html">About</a></li>
-        <li><a href="services.html">Services</a></li>
-        <li><a href="contact.html" class="active">Contact</a></li>
-        <li><a href="../auth/login.html" class="btn-login">Login</a></li>
-      </ul>
-
-    </div>
-  </nav>
-
-  <!-- ================= MAIN CONTENT ================= -->
-  <main class="flex-grow">
-
-  <!-- ================= PAGE HEADER ================= -->
-  <header class="bg-gradient-to-br from-orange-50 via-white to-blue-50 py-24 px-4">
-    <div class="max-w-6xl mx-auto text-center space-y-4">
-      <h1 class="text-6xl md:text-7xl font-bold text-gray-900 mb-6">
-        Contact PetHub
-      </h1>
-      <p class="text-2xl text-orange-600 font-semibold max-w-2xl mx-auto">
-        Reach support for account access, appointments, records, and dashboard questions.
-      </p>
-    </div>
-  </header>
-  <section class="bg-white py-24 px-4">
-    <div class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-16">
-
-      <!-- Contact Info -->
-      <div class="space-y-12">
-        <h2 class="text-5xl font-bold text-gray-900">
-          Support details
-        </h2>
-        <div class="space-y-6">
-          <!-- Email 
-          <div class="flex items-start text-lg text-gray-600">
-            <i class="ri-mail-line text-orange-500 mr-4 text-2xl mt-1 flex-shrink-0"></i>
-            <div>
-              <p class="font-semibold text-gray-900 mb-1">Email</p>
-              <p>support@pethub.com</p>
-            </div>
-          </div>
-        -->
-          <div class="flex items-start text-lg text-gray-600">
-            <i class="ri-time-line text-orange-500 mr-4 text-2xl mt-1 flex-shrink-0"></i>
-            <div>
-              <p class="font-semibold text-gray-900 mb-1">Office Hours</p>
-              <p>Mon - Fri: 8:00 AM to 6:00 PM</p>
-            </div>
-          </div>
-          <div class="flex items-start mt-6 text-gray-600">
-            <i class="ri-customer-service-2-line text-orange-500 mr-4 text-2xl mt-1 flex-shrink-0" aria-hidden="true"></i>
-            <div>
-              <p class="font-semibold text-gray-900 mb-2">What we support</p>
-              <p>We handle support for registration, email verification, dashboard access, pet profile updates, appointment booking, and records management.</p>
-            </div>
+  <!-- ================= SITE HEADER (shared by the public and sign-in pages; main.js runs the mobile menu) ================= -->
+  <header class="ph-header">
+    <nav class="ph-nav" aria-label="Main">
+      <div class="ph-nav-inner">
+        <a href="../../index.html" class="ph-brand">
+          <img src="../../assets/images/paw.png" alt="" width="40" height="40">
+          <span>PetHub</span>
+        </a>
+        <button type="button" class="ph-nav-toggle" data-nav-toggle aria-controls="siteNavMenu" aria-expanded="false" aria-label="Open menu">
+          <i class="ri-menu-line" aria-hidden="true"></i>
+        </button>
+        <div id="siteNavMenu" class="ph-nav-menu">
+          <ul class="ph-nav-links">
+            <li><a href="../../index.html">Home</a></li>
+            <li><a href="../../pages/public/about.html">About</a></li>
+            <li><a href="../../pages/public/services.html">Services</a></li>
+            <li><a href="../../pages/public/contact.html" aria-current="page">Contact</a></li>
+          </ul>
+          <div class="ph-nav-actions">
+            <a href="../../pages/auth/login.html" class="ph-nav-login" data-auth-link>Log in</a>
+            <a href="../../pages/auth/login.html?next=appointments" class="ph-btn ph-btn-primary ph-btn-sm" data-book-link>
+              <i class="ri-calendar-check-line" aria-hidden="true"></i>Book an Appointment
+            </a>
           </div>
         </div>
       </div>
+    </nav>
+  </header>
 
-      <!-- Contact Form -->
-      <div class="bg-gradient-to-br from-orange-50 to-white p-10 rounded-2xl shadow-lg border border-orange-100">
-        <h2 class="text-3xl font-bold text-gray-900 mb-8">
-          Send us a message
-        </h2>
+  <!-- ================= MAIN CONTENT ================= -->
+  <main id="main" class="flex-grow" tabindex="-1">
 
-        <form id="contactForm" class="space-y-6">
-          <div id="formMessage" class="min-h-6"></div>
-
-          <div class="form-group">
-            <label for="name" class="block font-semibold text-gray-700 mb-2">
-              Full Name
-            </label>
-            <input type="text" id="name" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all" required>
-          </div>
-
-          <div class="form-group">
-            <label for="email" class="block font-semibold text-gray-700 mb-2">
-              Email Address
-            </label>
-            <input type="email" id="email" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all" required>
-          </div>
-
-          <div class="form-group">
-            <label for="message" class="block font-semibold text-gray-700 mb-2">
-              Message
-            </label>
-            <textarea id="message" rows="5" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all resize-none" required></textarea>
-          </div>
-
-          <button type="submit" class="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-semibold py-3 rounded-xl transition-all hover:shadow-lg transform hover:scale-105">
-            Send Message
-          </button>
-        </form>
+    <section class="ph-page-hero" aria-labelledby="pageTitle">
+      <div class="ph-container">
+        <p class="ph-eyebrow"><i class="ri-chat-3-line" aria-hidden="true"></i>Contact</p>
+        <h1 id="pageTitle" class="ph-display">Contact the clinic</h1>
+        <p class="ph-lead">Send the clinic a message about a booking, your account or your pet's records.</p>
       </div>
+    </section>
 
-    </div>
-  </section>
+    <section class="ph-section" aria-label="Clinic details and message form">
+      <div class="ph-container ph-hero-grid items-start">
+
+        <!-- Clinic details: placeholders until the clinic confirms them (never deploy them) -->
+        <div class="ph-card">
+          <h2 class="ph-title">Clinic details</h2>
+          <p class="ph-card-text">The clinic's phone number, email, address and opening hours will be listed here once they are confirmed.</p>
+          <ul class="ph-info-list mt-6">
+            <li>
+              <span class="ph-icon"><i class="ri-phone-line" aria-hidden="true"></i></span>
+              <div>
+                <p class="ph-info-label">Phone</p>
+                <p class="mt-1"><span class="ph-placeholder" data-placeholder="clinic-phone"><span class="ph-placeholder-tag">Placeholder</span>Clinic phone number: to be confirmed</span></p>
+              </div>
+            </li>
+            <li>
+              <span class="ph-icon"><i class="ri-mail-line" aria-hidden="true"></i></span>
+              <div>
+                <p class="ph-info-label">Email</p>
+                <p class="mt-1"><span class="ph-placeholder" data-placeholder="clinic-email"><span class="ph-placeholder-tag">Placeholder</span>Clinic email address: to be confirmed</span></p>
+              </div>
+            </li>
+            <li>
+              <span class="ph-icon"><i class="ri-map-pin-line" aria-hidden="true"></i></span>
+              <div>
+                <p class="ph-info-label">Address</p>
+                <p class="mt-1"><span class="ph-placeholder" data-placeholder="clinic-address"><span class="ph-placeholder-tag">Placeholder</span>Clinic address: to be confirmed</span></p>
+              </div>
+            </li>
+            <li>
+              <span class="ph-icon"><i class="ri-time-line" aria-hidden="true"></i></span>
+              <div>
+                <p class="ph-info-label">Opening hours</p>
+                <p class="mt-1"><span class="ph-placeholder" data-placeholder="clinic-hours"><span class="ph-placeholder-tag">Placeholder</span>Opening hours: to be confirmed</span></p>
+              </div>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Contact Form (POST /contact) -->
+        <div class="ph-card">
+          <h2 class="ph-title">Send a message</h2>
+          <p class="ph-card-text">Every field is required. The clinic replies to the email address you give.</p>
+
+          <form id="contactForm" class="ph-form mt-6" novalidate>
+            <div id="formMessage" aria-live="polite"></div>
+
+            <div class="ph-field">
+              <label for="name" class="ph-label">Your name<span class="ph-required" aria-hidden="true">*</span></label>
+              <input type="text" id="name" name="name" class="ph-input" autocomplete="name" maxlength="100" required>
+            </div>
+
+            <div class="ph-field">
+              <label for="email" class="ph-label">Email address<span class="ph-required" aria-hidden="true">*</span></label>
+              <input type="email" id="email" name="email" class="ph-input" autocomplete="email" inputmode="email" maxlength="254" required>
+            </div>
+
+            <div class="ph-field">
+              <label for="message" class="ph-label">Message<span class="ph-required" aria-hidden="true">*</span></label>
+              <textarea id="message" name="message" rows="6" class="ph-input" maxlength="2000" required aria-describedby="messageHelp"></textarea>
+              <p id="messageHelp" class="ph-help">Up to 2,000 characters. Please don't include passwords or bank card numbers.</p>
+            </div>
+
+            <button type="submit" class="ph-btn ph-btn-primary">
+              Send Message
+            </button>
+          </form>
+        </div>
+
+      </div>
+    </section>
 
   </main>
 
   <!-- ================= FOOTER ================= -->
-  <footer class="footer">
-    <p>&copy; 2026 PetHub. Caring for Your Pet's Health. All rights reserved.</p>
+  <footer class="footer ph-footer">
+    <div class="ph-container">
+      <div class="ph-footer-inner">
+        <div>
+          <a href="../../index.html" class="ph-brand">
+            <img src="../../assets/images/paw.png" alt="" width="40" height="40">
+            <span>PetHub</span>
+          </a>
+          <p class="mt-3">Online booking for grooming and check-ups for dogs and cats, with your pets' profiles and records in one place.</p>
+        </div>
+        <nav aria-label="Footer">
+          <p class="ph-footer-title">Explore</p>
+          <ul class="ph-footer-links">
+            <li><a href="../../index.html">Home</a></li>
+            <li><a href="../../pages/public/about.html">About</a></li>
+            <li><a href="../../pages/public/services.html">Services</a></li>
+            <li><a href="../../pages/public/contact.html">Contact</a></li>
+          </ul>
+        </nav>
+        <div>
+          <p class="ph-footer-title">Your account</p>
+          <ul class="ph-footer-links">
+            <li><a href="../../pages/auth/login.html?next=appointments" data-book-link>Book an appointment</a></li>
+            <li><a href="../../pages/auth/login.html">Log in</a></li>
+            <li><a href="../../pages/auth/register.html">Create an account</a></li>
+            <li><a href="../../pages/public/privacy.html">Privacy notice</a></li>
+          </ul>
+        </div>
+      </div>
+      <p class="ph-footer-legal">&copy; 2026 PetHub. All rights reserved. Photos are used under Creative Commons licences; see the <a href="../../pages/public/about.html#photo-credits">photo credits</a>.</p>
+    </div>
   </footer>
 
   <!-- ================= DARK MODE TOGGLE ================= -->
   <button id="darkModeToggle" class="dark-mode-toggle" title="Toggle Dark Mode">
     <i class="ri-moon-line"></i>
   </button>
-  
+
   <!-- JS -->
   <script src="../../js/core/api.js"></script>
   <script src="../../js/core/utils.js"></script>
   <script src="../../js/core/storage.js"></script>
   <script src="../../js/main.js"></script>
   <script src="../../js/shared/ai-widget.js"></script>
-  
+
   <!-- Contact Form Handler -->
   <script>
     let contactSubmitInProgress = false;

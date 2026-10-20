@@ -28,8 +28,33 @@ function manilaDate(daysFromToday) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
 }
 
+// MADE-UP durations so the booking and scheduling logic can be tested. They are NOT the clinic's durations (none are
+// confirmed yet, see constants/services.js) and exist only inside the test process.
+const TEST_ONLY_SERVICE_DURATIONS = Object.freeze({
+  Bath: 60,
+  Trim: 45,
+  'Puppy Cut': 90,
+  'Full Grooming': 240,
+  'Nail Cutting': 15,
+  'Face Trim': 30,
+  'Flea and Tick Removal': 45,
+  'Medicated Bath': 60,
+  'Dog & Cat Full Check Up': 45
+});
+
 // database: options for the in-memory database (helpers/fakeSupabase.js), e.g. { usersProfileColumns: false }
-async function startTestApp({ env = {}, adminClientConfigured = true, database = {} } = {}) {
+// realRateLimits: keep constants/rateLimits.js as configured. Otherwise every limit is raised far beyond what a test
+// file sends, because all test requests come from one address (tests/rate-limits.test.js checks the real limits).
+// serviceDurations: minutes per service for this test app (default TEST_ONLY_SERVICE_DURATIONS); null keeps
+// constants/services.js exactly as shipped. serviceSpecies: { [service]: ['Dog'] } to try a species rule.
+async function startTestApp({
+  env = {},
+  adminClientConfigured = true,
+  database = {},
+  realRateLimits = false,
+  serviceDurations = TEST_ONLY_SERVICE_DURATIONS,
+  serviceSpecies = {}
+} = {}) {
   const secrets = {
     authTokenSecret: crypto.randomBytes(32).toString('hex'),
     brevoApiKey: `xkeysib-fake-${crypto.randomBytes(12).toString('hex')}`
@@ -59,6 +84,27 @@ async function startTestApp({ env = {}, adminClientConfigured = true, database =
   });
 
   stubModule(require.resolve('dotenv', { paths: [BACKEND_DIR] }), { config: () => ({ parsed: {} }) });
+
+  if (serviceDurations || Object.keys(serviceSpecies).length > 0) {
+    const servicesFile = path.join(BACKEND_DIR, 'constants', 'services.js');
+    const shipped = require(servicesFile);
+    stubModule(servicesFile, {
+      ...shipped,
+      SERVICE_CATALOG: Object.freeze(shipped.SERVICE_CATALOG.map(entry => Object.freeze({
+        ...entry,
+        durationMinutes: serviceDurations ? (serviceDurations[entry.name] ?? null) : entry.durationMinutes,
+        species: Object.freeze([...(serviceSpecies[entry.name] || entry.species)])
+      })))
+    });
+  }
+
+  if (!realRateLimits) {
+    const rateLimitsFile = path.join(BACKEND_DIR, 'constants', 'rateLimits.js');
+    const { RATE_LIMITS } = require(rateLimitsFile);
+    stubModule(rateLimitsFile, {
+      RATE_LIMITS: Object.fromEntries(Object.keys(RATE_LIMITS).map(name => [name, { max: 1000000, windowMinutes: 60 }]))
+    });
+  }
 
   const db = createPetHubDatabase(database);
   const adminState = { configured: adminClientConfigured };
@@ -205,5 +251,6 @@ async function startTestApp({ env = {}, adminClientConfigured = true, database =
 
 module.exports = {
   startTestApp,
-  manilaDate
+  manilaDate,
+  TEST_ONLY_SERVICE_DURATIONS
 };

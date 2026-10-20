@@ -39,10 +39,11 @@ function listBasicByUserId(userId) {
     .eq('user_id', userId);
 }
 
+// The owner's pet, with its species for the booking's service check
 function findUserPetById(userId, petId) {
   return supabase
     .from('pets')
-    .select('id, user_id, name')
+    .select('id, user_id, name, species')
     .eq('id', petId)
     .eq('user_id', userId)
     .limit(1);

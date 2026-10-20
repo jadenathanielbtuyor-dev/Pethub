@@ -70,7 +70,7 @@ describe('the same booking sent more than once at the same moment', () => {
       user_id: user.id,
       pet_id: pet.id,
       pet_name: pet.name,
-      service_type: 'Grooming',
+      service_type: 'Full Grooming',
       appointment_date: t.manilaDate(nextDay()),
       appointment_time: '13:00:00'
     };
@@ -91,7 +91,7 @@ describe('the same booking sent more than once at the same moment', () => {
     const date = t.manilaDate(nextDay());
     const responses = await Promise.all(['09:00:00', '11:00:00'].map(time => t.api('POST', '/appointments/create', {
       token: user.token,
-      body: { user_id: user.id, pet_id: pet.id, pet_name: pet.name, service_type: 'Checkup', appointment_date: date, appointment_time: time }
+      body: { user_id: user.id, pet_id: pet.id, pet_name: pet.name, service_type: 'Dog & Cat Full Check Up', appointment_date: date, appointment_time: time }
     })));
     assert.deepEqual(responses.map(response => response.status), [201, 201]);
     assert.equal(t.db.table('appointments').filter(row => row.user_id === user.id).length, 2);

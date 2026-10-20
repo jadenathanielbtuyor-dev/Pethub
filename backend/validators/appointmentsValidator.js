@@ -3,8 +3,8 @@ const {
   trimValue,
   getLocalDateValue
 } = require('./commonValidator');
+const { getService, getServiceDurationMinutes } = require('../utils/serviceCatalog');
 const {
-  SERVICE_DURATIONS_MINUTES,
   INVALID_APPOINTMENT_DATE_MESSAGE,
   INVALID_APPOINTMENT_TIME_MESSAGE,
   PAST_APPOINTMENT_DATE_MESSAGE,
@@ -65,13 +65,6 @@ function normalizeAppointmentTime(value) {
   const minutes = String(parsedTime.minutes).padStart(2, '0');
   const seconds = String(parsedTime.seconds).padStart(2, '0');
   return `${hours}:${minutes}:${seconds}`;
-}
-
-function getExactServiceDurationMinutes(serviceType) {
-  const serviceName = String(serviceType || '').trim();
-  return Object.prototype.hasOwnProperty.call(SERVICE_DURATIONS_MINUTES, serviceName)
-    ? SERVICE_DURATIONS_MINUTES[serviceName]
-    : null;
 }
 
 function normalizeDurationMinutes(value) {
@@ -137,10 +130,17 @@ function validateCreateAppointment(body = {}) {
     };
   }
 
-  const estimatedDurationMinutes = getExactServiceDurationMinutes(serviceType);
-  if (!Number.isFinite(estimatedDurationMinutes)) {
+  // Only the clinic's services (constants/services.js), with the duration the server holds for them
+  if (!getService(serviceType)) {
     return {
       error: { statusCode: 400, body: { error: 'Select a valid service type.' } }
+    };
+  }
+
+  const estimatedDurationMinutes = getServiceDurationMinutes(serviceType);
+  if (!Number.isFinite(estimatedDurationMinutes)) {
+    return {
+      error: { statusCode: 409, body: { error: `${serviceType} cannot be booked online yet because the clinic has not confirmed how long it takes. Please contact the clinic to book it.` } }
     };
   }
 

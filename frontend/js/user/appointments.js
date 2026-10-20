@@ -8,6 +8,9 @@ let appointmentPetsError = "";
 let appointmentSubmitInProgress = false;
 let appointmentDateAvailabilityRequestId = 0;
 let appointmentDateAvailabilityController = null;
+// The clinic's services come from the server (GET /appointments/services) into window.AppointmentDurations
+let serviceCatalogLoaded = false;
+let serviceCatalogError = "";
 const NO_APPOINTMENT_PETS_MESSAGE = "Please add a pet first before booking an appointment.";
 const INVALID_APPOINTMENT_DATE_MESSAGE = "Enter a valid appointment date.";
 const INVALID_APPOINTMENT_TIME_MESSAGE = "Enter a valid appointment time.";
@@ -55,8 +58,12 @@ function initAppointments() {
   setupAppointmentDateMin();
   setupServiceDurationHint();
   renderAppointmentPetOptions();
+  renderServiceOptions();
   updateAppointmentPetBookingState();
+  loadServiceCatalog();
   loadAppointmentPets(currentUser.id);
+  // Which services can be chosen depends on the selected pet's species
+  getAppointmentPetSelect()?.addEventListener("change", renderServiceOptions);
   setupBookingSummary();
   loadAppointments(currentUser.id);
   setupFormHandler();
@@ -426,9 +433,124 @@ function getAppointmentDurationMinutes(serviceType) {
   return window.AppointmentDurations.getDurationMinutes(serviceType);
 }
 
+function getSelectedPetSpecies() {
+  return String(getAppointmentPetById(getAppointmentPetSelect()?.value)?.species || "").trim();
+}
+
+// A service that can be booked for the selected pet: in the clinic's catalog, with a confirmed duration, and offered
+// for the pet's species (the server checks all three again)
 function isKnownAppointmentServiceType(serviceType) {
-  if (!window.AppointmentDurations) return true;
-  return window.AppointmentDurations.hasService(serviceType);
+  const catalog = window.AppointmentDurations;
+  if (!catalog || !catalog.hasService(serviceType) || !catalog.isBookable(serviceType)) return false;
+  const species = getSelectedPetSpecies();
+  return !species || catalog.isAvailableForSpecies(serviceType, species);
+}
+
+function getSpeciesPluralLabel(species) {
+  return `${String(species).toLowerCase()}s`;
+}
+
+async function loadServiceCatalog() {
+  serviceCatalogLoaded = false;
+  serviceCatalogError = "";
+  renderServiceOptions();
+
+  try {
+    const response = await fetch(`${window.API_BASE_URL}/appointments/services`);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.success === false || !Array.isArray(data.services)) {
+      throw new Error(data.error || `Failed to load services (${response.status})`);
+    }
+    window.AppointmentDurations.setCatalog(data.services);
+  } catch (error) {
+    console.error("Error loading services:", error);
+    serviceCatalogError = "We could not load the clinic's services. Please refresh the page to try again.";
+  }
+
+  serviceCatalogLoaded = true;
+  renderServiceOptions();
+  applyRequestedService();
+}
+
+// A "Book" link on the Services page names its service (?service=Bath); it is chosen once the list has loaded, if it
+// can be booked
+function applyRequestedService() {
+  const requested = new URLSearchParams(window.location.search).get("service");
+  const select = document.getElementById("serviceType");
+  if (!requested || !select || select.value) return;
+  if (!isKnownAppointmentServiceType(requested)) return;
+  select.value = requested;
+  select.dispatchEvent(new Event("change"));
+}
+
+// The service list, grouped by category. Services that cannot be booked for the selected pet stay visible but
+// disabled, with the reason in their label.
+function renderServiceOptions() {
+  const select = document.getElementById("serviceType");
+  const catalog = window.AppointmentDurations;
+  if (!select || !catalog) return;
+
+  const previousValue = select.value;
+  const species = getSelectedPetSpecies();
+  select.innerHTML = "";
+  select.appendChild(new Option(
+    serviceCatalogError ? "Unable to load services" : !serviceCatalogLoaded ? "Loading services..." : "Select Service",
+    ""
+  ));
+
+  const groups = new Map();
+  catalog.getServices().forEach((service) => {
+    let group = groups.get(service.category);
+    if (!group) {
+      group = document.createElement("optgroup");
+      group.label = service.categoryLabel;
+      groups.set(service.category, group);
+      select.appendChild(group);
+    }
+
+    const option = new Option(service.name, service.name);
+    let reason = "";
+    if (!catalog.isBookable(service.name)) reason = "online booking not open yet";
+    else if (species && !catalog.isAvailableForSpecies(service.name, species)) reason = `not offered for ${getSpeciesPluralLabel(species)}`;
+    if (reason) {
+      option.disabled = true;
+      option.textContent = `${service.name} (${reason})`;
+    }
+    group.appendChild(option);
+  });
+
+  select.disabled = Boolean(serviceCatalogError) || !serviceCatalogLoaded;
+  if (previousValue && isKnownAppointmentServiceType(previousValue)) select.value = previousValue;
+  updateServiceTypeHint();
+  select.dispatchEvent(new Event("change"));
+}
+
+// Under the service list: why services are unavailable, or what the selected service is
+function updateServiceTypeHint() {
+  const hint = document.getElementById("serviceTypeHint");
+  const catalog = window.AppointmentDurations;
+  if (!hint || !catalog) return;
+
+  const services = catalog.getServices();
+  const selected = catalog.getService(document.getElementById("serviceType")?.value);
+  const species = getSelectedPetSpecies();
+  let text = "";
+  let isError = false;
+  if (serviceCatalogError) {
+    text = serviceCatalogError;
+    isError = true;
+  } else if (serviceCatalogLoaded && services.length > 0 && !services.some(service => catalog.isBookable(service.name))) {
+    text = "Online booking opens once the clinic confirms how long each service takes. Until then, please contact the clinic to book.";
+  } else if (selected) {
+    text = selected.description;
+  } else if (species && services.some(service => catalog.isBookable(service.name) && !catalog.isAvailableForSpecies(service.name, species))) {
+    text = `Services marked "not offered for ${getSpeciesPluralLabel(species)}" can't be booked for this pet.`;
+  }
+
+  hint.textContent = text;
+  hint.classList.toggle("hidden", !text);
+  hint.classList.toggle("text-red-600", isError);
+  hint.classList.toggle("text-slate-500", !isError);
 }
 
 function parseAppointmentDateTime(dateValue, timeValue) {
@@ -567,6 +689,7 @@ function setupServiceDurationHint() {
   };
 
   serviceInput.addEventListener("change", updateHint);
+  serviceInput.addEventListener("change", updateServiceTypeHint);
   serviceInput.addEventListener("change", updateAppointmentDateAvailabilityNote);
   if (dateInput) dateInput.addEventListener("change", updateHint);
   if (timeInput) timeInput.addEventListener("change", updateHint);
@@ -793,7 +916,7 @@ function displayAppointments(appointments) {
       const handledByRow = handledBy
         ? `
           <div>
-            <dt class="text-xs font-semibold uppercase tracking-wide text-gray-400">Handled by</dt>
+            <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">Handled by</dt>
             <dd class="mt-1 text-sm font-medium text-gray-700">${escapeHtml(handledBy)}</dd>
           </div>
         `
@@ -802,31 +925,31 @@ function displayAppointments(appointments) {
         <div class="rounded-lg border border-gray-100 bg-white p-5 shadow-sm">
           <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div>
-              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-400">Reference</dt>
+              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">Reference</dt>
               <dd class="mt-1 text-sm font-semibold text-gray-700">${escapeHtml(getAppointmentReference(apt))}</dd>
             </div>
             <div>
-              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-400">Pet</dt>
+              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">Pet</dt>
               <dd class="mt-1 text-sm font-semibold text-gray-900">${escapeHtml(apt.pet_name || 'N/A')}</dd>
             </div>
             <div>
-              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-400">Service</dt>
+              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">Service</dt>
               <dd class="mt-1 text-sm font-medium text-gray-700">${escapeHtml(apt.service_type || 'N/A')}</dd>
             </div>
             <div>
-              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-400">Duration</dt>
+              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">Duration</dt>
               <dd class="mt-1 text-sm font-medium text-gray-700">${escapeHtml(getAppointmentDisplayDuration(apt))}</dd>
             </div>
             <div>
-              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-400">Date</dt>
+              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">Date</dt>
               <dd class="mt-1 text-sm font-medium text-gray-700">${escapeHtml(formatAppointmentDateDisplay(apt.appointment_date))}</dd>
             </div>
             <div>
-              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-400">Time range</dt>
+              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">Time range</dt>
               <dd class="mt-1 text-sm font-medium text-gray-700">${escapeHtml(getAppointmentTimeRangeDisplay(apt))}</dd>
             </div>
             <div>
-              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-400">Status</dt>
+              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">Status</dt>
               <dd class="mt-1">
                 <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getStatusClass(status)}">
                   ${escapeHtml(status)}
@@ -865,14 +988,15 @@ function getAppointmentStatusLabel(status) {
 /**
  * Get CSS class for status badge
  */
+// Status badge colours (assets/css/input.css .ph-status-*), readable in both themes
 function getStatusClass(status) {
   const statusClasses = {
-    Approved: "bg-blue-100 text-blue-700",
-    Cancelled: "bg-red-100 text-red-700",
-    Completed: "bg-green-100 text-green-700",
-    Pending: "bg-yellow-100 text-yellow-700",
+    Approved: "ph-status ph-status-approved",
+    Cancelled: "ph-status ph-status-cancelled",
+    Completed: "ph-status ph-status-completed",
+    Pending: "ph-status ph-status-pending",
   };
-  return statusClasses[status] || "bg-gray-100 text-gray-700";
+  return statusClasses[status] || "ph-status ph-status-other";
 }
 
 // A short reference to quote to the clinic: the stored appointment_reference is empty, so it is derived from the id
@@ -1087,7 +1211,7 @@ function setupFormHandler() {
     }
 
     if (!isKnownAppointmentServiceType(serviceType)) {
-      showAppointmentFeedback(messageContainer, "Select a valid service type.", "error");
+      showAppointmentFeedback(messageContainer, "Choose a service that can be booked for this pet.", "error");
       return;
     }
 

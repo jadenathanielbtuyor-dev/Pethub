@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PetHub | Privacy notice</title>
+  <meta name="description" content="What personal information PetHub collects, why, who can see it, and the choices you have. Draft awaiting the clinic's review.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800&amp;display=swap">
+  <link rel="stylesheet" href="../../assets/css/style.css">
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet">
+</head>
+<body class="ph-site flex flex-col min-h-screen">
+  <!-- Apply the saved theme before first paint; main.js still owns the toggle -->
+  <script>try { if (localStorage.getItem('darkMode') === 'true') { document.documentElement.classList.add('dark'); document.body.classList.add('dark-mode'); } } catch (e) {}</script>
+  <a href="#main" class="ph-skip-link">Skip to main content</a>
+
+  <!-- ================= SITE HEADER (shared by the public and sign-in pages; main.js runs the mobile menu) ================= -->
+  <header class="ph-header">
+    <nav class="ph-nav" aria-label="Main">
+      <div class="ph-nav-inner">
+        <a href="../../index.html" class="ph-brand">
+          <img src="../../assets/images/paw.png" alt="" width="40" height="40">
+          <span>PetHub</span>
+        </a>
+        <button type="button" class="ph-nav-toggle" data-nav-toggle aria-controls="siteNavMenu" aria-expanded="false" aria-label="Open menu">
+          <i class="ri-menu-line" aria-hidden="true"></i>
+        </button>
+        <div id="siteNavMenu" class="ph-nav-menu">
+          <ul class="ph-nav-links">
+            <li><a href="../../index.html">Home</a></li>
+            <li><a href="../../pages/public/about.html">About</a></li>
+            <li><a href="../../pages/public/services.html">Services</a></li>
+            <li><a href="../../pages/public/contact.html">Contact</a></li>
+          </ul>
+          <div class="ph-nav-actions">
+            <a href="../../pages/auth/login.html" class="ph-nav-login" data-auth-link>Log in</a>
+            <a href="../../pages/auth/login.html?next=appointments" class="ph-btn ph-btn-primary ph-btn-sm" data-book-link>
+              <i class="ri-calendar-check-line" aria-hidden="true"></i>Book an Appointment
+            </a>
+          </div>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <!-- ================= MAIN CONTENT ================= -->
+  <!-- DRAFT. Every statement below describes what the PetHub code does as of 2026-10-20. Items marked as placeholders
+       (data-placeholder) need the clinic's or adviser's answer and must be completed before this page is published. -->
+  <main id="main" class="flex-grow" tabindex="-1">
+
+    <section class="ph-page-hero" aria-labelledby="pageTitle">
+      <div class="ph-container">
+        <p class="ph-eyebrow"><i class="ri-shield-check-line" aria-hidden="true"></i>Privacy</p>
+        <h1 id="pageTitle" class="ph-display">Privacy notice</h1>
+        <p class="ph-lead">What PetHub collects about you and your pets, why, and who can see it.</p>
+      </div>
+    </section>
+
+    <section class="ph-section" aria-label="Privacy notice">
+      <div class="ph-container">
+        <div class="ph-alert ph-alert-warning" role="note">
+          <i class="ri-information-line ph-alert-icon" aria-hidden="true"></i>
+          <div class="ph-alert-body">
+            <p class="ph-alert-title">Draft for review</p>
+            <p>This notice describes how PetHub works today. The clinic still needs to review it and complete the parts marked as placeholders before it is final.</p>
+          </div>
+        </div>
+
+        <div class="ph-prose mt-8">
+          <h2 id="who">Who is responsible</h2>
+          <p>PetHub is the clinic's online booking and records system. Questions about your information go to the clinic.</p>
+          <p><span class="ph-placeholder" data-placeholder="privacy-controller"><span class="ph-placeholder-tag">Placeholder</span>The clinic's name and how to contact it about privacy: to be confirmed by the clinic</span></p>
+
+          <h2 id="what">What we collect and why</h2>
+          <h3>Your account</h3>
+          <ul>
+            <li><strong>Full legal name and email address</strong>: to create your account, sign you in, confirm your email address, and send you messages about your account and bookings (verification and password-reset codes, and emails when a booking is approved or cancelled).</li>
+            <li><strong>Password</strong>: stored only as a one-way hash, so it can be checked but not read back. It is never shown or emailed.</li>
+          </ul>
+          <h3>Your personal and contact details</h3>
+          <ul>
+            <li><strong>Contact number and home address</strong>: so the clinic can reach you about your appointments and keep its customer records.</li>
+            <li><strong>Date of birth and gender</strong>: asked for when you register. <span class="ph-placeholder" data-placeholder="privacy-dob-gender-purpose"><span class="ph-placeholder-tag">Placeholder</span>The clinic's reason for needing these: to be confirmed by the clinic</span> You can always choose "Prefer not to say" for gender.</li>
+          </ul>
+          <h3>Your pets and visits</h3>
+          <ul>
+            <li><strong>Pet profiles</strong> (name, species, breed and age), to book services for each pet.</li>
+            <li><strong>Bookings</strong> (pet, service, date, time and status), so the clinic can schedule and confirm your visits.</li>
+            <li><strong>Medical records</strong> that clinic staff add after a completed visit (for example weight, treatment and notes).</li>
+          </ul>
+          <h3>Other things we keep</h3>
+          <ul>
+            <li><strong>Messages</strong> you send through the Contact page (your name, email address and message).</li>
+            <li><strong>An activity log</strong> of account events such as sign-ins, registration, email verification, password resets and changes to your details, with their dates, for security and support. It does not record your passwords or the details themselves.</li>
+            <li><strong>Chat assistant</strong>: questions that the assistant cannot answer from its built-in list are sent to Google's Gemini service to write a reply. Please don't type personal details into the chat. The conversation is not saved in your browser.</li>
+          </ul>
+
+          <h2 id="who-sees">Who can see it</h2>
+          <ul>
+            <li><strong>You</strong>, when you are signed in.</li>
+            <li><strong>Clinic staff with administrator accounts</strong>, to manage accounts, pets, bookings, medical records and messages. Their user lists show your name, email address, role and whether your email is verified; they do not show your date of birth, gender, contact number or address.</li>
+            <li><strong>Service providers that run PetHub</strong>: Supabase (database), Brevo (sending emails), Google Gemini (chat assistant replies), and Vercel and Railway (hosting the website and its server). They handle the information needed for their part of the service.</li>
+          </ul>
+
+          <h2 id="browser">What your browser keeps</h2>
+          <p>While you are signed in, your browser's session storage keeps your sign-in token and your basic account details (name, email address and account type) until you log out or close the browser. Local storage keeps your light or dark display choice. PetHub uses no advertising or tracking cookies. Pages load fonts from Google Fonts and icons from jsDelivr, so those services receive your browser's request.</p>
+
+          <h2 id="keep">How long we keep it</h2>
+          <p><span class="ph-placeholder" data-placeholder="privacy-retention"><span class="ph-placeholder-tag">Placeholder</span>How long the clinic keeps accounts, bookings, records and messages: to be confirmed by the clinic</span></p>
+
+          <h2 id="choices">Your choices</h2>
+          <ul>
+            <li>See and correct your name and personal details from your dashboard: <strong>Your details</strong>, then <strong>Edit details</strong>.</li>
+            <li>Change your password with <strong>Forgot password?</strong> on the login page.</li>
+            <li>For any other request about your information, such as a copy or deletion, contact the clinic. <span class="ph-placeholder" data-placeholder="privacy-requests"><span class="ph-placeholder-tag">Placeholder</span>How the clinic handles these requests: to be confirmed by the clinic</span></li>
+          </ul>
+
+          <h2 id="changes">Changes to this notice</h2>
+          <p>If PetHub starts collecting something new or using it differently, this notice will be updated first.</p>
+          <p class="text-sm"><span class="ph-placeholder" data-placeholder="privacy-date"><span class="ph-placeholder-tag">Placeholder</span>Date this notice takes effect: to be set when the clinic approves it</span></p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ================= FOOTER ================= -->
+  <footer class="footer ph-footer">
+    <div class="ph-container">
+      <div class="ph-footer-inner">
+        <div>
+          <a href="../../index.html" class="ph-brand">
+            <img src="../../assets/images/paw.png" alt="" width="40" height="40">
+            <span>PetHub</span>
+          </a>
+          <p class="mt-3">Online booking for grooming and check-ups for dogs and cats, with your pets' profiles and records in one place.</p>
+        </div>
+        <nav aria-label="Footer">
+          <p class="ph-footer-title">Explore</p>
+          <ul class="ph-footer-links">
+            <li><a href="../../index.html">Home</a></li>
+            <li><a href="../../pages/public/about.html">About</a></li>
+            <li><a href="../../pages/public/services.html">Services</a></li>
+            <li><a href="../../pages/public/contact.html">Contact</a></li>
+          </ul>
+        </nav>
+        <div>
+          <p class="ph-footer-title">Your account</p>
+          <ul class="ph-footer-links">
+            <li><a href="../../pages/auth/login.html?next=appointments" data-book-link>Book an appointment</a></li>
+            <li><a href="../../pages/auth/login.html">Log in</a></li>
+            <li><a href="../../pages/auth/register.html">Create an account</a></li>
+            <li><a href="../../pages/public/privacy.html">Privacy notice</a></li>
+          </ul>
+        </div>
+      </div>
+      <p class="ph-footer-legal">&copy; 2026 PetHub. All rights reserved. Photos are used under Creative Commons licences; see the <a href="../../pages/public/about.html#photo-credits">photo credits</a>.</p>
+    </div>
+  </footer>
+
+  <!-- ================= DARK MODE TOGGLE ================= -->
+  <button id="darkModeToggle" class="dark-mode-toggle" title="Toggle Dark Mode">
+    <i class="ri-moon-line"></i>
+  </button>
+
+  <!-- JS -->
+  <script src="../../js/core/api.js"></script>
+  <script src="../../js/core/utils.js"></script>
+  <script src="../../js/core/storage.js"></script>
+  <script src="../../js/main.js"></script>
+  <script src="../../js/shared/ai-widget.js"></script>
+
+</body>
+</html>

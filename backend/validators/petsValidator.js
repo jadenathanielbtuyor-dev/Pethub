@@ -2,6 +2,8 @@ const {
   hasValue,
   trimValue
 } = require('./commonValidator');
+const { SERVICE_SPECIES } = require('../constants/services');
+const { normalizeSpecies, describeSpecies } = require('../utils/serviceCatalog');
 
 function validateCreatePet(body = {}) {
   const normalizedUserId = trimValue(body.user_id);
@@ -16,6 +18,14 @@ function validateCreatePet(body = {}) {
     };
   }
 
+  // The clinic cares for dogs and cats only (constants/services.js); stored as 'Dog' / 'Cat'
+  const species = normalizeSpecies(cleanSpecies);
+  if (!species) {
+    return {
+      error: { statusCode: 400, body: { error: `The clinic cares for ${describeSpecies([...SERVICE_SPECIES])} only. Choose ${SERVICE_SPECIES.join(' or ')}.` } }
+    };
+  }
+
   if (hasValue(body.age) && (!Number.isFinite(cleanAge) || cleanAge < 0)) {
     return {
       error: { statusCode: 400, body: { error: 'age must be a valid non-negative number' } }
@@ -25,7 +35,7 @@ function validateCreatePet(body = {}) {
   return {
     normalizedUserId,
     cleanName,
-    cleanSpecies,
+    cleanSpecies: species,
     cleanBreed,
     cleanAge
   };

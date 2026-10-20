@@ -4,7 +4,7 @@ const USER_AUTH_SELECT = 'id, fullname, email, password, role, is_verified, crea
 const USER_PUBLIC_SELECT = 'id, fullname, email, role, is_verified, created_at';
 const USER_ADMIN_LIST_SELECT = 'id, fullname, email, role, created_at, is_verified';
 const USER_NAME_SELECT = 'id, fullname';
-// Optional profile details (constants/userProfile.js PROFILE_COLUMNS). Deliberately not part of the selects above:
+// Personal and contact details (constants/userProfile.js PROFILE_COLUMNS). Deliberately not part of the selects above:
 // those keep working on a database where database/migrations/2026-10-20_users_profile_fields.sql is not applied yet.
 const USER_PROFILE_SELECT = 'id, phone_number, date_of_birth, gender, address_line, barangay, city_municipality, province, postal_code';
 
@@ -55,6 +55,18 @@ function updatePassword(userId, password) {
     .select('id');
 }
 
+// Replaces a password stored before hashing (plaintext or sha256$) with a new hash after a successful login. Only a row
+// whose value is still not a scrypt hash changes, so a password set meanwhile through reset is never overwritten, and
+// the old value is never sent to the database.
+function upgradeLegacyPassword(userId, passwordHash) {
+  return supabase
+    .from('users')
+    .update({ password: passwordHash })
+    .eq('id', userId)
+    .not('password', 'like', 'scrypt$%')
+    .select('id');
+}
+
 function findStatusById(userId) {
   return supabase
     .from('users')
@@ -69,6 +81,16 @@ function findProfileById(userId) {
     .select(USER_PROFILE_SELECT)
     .eq('id', userId)
     .limit(1);
+}
+
+// The signed-in customer's own name and personal details (PUT /auth/profile), in one update of their own row. Returns
+// the public account fields and the details, never the password.
+function updateProfile(userId, details) {
+  return supabase
+    .from('users')
+    .update(details)
+    .eq('id', userId)
+    .select(`${USER_PUBLIC_SELECT}, ${USER_PROFILE_SELECT.replace(/^id, /, '')}`);
 }
 
 function listVerificationStatusesWithCount() {
@@ -130,8 +152,10 @@ module.exports = {
   findByEmailForVerification,
   updateVerificationStatus,
   updatePassword,
+  upgradeLegacyPassword,
   findStatusById,
   findProfileById,
+  updateProfile,
   listVerificationStatusesWithCount,
   listForDashboardOverview,
   listAdminUsers,

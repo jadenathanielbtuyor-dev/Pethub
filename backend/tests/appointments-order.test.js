@@ -84,7 +84,7 @@ describe('appointment lists are newest first', () => {
         user_id: owner.id,
         pet_id: pet.id,
         pet_name: pet.name,
-        service_type: 'Checkup',
+        service_type: 'Dog & Cat Full Check Up',
         appointment_date: '2026-12-06',
         appointment_time: '10:00:00'
       }

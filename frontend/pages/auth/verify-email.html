@@ -3,77 +3,125 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PetHub | Verify Email</title>
+  <title>PetHub | Verify email</title>
+  <meta name="description" content="Enter the 6-digit code sent to your email to activate your PetHub account.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800&amp;display=swap">
   <link rel="stylesheet" href="../../assets/css/style.css">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet">
 </head>
-<body class="flex flex-col min-h-screen">
-  <nav class="nav">
-    <div class="nav-container">
-      <a href="../../index.html" class="logo">
-        <img src="../../assets/images/paw.png" alt="PetHub">
-        <h1>PetHub</h1>
-      </a>
-      <ul class="nav-links">
-        <li><a href="../../index.html">Home</a></li>
-        <li><a href="../public/about.html">About</a></li>
-        <li><a href="../public/services.html">Services</a></li>
-        <li><a href="../public/contact.html">Contact</a></li>
-      </ul>
-    </div>
-  </nav>
+<body class="ph-site flex flex-col min-h-screen">
+  <!-- Apply the saved theme before first paint; main.js still owns the toggle -->
+  <script>try { if (localStorage.getItem('darkMode') === 'true') { document.documentElement.classList.add('dark'); document.body.classList.add('dark-mode'); } } catch (e) {}</script>
+  <a href="#main" class="ph-skip-link">Skip to main content</a>
 
-  <main class="flex-grow">
-    <section class="auth-section">
-      <div class="auth-card">
-        <h2>Verify Your Email</h2>
-        <p class="text-gray-500">Enter the 6-digit code sent to your email to activate your PetHub account.</p>
-        <p class="text-sm text-gray-400">Check your Spam folder if you do not receive the code within a few minutes.</p>
+  <!-- ================= SITE HEADER (shared by the public and sign-in pages; main.js runs the mobile menu) ================= -->
+  <header class="ph-header">
+    <nav class="ph-nav" aria-label="Main">
+      <div class="ph-nav-inner">
+        <a href="../../index.html" class="ph-brand">
+          <img src="../../assets/images/paw.png" alt="" width="40" height="40">
+          <span>PetHub</span>
+        </a>
+        <button type="button" class="ph-nav-toggle" data-nav-toggle aria-controls="siteNavMenu" aria-expanded="false" aria-label="Open menu">
+          <i class="ri-menu-line" aria-hidden="true"></i>
+        </button>
+        <div id="siteNavMenu" class="ph-nav-menu">
+          <ul class="ph-nav-links">
+            <li><a href="../../index.html">Home</a></li>
+            <li><a href="../../pages/public/about.html">About</a></li>
+            <li><a href="../../pages/public/services.html">Services</a></li>
+            <li><a href="../../pages/public/contact.html">Contact</a></li>
+          </ul>
+          <div class="ph-nav-actions">
+            <a href="../../pages/auth/login.html" class="ph-nav-login" data-auth-link>Log in</a>
+            <a href="../../pages/auth/login.html?next=appointments" class="ph-btn ph-btn-primary ph-btn-sm" data-book-link>
+              <i class="ri-calendar-check-line" aria-hidden="true"></i>Book an Appointment
+            </a>
+          </div>
+        </div>
+      </div>
+    </nav>
+  </header>
 
-        <form id="verifyForm" class="space-y-5">
-          <div class="form-group">
-            <label for="email" class="flex items-center gap-2 font-semibold text-gray-700 mb-2">
-              <i class="ri-mail-line text-orange-500" aria-hidden="true"></i>
-              Email
-            </label>
-            <input type="email" id="email" placeholder="Enter your email" required
-              class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-100 focus:outline-none transition-all duration-200 bg-white hover:border-orange-300">
+  <!-- ================= MAIN CONTENT ================= -->
+  <main id="main" class="flex-grow" tabindex="-1">
+    <section class="ph-auth-section">
+      <div class="ph-auth-card">
+        <div class="ph-auth-brand">
+          <img src="../../assets/images/paw.png" alt="">
+          <span>PetHub</span>
+        </div>
+        <h1 class="ph-auth-title">Verify your email</h1>
+        <p class="ph-auth-lead">Enter the 6-digit code we sent to your email to activate your PetHub account.</p>
+        <p class="ph-auth-note">No email after a few minutes? Check your Spam folder, or resend the code below.</p>
+
+        <form id="verifyForm" class="ph-form" novalidate>
+          <div class="ph-field">
+            <label for="email" class="ph-label">Email address</label>
+            <input type="email" id="email" name="email" class="ph-input" autocomplete="email" inputmode="email" maxlength="254" required>
           </div>
 
-          <div class="form-group">
-            <label for="verificationCode" class="flex items-center gap-2 font-semibold text-gray-700 mb-2">
-              <i class="ri-shield-check-line text-orange-500" aria-hidden="true"></i>
-              Verification Code
-            </label>
-            <input type="text" id="verificationCode" placeholder="Enter 6-digit code" maxlength="6" required
-              class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-100 focus:outline-none transition-all duration-200 bg-white hover:border-orange-300">
+          <div class="ph-field">
+            <label for="verificationCode" class="ph-label">Verification code</label>
+            <input type="text" id="verificationCode" name="code" class="ph-input" maxlength="6" inputmode="numeric" autocomplete="one-time-code" required>
           </div>
 
-          <div id="formMessageContainer" class="min-h-10 text-sm font-medium rounded-lg transition-all duration-200"></div>
+          <div id="formMessageContainer" class="ph-form-message"></div>
 
-          <button type="submit" class="w-full py-3 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 active:from-orange-700 active:to-orange-800 text-white font-semibold rounded-lg transition-all duration-200 cursor-pointer border-none transform hover:scale-105 active:scale-95 shadow-lg hover:shadow-xl">Verify</button>
+          <button type="submit" class="ph-btn ph-btn-primary ph-btn-block">Verify</button>
         </form>
 
-        <div class="mt-4 text-center">
-          <button id="resendCodeButton" class="text-sm text-orange-600 hover:underline">Resend code</button>
+        <div class="ph-auth-actions">
+          <button type="button" id="resendCodeButton" class="ph-text-button">Resend code</button>
         </div>
 
-        <p class="auth-link mt-4">
-          Already verified?
-          <a href="login.html">Go to Login</a>
-        </p>
+        <p class="ph-auth-switch">Already verified? <a href="login.html">Go to log in</a></p>
       </div>
     </section>
   </main>
 
-  <footer class="footer">
-    <p>&copy; 2026 PetHub. Caring for Your Pet's Health. All rights reserved.</p>
+  <!-- ================= FOOTER ================= -->
+  <footer class="footer ph-footer">
+    <div class="ph-container">
+      <div class="ph-footer-inner">
+        <div>
+          <a href="../../index.html" class="ph-brand">
+            <img src="../../assets/images/paw.png" alt="" width="40" height="40">
+            <span>PetHub</span>
+          </a>
+          <p class="mt-3">Online booking for grooming and check-ups for dogs and cats, with your pets' profiles and records in one place.</p>
+        </div>
+        <nav aria-label="Footer">
+          <p class="ph-footer-title">Explore</p>
+          <ul class="ph-footer-links">
+            <li><a href="../../index.html">Home</a></li>
+            <li><a href="../../pages/public/about.html">About</a></li>
+            <li><a href="../../pages/public/services.html">Services</a></li>
+            <li><a href="../../pages/public/contact.html">Contact</a></li>
+          </ul>
+        </nav>
+        <div>
+          <p class="ph-footer-title">Your account</p>
+          <ul class="ph-footer-links">
+            <li><a href="../../pages/auth/login.html?next=appointments" data-book-link>Book an appointment</a></li>
+            <li><a href="../../pages/auth/login.html">Log in</a></li>
+            <li><a href="../../pages/auth/register.html">Create an account</a></li>
+            <li><a href="../../pages/public/privacy.html">Privacy notice</a></li>
+          </ul>
+        </div>
+      </div>
+      <p class="ph-footer-legal">&copy; 2026 PetHub. All rights reserved. Photos are used under Creative Commons licences; see the <a href="../../pages/public/about.html#photo-credits">photo credits</a>.</p>
+    </div>
   </footer>
 
+  <!-- ================= DARK MODE TOGGLE ================= -->
   <button id="darkModeToggle" class="dark-mode-toggle" title="Toggle Dark Mode">
     <i class="ri-moon-line"></i>
   </button>
 
+  <!-- JS -->
   <script src="../../js/core/api.js"></script>
   <script src="../../js/core/utils.js"></script>
   <script src="../../js/core/storage.js"></script>

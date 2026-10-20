@@ -1,6 +1,7 @@
-// Registration with the optional profile details (POST /auth/register), password storage, and the account
+// Registration with the required personal details (POST /auth/register), password storage, and the account
 // checks around it: login with new and older stored passwords, password reset, email verification, the
-// dashboard's profile read (GET /auth/user-status?include=profile) and admin-only routes.
+// dashboard's profile read (GET /auth/user-status?include=profile), profile updates (PUT /auth/profile) and
+// admin-only routes.
 // Runs the real app on the in-memory database (database after migrations/2026-10-20_users_profile_fields.sql);
 // Brevo is faked and no other outbound request is allowed. Nothing here talks to a real Supabase or Brevo.
 const { describe, it, before, after } = require('node:test');
@@ -26,17 +27,6 @@ function newEmail() {
   return `${crypto.randomUUID()}@example.test`;
 }
 
-function registration(overrides = {}) {
-  const password = overrides.password ?? 'Clinic#Pass2026';
-  return {
-    fullname: 'Maria Santos',
-    email: newEmail(),
-    password,
-    confirm_password: password,
-    ...overrides
-  };
-}
-
 const FULL_PROFILE = Object.freeze({
   date_of_birth: '1994-06-15',
   gender: 'Female',
@@ -47,6 +37,19 @@ const FULL_PROFILE = Object.freeze({
   province: 'Metro Manila',
   postal_code: '1605'
 });
+
+// Every field the registration form sends (all required)
+function registration(overrides = {}) {
+  const password = overrides.password ?? 'Clinic#Pass2026';
+  return {
+    fullname: 'Maria Santos',
+    email: newEmail(),
+    password,
+    confirm_password: password,
+    ...FULL_PROFILE,
+    ...overrides
+  };
+}
 
 const PROFILE_COLUMNS = ['phone_number', 'date_of_birth', 'gender', 'address_line', 'barangay', 'city_municipality', 'province', 'postal_code'];
 
@@ -115,7 +118,9 @@ describe('Registering an account', () => {
     assert.ok(isPasswordHash(row.password), 'the password is stored as a scrypt hash');
     assert.notEqual(row.password, body.password);
     assert.ok(!row.password.includes(body.password));
-    PROFILE_COLUMNS.forEach(column => assert.equal(row[column] ?? null, null, `${column} stays empty`));
+    assert.equal(row.phone_number, '+639187654321');
+    assert.equal(row.date_of_birth, '1994-06-15');
+    assert.equal(row.postal_code, '1605');
 
     assert.equal(t.db.table('email_verifications').filter(entry => entry.user_id === row.id).length, 1);
     const sent = await waitFor(() => t.emailsTo(body.email)[0], 'the verification email');
@@ -141,7 +146,7 @@ describe('Registering an account', () => {
     assert.equal((await t.api('POST', '/auth/login', { body: { email: body.email, password: 'Verify#Then#Login2' } })).status, 403);
   });
 
-  it('saves every optional profile detail, normalised', async () => {
+  it('saves every personal detail, normalised', async () => {
     const body = registration({
       ...FULL_PROFILE,
       fullname: '  Juan   dela  Cruz ',
@@ -168,27 +173,37 @@ describe('Registering an account', () => {
     assert.equal(row.postal_code, '1605');
   });
 
-  it('accepts any subset of the optional details and stores blanks as empty', async () => {
-    const body = registration({ city_municipality: 'Cebu City', phone_number: '', gender: '', date_of_birth: '   ', postal_code: null });
+  it('accepts "Prefer not to say" as a complete answer for gender', async () => {
+    const body = registration({ gender: 'Prefer not to say' });
     assert.equal((await register(body)).status, 201);
-    const row = userRow(body.email);
-    assert.equal(row.city_municipality, 'Cebu City');
-    ['phone_number', 'gender', 'date_of_birth', 'postal_code', 'address_line', 'barangay', 'province'].forEach(column => assert.equal(row[column] ?? null, null, column));
+    assert.equal(userRow(body.email).gender, 'Prefer not to say');
   });
 
-  it('accepts the common ways of writing a Philippine mobile number', async () => {
-    for (const phone of ['09171234567', '0917 123 4567', '0917-123-4567', '+639171234567', '639171234567', '+63 917 123 4567']) {
+  it('accepts Philippine mobile and landline numbers, and numbers from other countries with their country code', async () => {
+    const cases = [
+      ['09171234567', '+639171234567'], ['0917 123 4567', '+639171234567'], ['0917-123-4567', '+639171234567'],
+      ['+639171234567', '+639171234567'], ['639171234567', '+639171234567'], ['+63 917 123 4567', '+639171234567'],
+      ['+63 (0) 917 123 4567', '+639171234567'], ['0063 917 123 4567', '+639171234567'],
+      ['02 8123 4567', '+63281234567'], ['(02) 8123-4567', '+63281234567'], ['032 123 4567', '+63321234567'],
+      ['+63 32 123 4567', '+63321234567'], ['+1 415 555 0100', '+14155550100'], ['0044 20 7946 0958', '+442079460958']
+    ];
+    for (const [phone, stored] of cases) {
       const body = registration({ phone_number: phone });
       assert.equal((await register(body)).status, 201, phone);
-      assert.equal(userRow(body.email).phone_number, '+639171234567', phone);
+      assert.equal(userRow(body.email).phone_number, stored, phone);
     }
   });
 
-  it('works for the earlier form, which sends only name, email and password', async () => {
+  it('refuses the earlier forms that sent no personal details, creating nothing', async () => {
     const email = newEmail();
-    const response = await register({ fullname: 'Old Form', email, password: 'OldForm#2026' });
-    assert.equal(response.status, 201);
-    assert.ok(isPasswordHash(userRow(email).password));
+    const oldest = await register({ fullname: 'Old Form', email, password: 'OldForm#2026' });
+    assert.equal(oldest.status, 400);
+    assert.equal(oldest.body.field, 'confirm_password');
+    const older = await register({ fullname: 'Old Form', email, password: 'OldForm#2026', confirm_password: 'OldForm#2026' });
+    assert.equal(older.status, 400);
+    assert.equal(older.body.field, 'date_of_birth');
+    assert.equal(usersWithEmail(email).length, 0);
+    assert.equal(t.emailsTo(email).length, 0);
   });
 
   it('keeps the password exactly as typed (no trimming)', async () => {
@@ -200,24 +215,29 @@ describe('Registering an account', () => {
 });
 
 describe('Registration validation', () => {
-  it('requires full name, email and password, naming the missing field', async () => {
-    await assertRefused(registration({ fullname: undefined }), 'fullname', /Full name is required/);
-    await assertRefused(registration({ fullname: '   ' }), 'fullname', /Full name is required/);
+  it('requires full legal name, email, password and its confirmation, naming the missing field', async () => {
+    await assertRefused(registration({ fullname: undefined }), 'fullname', /Full legal name is required/);
+    await assertRefused(registration({ fullname: '   ' }), 'fullname', /Full legal name is required/);
     await assertRefused(registration({ email: '' }), 'email', /Email address is required/);
     await assertRefused(registration({ password: undefined, confirm_password: undefined }), 'password', /Password is required/);
     await assertRefused(registration({ password: '        ', confirm_password: '        ' }), 'password', /Password is required/);
+    await assertRefused(registration({ confirm_password: undefined }), 'confirm_password', /Confirm your password/);
+    await assertRefused(registration({ confirm_password: '' }), 'confirm_password', /Confirm your password/);
     const nothing = await register({});
     assert.equal(nothing.status, 400);
     assert.equal(nothing.body.field, 'fullname');
   });
 
-  it('rejects names without letters, with control characters, or over 100 characters', async () => {
-    await assertRefused(registration({ fullname: '12345' }), 'fullname', /letters/);
-    await assertRefused(registration({ fullname: '--- ...' }), 'fullname', /letters/);
-    await assertRefused(registration({ fullname: 'Ana\u0000Cruz' }), 'fullname', /letters/);
+  it('accepts names in any script with spaces, hyphens, apostrophes, periods and commas; refuses digits and symbols', async () => {
+    for (const name of ['12345', '--- ...', 'Ana\u0000Cruz', 'Maria 2', 'Juan <b>Cruz</b>', 'Ana_Cruz', '@nna']) {
+      await assertRefused(registration({ fullname: name }), 'fullname', /letters/);
+    }
     await assertRefused(registration({ fullname: 'A'.repeat(101) }), 'fullname', /100 characters/);
-    assert.equal((await register(registration({ fullname: 'A'.repeat(100) }))).status, 201);
-    assert.equal((await register(registration({ fullname: 'José Ñiño-O\'Brien' }))).status, 201);
+    for (const name of ['A'.repeat(100), 'José Ñiño-O\'Brien', 'Ma. Cristina dela Cruz, Jr.', 'D\u2019Angelo Reyes', '\u738b\u5c0f\u660e', 'Zo\u00eb \u00c5ngstr\u00f6m']) {
+      const body = registration({ fullname: name });
+      assert.equal((await register(body)).status, 201, name);
+      assert.equal(userRow(body.email).fullname, name);
+    }
   });
 
   it('rejects malformed and over-long email addresses', async () => {
@@ -251,6 +271,18 @@ describe('Registration validation', () => {
     assert.equal((await register(registration({ date_of_birth: '1900-01-01' }))).status, 201);
   });
 
+  it('requires every personal detail, naming the first missing one and creating nothing', async () => {
+    const fields = ['date_of_birth', 'gender', 'phone_number', 'address_line', 'barangay', 'city_municipality', 'province', 'postal_code'];
+    for (const field of fields) {
+      for (const empty of [undefined, null, '', '   ']) {
+        const response = await assertRefused(registration({ [field]: empty }), field, /required/);
+        if (field === 'gender') assert.match(response.body.error, /Prefer not to say/);
+      }
+    }
+    // Several missing: the first in form order is named
+    await assertRefused(registration({ gender: '', postal_code: '', province: '' }), 'gender');
+  });
+
   it('accepts only the listed gender options (any letter case)', async () => {
     await assertRefused(registration({ gender: 'Unknown' }), 'gender', /listed options/);
     const body = registration({ gender: 'PREFER NOT TO SAY' });
@@ -258,9 +290,11 @@ describe('Registration validation', () => {
     assert.equal(userRow(body.email).gender, 'Prefer not to say');
   });
 
-  it('rejects contact numbers that are not Philippine mobile numbers', async () => {
-    for (const phone of ['12345', '0917123456', '091712345678', '+1 415 555 0100', '0817 123 4567', 'call me', '0917 123 4567 ext 2', '0'.repeat(30)]) {
-      await assertRefused(registration({ phone_number: phone }), 'phone_number', /Philippine mobile number/);
+  it('rejects contact numbers that are not valid mobile, landline or international numbers', async () => {
+    const invalid = ['12345', '0917123456', '091712345678', '0817 123 4567', 'call me', '0917 123 4567 ext 2', '0'.repeat(30),
+      '+63123', '+63 917 123 456', '14155550100', '+0123456789', '+1234567', '+1 234 567 890 123 456'];
+    for (const phone of invalid) {
+      await assertRefused(registration({ phone_number: phone }), 'phone_number', /mobile or landline number/);
     }
   });
 
@@ -269,7 +303,8 @@ describe('Registration validation', () => {
     await assertRefused(registration({ barangay: 'x'.repeat(101) }), 'barangay', /100 characters/);
     await assertRefused(registration({ city_municipality: 'x'.repeat(101) }), 'city_municipality', /100 characters/);
     await assertRefused(registration({ province: 'x'.repeat(101) }), 'province', /100 characters/);
-    await assertRefused(registration({ barangay: 'Bad\u0007Bell' }), 'barangay', /valid Barangay/);
+    await assertRefused(registration({ barangay: 'Bad\u0007Bell' }), 'barangay', /valid barangay/);
+    await assertRefused(registration({ province: '---' }), 'province', /valid province/);
     for (const postal of ['123', '12345', '16O5', '1605a']) {
       await assertRefused(registration({ postal_code: postal }), 'postal_code', /4-digit/);
     }
@@ -447,7 +482,7 @@ describe('Password storage and existing accounts', () => {
     assert.equal(await verifyPassword('anything', null), false);
   });
 
-  it('accounts stored before hashing still log in, unchanged', async () => {
+  it('accounts stored before hashing still log in, and the first successful login upgrades them to a hash', async () => {
     const plaintext = t.createUser({ password: 'Legacy#Plain1' });
     const legacyHash = `sha256$${crypto.createHash('sha256').update('Legacy#Sha256', 'utf8').digest('hex')}`;
     const sha256User = t.createUser({ password: legacyHash });
@@ -460,9 +495,20 @@ describe('Password storage and existing accounts', () => {
     assert.equal((await t.api('POST', '/auth/login', { body: { email: sha256User.email, password: legacyHash } })).status, 403);
     assert.equal((await t.api('POST', '/auth/login', { body: { email: lookalike.email, password: 'scrypt$not-a-hash' } })).status, 200);
 
-    // Logging in does not rewrite the stored values
-    assert.equal(t.db.find('users', row => row.id === plaintext.id).password, 'Legacy#Plain1');
-    assert.equal(t.db.find('users', row => row.id === sha256User.id).password, legacyHash);
+    // A successful login replaced the plaintext and sha256$ values with scrypt hashes of the same passwords
+    const storedPlain = t.db.find('users', row => row.id === plaintext.id).password;
+    const storedSha = t.db.find('users', row => row.id === sha256User.id).password;
+    assert.ok(isPasswordHash(storedPlain));
+    assert.ok(isPasswordHash(storedSha));
+    assert.equal((await t.api('POST', '/auth/login', { body: { email: plaintext.email, password: 'Legacy#Plain1' } })).status, 200);
+    assert.equal((await t.api('POST', '/auth/login', { body: { email: sha256User.email, password: 'Legacy#Sha256' } })).status, 200);
+    assert.equal((await t.api('POST', '/auth/login', { body: { email: sha256User.email, password: legacyHash } })).status, 403);
+    // The upgrade only touches rows that are not scrypt values yet, so a lookalike value is left for a password reset
+    assert.equal(t.db.find('users', row => row.id === lookalike.id).password, 'scrypt$not-a-hash');
+    // A failed login never rewrites anything
+    const untouched = t.createUser({ password: 'Legacy#Plain3' });
+    assert.equal((await t.api('POST', '/auth/login', { body: { email: untouched.email, password: 'Wrong#Plain3' } })).status, 403);
+    assert.equal(t.db.find('users', row => row.id === untouched.id).password, 'Legacy#Plain3');
   });
 
   it('a password reset stores the new password as a hash', async () => {
@@ -518,13 +564,15 @@ describe('Profile on the user dashboard (GET /auth/user-status?include=profile)'
     assert.ok(!response.text.includes('scrypt$'), 'the password hash is never returned');
   });
 
-  it('is left out unless asked for, and empty details come back as null', async () => {
+  it('is left out unless asked for; an account created before the details were required gets nulls', async () => {
     const user = await registerVerifiedUser();
     const plain = await t.api('GET', `/auth/user-status?user_id=${user.id}`, { token: user.token });
     assert.equal(plain.status, 200);
     assert.equal('profile' in plain.body, false);
 
-    const withProfile = await t.api('GET', `/auth/user-status?user_id=${user.id}&include=profile`, { token: user.token });
+    const legacy = t.createUser();
+    const withProfile = await t.api('GET', `/auth/user-status?user_id=${legacy.id}&include=profile`, { token: legacy.token });
+    assert.equal(withProfile.status, 200);
     assert.deepEqual(Object.values(withProfile.body.profile), Array(PROFILE_COLUMNS.length).fill(null));
   });
 

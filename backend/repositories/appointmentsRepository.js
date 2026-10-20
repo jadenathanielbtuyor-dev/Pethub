@@ -24,11 +24,12 @@ function countByStatus(status) {
     .eq('status', status);
 }
 
-function countVaccinationsDueSoon(today, endDate, statuses) {
+// Appointments for one of serviceNames (exact names) dated today..endDate with one of the given statuses
+function countUpcomingByServices(serviceNames, today, endDate, statuses) {
   return supabase
     .from('appointments')
     .select('id', { count: 'exact', head: true })
-    .ilike('service_type', '%Vaccination%')
+    .in('service_type', serviceNames)
     .gte('appointment_date', today)
     .lte('appointment_date', endDate)
     .in('status', statuses);
@@ -139,7 +140,7 @@ module.exports = {
   APPOINTMENT_SELECT,
   countAll,
   countByStatus,
-  countVaccinationsDueSoon,
+  countUpcomingByServices,
   countUpcomingBookings,
   listSchedule,
   listScheduleByDate,

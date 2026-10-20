@@ -1,11 +1,4 @@
-const SERVICE_DURATIONS_MINUTES = Object.freeze({
-  Checkup: 45,
-  Vaccination: 30,
-  Grooming: 240,
-  'Dental Cleaning': 60,
-  Surgery: 180,
-  Other: 30
-});
+// The services, their species and their durations are in constants/services.js
 
 const INVALID_APPOINTMENT_DATE_MESSAGE = 'Enter a valid appointment date.';
 const INVALID_APPOINTMENT_TIME_MESSAGE = 'Enter a valid appointment time.';
@@ -17,7 +10,6 @@ const OCCUPIED_APPOINTMENT_STATUSES = new Set(['approved', 'completed']);
 const VALID_APPOINTMENT_STATUSES = Object.freeze(['Pending', 'Approved', 'Completed', 'Cancelled']);
 
 module.exports = {
-  SERVICE_DURATIONS_MINUTES,
   INVALID_APPOINTMENT_DATE_MESSAGE,
   INVALID_APPOINTMENT_TIME_MESSAGE,
   PAST_APPOINTMENT_DATE_MESSAGE,

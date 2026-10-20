@@ -5,27 +5,47 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PetHub | Create Account</title>
   <meta name="description" content="Create a PetHub account to book clinic appointments, keep your pets' profiles and view their medical records.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800&amp;display=swap">
   <link rel="stylesheet" href="../../assets/css/style.css">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet">
 </head>
-<body class="flex flex-col min-h-screen">
-  <nav class="nav">
-    <div class="nav-container">
-      <a href="../../index.html" class="logo">
-        <img src="../../assets/images/paw.png" alt="PetHub">
-        <h1>PetHub</h1>
-      </a>
-      <ul class="nav-links">
-        <li><a href="../../index.html">Home</a></li>
-        <li><a href="../public/about.html">About</a></li>
-        <li><a href="../public/services.html">Services</a></li>
-        <li><a href="../public/contact.html">Contact</a></li>
-      </ul>
-    </div>
-  </nav>
+<body class="ph-site flex flex-col min-h-screen">
+  <!-- Apply the saved theme before first paint; main.js still owns the toggle -->
+  <script>try { if (localStorage.getItem('darkMode') === 'true') { document.documentElement.classList.add('dark'); document.body.classList.add('dark-mode'); } } catch (e) {}</script>
+  <a href="#main" class="ph-skip-link">Skip to main content</a>
+  <!-- ================= SITE HEADER (shared by the public and sign-in pages; main.js runs the mobile menu) ================= -->
+  <header class="ph-header">
+    <nav class="ph-nav" aria-label="Main">
+      <div class="ph-nav-inner">
+        <a href="../../index.html" class="ph-brand">
+          <img src="../../assets/images/paw.png" alt="" width="40" height="40">
+          <span>PetHub</span>
+        </a>
+        <button type="button" class="ph-nav-toggle" data-nav-toggle aria-controls="siteNavMenu" aria-expanded="false" aria-label="Open menu">
+          <i class="ri-menu-line" aria-hidden="true"></i>
+        </button>
+        <div id="siteNavMenu" class="ph-nav-menu">
+          <ul class="ph-nav-links">
+            <li><a href="../../index.html">Home</a></li>
+            <li><a href="../../pages/public/about.html">About</a></li>
+            <li><a href="../../pages/public/services.html">Services</a></li>
+            <li><a href="../../pages/public/contact.html">Contact</a></li>
+          </ul>
+          <div class="ph-nav-actions">
+            <a href="../../pages/auth/login.html" class="ph-nav-login" data-auth-link>Log in</a>
+            <a href="../../pages/auth/login.html?next=appointments" class="ph-btn ph-btn-primary ph-btn-sm" data-book-link>
+              <i class="ri-calendar-check-line" aria-hidden="true"></i>Book an Appointment
+            </a>
+          </div>
+        </div>
+      </div>
+    </nav>
+  </header>
 
-  <main class="flex-grow">
-    <section class="auth-section">
+  <main id="main" class="flex-grow" tabindex="-1">
+    <section class="ph-auth-section">
       <div class="register-card">
         <!-- Why an account helps (wide screens; phones show the short lead under the heading instead) -->
         <aside class="register-intro" aria-label="What a PetHub account gives you">
@@ -60,18 +80,19 @@
               <img src="../../assets/images/paw.png" alt="" class="register-brand-paw">
               <span>PetHub</span>
             </div>
-            <h2 id="registerTitle" class="register-title">Create Your PetHub Account</h2>
+            <h1 id="registerTitle" class="register-title">Create Your PetHub Account</h1>
             <p class="register-lead">Book clinic appointments, keep your pets' profiles, and view their medical records in one place.</p>
-            <p class="register-required-note"><span class="register-required" aria-hidden="true">*</span> Required field</p>
+            <p class="register-required-note">Every field is required to create your account (marked <span class="register-required" aria-hidden="true">*</span><span class="sr-only">with an asterisk</span>).</p>
 
             <form id="registerForm" class="register-form" novalidate aria-labelledby="registerTitle">
               <fieldset class="register-fieldset">
                 <legend class="register-legend"><i class="ri-shield-user-line" aria-hidden="true"></i>Account details</legend>
                 <div class="register-grid">
                   <div class="register-field register-span-2">
-                    <label for="fullname" class="register-label"><i class="ri-user-line" aria-hidden="true"></i>Full name<span class="register-required" aria-hidden="true">*</span></label>
+                    <label for="fullname" class="register-label"><i class="ri-user-line" aria-hidden="true"></i>Full legal name<span class="register-required" aria-hidden="true">*</span></label>
                     <input type="text" id="fullname" name="fullname" class="register-input" autocomplete="name" maxlength="100" required
-                      aria-describedby="fullnameError" placeholder="e.g. Maria Santos">
+                      aria-describedby="fullnameHelp fullnameError" placeholder="e.g. Maria Santos">
+                    <p id="fullnameHelp" class="register-help">As it appears on your official documents.</p>
                     <p id="fullnameError" class="register-field-error" hidden></p>
                   </div>
 
@@ -116,88 +137,82 @@
                 </div>
               </fieldset>
 
-              <details id="personalDetails" class="register-optional">
-                <summary class="register-optional-summary">
-                  <span class="register-optional-heading"><i class="ri-contacts-book-2-line" aria-hidden="true"></i>Personal details</span>
-                  <span class="register-optional-tag">Optional</span>
-                  <i class="ri-arrow-down-s-line register-optional-chevron" aria-hidden="true"></i>
-                </summary>
+              <fieldset id="personalDetails" class="register-fieldset register-personal">
+                <legend class="register-legend"><i class="ri-contacts-book-2-line" aria-hidden="true"></i>Personal and contact details</legend>
+                <p id="personalDetailsWhy" class="register-help register-why">The clinic uses these details to know who you are and to contact you about your appointments. <a href="../public/privacy.html">How PetHub uses your details</a></p>
 
-                <div class="register-optional-body">
-                  <p class="register-help">You can leave any of these blank. What you enter is saved with your account and shown on your dashboard.</p>
-
-                  <div class="register-grid">
-                    <div class="register-field">
-                      <label for="dateOfBirth" class="register-label"><i class="ri-cake-2-line" aria-hidden="true"></i>Date of birth</label>
-                      <input type="date" id="dateOfBirth" name="date_of_birth" class="register-input" autocomplete="bday" min="1900-01-01"
-                        aria-describedby="dateOfBirthError">
-                      <p id="dateOfBirthError" class="register-field-error" hidden></p>
-                    </div>
-
-                    <div class="register-field">
-                      <label for="gender" class="register-label"><i class="ri-user-heart-line" aria-hidden="true"></i>Gender</label>
-                      <select id="gender" name="gender" class="register-input" autocomplete="sex" aria-describedby="genderHelp genderError">
-                        <option value="">Select an option</option>
-                        <option value="Female">Female</option>
-                        <option value="Male">Male</option>
-                        <option value="Non-binary">Non-binary</option>
-                        <option value="Other">Other</option>
-                        <option value="Prefer not to say">Prefer not to say</option>
-                      </select>
-                      <p id="genderHelp" class="register-help">Never needed to book an appointment.</p>
-                      <p id="genderError" class="register-field-error" hidden></p>
-                    </div>
-
-                    <div class="register-field register-span-2">
-                      <label for="phoneNumber" class="register-label"><i class="ri-phone-line" aria-hidden="true"></i>Contact number</label>
-                      <input type="tel" id="phoneNumber" name="phone_number" class="register-input" autocomplete="tel" inputmode="tel" maxlength="20"
-                        aria-describedby="phoneNumberHelp phoneNumberError" placeholder="0917 123 4567">
-                      <p id="phoneNumberHelp" class="register-help">Philippine mobile number, such as 0917 123 4567 or +63 917 123 4567.</p>
-                      <p id="phoneNumberError" class="register-field-error" hidden></p>
-                    </div>
+                <div class="register-grid">
+                  <div class="register-field">
+                    <label for="dateOfBirth" class="register-label"><i class="ri-cake-2-line" aria-hidden="true"></i>Date of birth<span class="register-required" aria-hidden="true">*</span></label>
+                    <input type="date" id="dateOfBirth" name="date_of_birth" class="register-input" autocomplete="bday" min="1900-01-01" required
+                      aria-describedby="dateOfBirthError">
+                    <p id="dateOfBirthError" class="register-field-error" hidden></p>
                   </div>
 
-                  <fieldset class="register-address">
-                    <legend class="register-sublegend"><i class="ri-map-pin-line" aria-hidden="true"></i>Address</legend>
-                    <div class="register-grid">
-                      <div class="register-field register-span-2">
-                        <label for="addressLine" class="register-label">House/Unit/Street</label>
-                        <input type="text" id="addressLine" name="address_line" class="register-input" autocomplete="address-line1" maxlength="150"
-                          aria-describedby="addressLineError" placeholder="e.g. Unit 4B, 12 Mabini Street">
-                        <p id="addressLineError" class="register-field-error" hidden></p>
-                      </div>
+                  <div class="register-field">
+                    <label for="gender" class="register-label"><i class="ri-user-heart-line" aria-hidden="true"></i>Gender<span class="register-required" aria-hidden="true">*</span></label>
+                    <select id="gender" name="gender" class="register-input" autocomplete="sex" required aria-describedby="genderHelp genderError">
+                      <option value="">Select an option</option>
+                      <option value="Female">Female</option>
+                      <option value="Male">Male</option>
+                      <option value="Non-binary">Non-binary</option>
+                      <option value="Other">Other</option>
+                      <option value="Prefer not to say">Prefer not to say</option>
+                    </select>
+                    <p id="genderHelp" class="register-help">You can choose "Prefer not to say".</p>
+                    <p id="genderError" class="register-field-error" hidden></p>
+                  </div>
 
-                      <div class="register-field">
-                        <label for="barangay" class="register-label">Barangay</label>
-                        <input type="text" id="barangay" name="barangay" class="register-input" autocomplete="address-level3" maxlength="100"
-                          aria-describedby="barangayError">
-                        <p id="barangayError" class="register-field-error" hidden></p>
-                      </div>
-
-                      <div class="register-field">
-                        <label for="cityMunicipality" class="register-label">City/Municipality</label>
-                        <input type="text" id="cityMunicipality" name="city_municipality" class="register-input" autocomplete="address-level2" maxlength="100"
-                          aria-describedby="cityMunicipalityError">
-                        <p id="cityMunicipalityError" class="register-field-error" hidden></p>
-                      </div>
-
-                      <div class="register-field">
-                        <label for="province" class="register-label">Province</label>
-                        <input type="text" id="province" name="province" class="register-input" autocomplete="address-level1" maxlength="100"
-                          aria-describedby="provinceError">
-                        <p id="provinceError" class="register-field-error" hidden></p>
-                      </div>
-
-                      <div class="register-field">
-                        <label for="postalCode" class="register-label">Postal code</label>
-                        <input type="text" id="postalCode" name="postal_code" class="register-input" autocomplete="postal-code" inputmode="numeric" maxlength="4"
-                          aria-describedby="postalCodeError" placeholder="e.g. 1605">
-                        <p id="postalCodeError" class="register-field-error" hidden></p>
-                      </div>
-                    </div>
-                  </fieldset>
+                  <div class="register-field register-span-2">
+                    <label for="phoneNumber" class="register-label"><i class="ri-phone-line" aria-hidden="true"></i>Contact number<span class="register-required" aria-hidden="true">*</span></label>
+                    <input type="tel" id="phoneNumber" name="phone_number" class="register-input" autocomplete="tel" inputmode="tel" maxlength="25" required
+                      aria-describedby="phoneNumberHelp phoneNumberError" placeholder="0917 123 4567">
+                    <p id="phoneNumberHelp" class="register-help">Mobile or landline, such as 0917 123 4567 or 02 8123 4567. Outside the Philippines? Start with + and the country code.</p>
+                    <p id="phoneNumberError" class="register-field-error" hidden></p>
+                  </div>
                 </div>
-              </details>
+
+                <fieldset class="register-address">
+                  <legend class="register-sublegend"><i class="ri-map-pin-line" aria-hidden="true"></i>Home address in the Philippines</legend>
+                  <div class="register-grid">
+                    <div class="register-field register-span-2">
+                      <label for="addressLine" class="register-label">House/unit number and street<span class="register-required" aria-hidden="true">*</span></label>
+                      <input type="text" id="addressLine" name="address_line" class="register-input" autocomplete="address-line1" maxlength="150" required
+                        aria-describedby="addressLineError" placeholder="e.g. Unit 4B, 12 Mabini Street">
+                      <p id="addressLineError" class="register-field-error" hidden></p>
+                    </div>
+
+                    <div class="register-field">
+                      <label for="barangay" class="register-label">Barangay<span class="register-required" aria-hidden="true">*</span></label>
+                      <input type="text" id="barangay" name="barangay" class="register-input" autocomplete="address-level3" maxlength="100" required
+                        aria-describedby="barangayError" placeholder="e.g. San Antonio">
+                      <p id="barangayError" class="register-field-error" hidden></p>
+                    </div>
+
+                    <div class="register-field">
+                      <label for="cityMunicipality" class="register-label">City/municipality<span class="register-required" aria-hidden="true">*</span></label>
+                      <input type="text" id="cityMunicipality" name="city_municipality" class="register-input" autocomplete="address-level2" maxlength="100" required
+                        aria-describedby="cityMunicipalityError" placeholder="e.g. Pasig City">
+                      <p id="cityMunicipalityError" class="register-field-error" hidden></p>
+                    </div>
+
+                    <div class="register-field">
+                      <label for="province" class="register-label">Province<span class="register-required" aria-hidden="true">*</span></label>
+                      <input type="text" id="province" name="province" class="register-input" autocomplete="address-level1" maxlength="100" required
+                        aria-describedby="provinceError" placeholder="e.g. Metro Manila">
+                      <p id="provinceError" class="register-field-error" hidden></p>
+                    </div>
+
+                    <div class="register-field">
+                      <label for="postalCode" class="register-label">Postal code<span class="register-required" aria-hidden="true">*</span></label>
+                      <input type="text" id="postalCode" name="postal_code" class="register-input" autocomplete="postal-code" inputmode="numeric" maxlength="4" required
+                        aria-describedby="postalCodeHelp postalCodeError" placeholder="e.g. 1605">
+                      <p id="postalCodeHelp" class="register-help">4 digits.</p>
+                      <p id="postalCodeError" class="register-field-error" hidden></p>
+                    </div>
+                  </div>
+                </fieldset>
+              </fieldset>
 
               <div class="register-notice">
                 <i class="ri-mail-check-line" aria-hidden="true"></i>
@@ -217,7 +232,7 @@
           <!-- Shown after the account is created: the next step is the email verification page -->
           <div id="registerSuccess" class="register-success" hidden>
             <div id="registerSuccessIcon" class="register-success-icon" aria-hidden="true"><i class="ri-mail-send-line"></i></div>
-            <h2 id="registerSuccessTitle" class="register-title" tabindex="-1">Check your email</h2>
+            <h1 id="registerSuccessTitle" class="register-title" tabindex="-1">Check your email</h1>
             <p id="registerSuccessMessage" class="register-success-text"></p>
             <a id="registerContinueLink" href="verify-email.html" class="register-submit register-continue">
               <i class="ri-shield-keyhole-line" aria-hidden="true"></i>Enter verification code
@@ -229,10 +244,41 @@
     </section>
   </main>
 
-  <footer class="footer">
-    <p>&copy; 2026 PetHub. Caring for Your Pet's Health. All rights reserved.</p>
+  <!-- ================= FOOTER ================= -->
+  <footer class="footer ph-footer">
+    <div class="ph-container">
+      <div class="ph-footer-inner">
+        <div>
+          <a href="../../index.html" class="ph-brand">
+            <img src="../../assets/images/paw.png" alt="" width="40" height="40">
+            <span>PetHub</span>
+          </a>
+          <p class="mt-3">Online booking for grooming and check-ups for dogs and cats, with your pets' profiles and records in one place.</p>
+        </div>
+        <nav aria-label="Footer">
+          <p class="ph-footer-title">Explore</p>
+          <ul class="ph-footer-links">
+            <li><a href="../../index.html">Home</a></li>
+            <li><a href="../../pages/public/about.html">About</a></li>
+            <li><a href="../../pages/public/services.html">Services</a></li>
+            <li><a href="../../pages/public/contact.html">Contact</a></li>
+          </ul>
+        </nav>
+        <div>
+          <p class="ph-footer-title">Your account</p>
+          <ul class="ph-footer-links">
+            <li><a href="../../pages/auth/login.html?next=appointments" data-book-link>Book an appointment</a></li>
+            <li><a href="../../pages/auth/login.html">Log in</a></li>
+            <li><a href="../../pages/auth/register.html">Create an account</a></li>
+            <li><a href="../../pages/public/privacy.html">Privacy notice</a></li>
+          </ul>
+        </div>
+      </div>
+      <p class="ph-footer-legal">&copy; 2026 PetHub. All rights reserved. Photos are used under Creative Commons licences; see the <a href="../../pages/public/about.html#photo-credits">photo credits</a>.</p>
+    </div>
   </footer>
 
+  <!-- ================= DARK MODE TOGGLE ================= -->
   <button id="darkModeToggle" class="dark-mode-toggle" title="Toggle Dark Mode">
     <i class="ri-moon-line"></i>
   </button>
@@ -241,6 +287,7 @@
   <script src="../../js/core/utils.js"></script>
   <script src="../../js/core/storage.js"></script>
   <script src="../../js/main.js"></script>
+  <script src="../../js/shared/profile-fields.js"></script>
   <script src="../../js/core/auth.js"></script>
 </body>
 </html>

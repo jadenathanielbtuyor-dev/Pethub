@@ -10,6 +10,10 @@ const logger = require('./utils/logger');
 const app = express();
 const PORT = env.port;
 
+// Railway puts one proxy in front of the app; trusting that single hop makes req.ip the visitor's address (used by the
+// rate limits in middleware/rateLimit.js) while ignoring any extra X-Forwarded-For entries a client adds itself
+app.set('trust proxy', 1);
+
 // Middleware
 const allowedOrigins = env.cors.allowedOrigins;
 

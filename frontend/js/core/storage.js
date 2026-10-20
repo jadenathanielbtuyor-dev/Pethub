@@ -67,6 +67,7 @@ const PATHS = {
   register: getPath('pages/auth/register.html'),
   verifyEmail: getPath('pages/auth/verify-email.html'),
   userDashboard: getPath('pages/user/dashboard.html'),
+  userAppointments: getPath('pages/user/appointments.html'),
   adminDashboard: getPath('pages/admin/dashboard.html'),
   index: getPath('index.html')
 };

@@ -28,7 +28,16 @@ const MINI_FAQ = {
   'what is pethub': "**PetHub** helps users manage pet profiles, book appointments, review medical records, send contact messages, and use user/admin dashboards.",
   'what does pethub do': "PetHub supports these current features: **pet profiles**, **appointment booking**, **medical records**, **contact/messages**, and **admin/user dashboards**.",
   'what features does pethub have': "PetHub supports these current features: **pet profiles**, **appointment booking**, **medical records**, **contact/messages**, and **admin/user dashboards**.",
-  'what services does pethub offer': "Current PetHub features include **pet profiles**, **appointment booking**, **medical records**, **contact/messages**, and **admin/user dashboards**.",
+  'what services does pethub offer': "The clinic offers grooming for dogs and cats (**Bath**, **Trim**, **Puppy Cut**, **Full Grooming**, **Nail Cutting**, **Face Trim**, **Flea and Tick Removal**, **Medicated Bath**) and the **Dog & Cat Full Check Up**. See the **Services** page, and book on the **Appointments** page after you sign in. PetHub doesn't list prices; please ask the clinic through the **Contact** page.",
+  'what services does the clinic offer': "The clinic offers grooming for dogs and cats (**Bath**, **Trim**, **Puppy Cut**, **Full Grooming**, **Nail Cutting**, **Face Trim**, **Flea and Tick Removal**, **Medicated Bath**) and the **Dog & Cat Full Check Up**. See the **Services** page for the full list.",
+  'what grooming services are available': "Grooming for dogs and cats: **Bath**, **Trim**, **Puppy Cut**, **Full Grooming**, **Nail Cutting**, **Face Trim**, **Flea and Tick Removal** and **Medicated Bath**. The clinic also offers the **Dog & Cat Full Check Up**.",
+  'do you offer vaccination': "Vaccination isn't one of the services listed in PetHub. The clinic's services are grooming for dogs and cats (**Bath**, **Trim**, **Puppy Cut**, **Full Grooming**, **Nail Cutting**, **Face Trim**, **Flea and Tick Removal**, **Medicated Bath**) and the **Dog & Cat Full Check Up**. For vaccine questions, please ask the clinic through the **Contact** page.",
+  'how much does grooming cost': "PetHub doesn't list prices. Please ask the clinic through the **Contact** page.",
+  'how much does it cost': "PetHub doesn't list prices. Please ask the clinic through the **Contact** page.",
+  'how long does grooming take': "I'm not sure based on the current PetHub system. Please ask the clinic through the **Contact** page.",
+  'what are your opening hours': "PetHub doesn't list the clinic's opening hours. Please ask the clinic through the **Contact** page.",
+  'where is the clinic': "PetHub doesn't list the clinic's address. Please ask the clinic through the **Contact** page.",
+  'do you accept rabbits': "The clinic cares for **dogs and cats** only, so PetHub pet profiles and bookings are for dogs and cats.",
   'why should i use pethub': "PetHub can help keep pet profiles, appointment requests, medical records, and dashboard views organized in one system.",
   'is pethub free': "I'm not sure based on the current PetHub system.",
   'what makes pethub different': "PetHub brings pet profiles, appointment booking, medical records, contact/messages, and dashboards into the same system.",
@@ -36,7 +45,9 @@ const MINI_FAQ = {
   'hipaa compliant': "I'm not sure based on the current PetHub system.",
   
   // ==================== GETTING STARTED ====================
-  'how do i sign up': "Visit **Register**, enter the required account details, then log in to access your **Dashboard**.",
+  'how do i sign up': "Visit **Register** and fill in every field: your account details (name, email, password) and your personal and contact details (date of birth, gender, contact number and home address). Verify your email with the 6-digit code we send, then log in to your **Dashboard**.",
+  'how do i edit my details': "Open your **Dashboard**, go to **Your details** and choose **Edit details**. Your email can't be changed there; to change your password, use **Forgot password?** on the **Login** page.",
+  'why do you need my address': "The clinic uses your contact number and address to reach you about your appointments. The **Privacy notice** page explains what PetHub collects and why.",
   'how do i login': "Go to **Login**, enter your registered email and password, click Login. You'll land on your personalized **Dashboard** with all your pets and appointments! 🔐",
   'how do i logout': "Click **Logout** in the top-right navigation bar. You'll be safely logged out and taken to the **Login** page. Simple!",
   'what happens after i sign up': "After registration: 1️⃣ Verify email if needed 2️⃣ Log in 3️⃣ Land on Dashboard 4️⃣ Click **Pets** to add your first pet 5️⃣ Click **Appointments** to book a vet visit 6️⃣ Start managing! 🚀",
@@ -44,19 +55,19 @@ const MINI_FAQ = {
   'is my account secure': "I'm not sure based on the current PetHub system.",
   
   // ==================== PET MANAGEMENT ====================
-  'how do i add a pet': "Go to **Pets** page → Click **Add New Pet** form → Enter: Name, Species (Dog/Cat/Bird/Rabbit/Other), Breed, Age (optional) → Click **Add Pet**. Done! 🎉",
+  'how do i add a pet': "Go to the **Pets** page → fill in the **Add New Pet** form: Name, Species (**Dog** or **Cat**), Breed and Age (optional) → click **Add Pet**. 🎉",
   'what info should i add for my pet': "Add the pet details PetHub asks for, such as pet name, species, breed, and age when available. Use **medical records** for medical notes when that feature is available to you.",
   'can i add multiple pets': "I'm not sure based on the current PetHub system.",
   'how do i edit a pets profile': "PetHub doesn't have an edit option for pet profiles yet. To fix details, add the pet again with the correct information on the **Pets** page, then delete the old profile. If the old profile already has appointments or medical records, use the **Contact** page so the clinic can help.",
   'how do i delete a pet': "Go to the **Pets** page, find the pet profile, use the available delete option, and confirm.",
   'what if i add my pet by wrong name': "PetHub doesn't have an edit option for pet profiles yet. Add the pet again with the correct name on the **Pets** page, then delete the old profile. If the old profile already has appointments or medical records, use the **Contact** page so the clinic can help.",
-  'the species options are limited': "We support: 🐕 Dog, 🐈 Cat, 🦜 Bird, 🐰 Rabbit, 🐾 Other (for exotic pets, fish, reptiles, etc). If you need a specific type under 'Other', note it in your pet profile!",
+  'the species options are limited': "The clinic cares for 🐕 **dogs** and 🐈 **cats** only, so those are the species PetHub pet profiles accept.",
   'how do i track my pets health': "Use **pet profiles** and available **medical records** to keep pet information organized. You can also use **appointment booking** when a vet visit is needed.",
   'can i share pet profiles with my vet': "I'm not sure based on the current PetHub system.",
   
   // ==================== APPOINTMENTS ====================
-  'how do i book an appointment': "Go to **Appointments**, fill in the required appointment details, and submit the request. The status starts as **Pending** and can be updated by an admin.",
-  'what appointment services are available': "✓ **Checkup** (general wellness), 💉 **Vaccination** (boosters, required shots), ✄ **Grooming** (professional care), 🦷 **Dental** (teeth cleaning), 🔧 **Surgery** (if needed), 📋 **Other** (custom services)",
+  'how do i book an appointment': "Go to **Appointments**, choose your pet, a service offered for it, a date and a time, and submit the request. The status starts as **Pending** until the clinic reviews it. A service can only be booked online once the clinic has confirmed how long it takes.",
+  'what appointment services are available': "Grooming for dogs and cats (**Bath**, **Trim**, **Puppy Cut**, **Full Grooming**, **Nail Cutting**, **Face Trim**, **Flea and Tick Removal**, **Medicated Bath**) and the **Dog & Cat Full Check Up**. The **Appointments** page shows which ones can be booked for your pet.",
   'what does pending mean': "**Pending** means your appointment request was submitted and is waiting for admin review. Check your **Appointments** page for updates.",
   'what does approved mean': "**Approved** means the appointment request has been accepted in PetHub. Check your **Appointments** page or dashboard for the current details.",
   'what does completed mean': "**Completed** means the appointment was marked finished in PetHub. It can remain visible as part of appointment history if the current system shows it.",
@@ -75,7 +86,7 @@ const MINI_FAQ = {
   'where is the dark mode toggle': "Bottom-right corner of any page! 🌙 Click to switch between light and dark modes. Your preference saves automatically! 🌗",
   'what is the home page': "Landing page with PetHub intro, features overview, and Call-to-Action buttons to Register or Login. Great place to learn about PetHub before creating an account! 🏠",
   'what is the about page': "The **About** page shares general information about PetHub.",
-  'what is the services page': "The **Services** page explains current PetHub features such as pet profiles, appointment booking, medical records, contact/messages, and dashboards.",
+  'what is the services page': "The **Services** page lists the clinic's services: grooming for dogs and cats (**Bath**, **Trim**, **Puppy Cut**, **Full Grooming**, **Nail Cutting**, **Face Trim**, **Flea and Tick Removal**, **Medicated Bath**) and the **Dog & Cat Full Check Up**.",
   'what is the contact page': "The **Contact** page lets users send messages or inquiries through PetHub.",
   
   // ==================== SECURITY & PRIVACY ====================
@@ -103,7 +114,7 @@ const MINI_FAQ = {
   'what is the admin dashboard': "The **Admin Dashboard** is the admin-facing area for PetHub overview, analytics, management, medical records, messages, and activity logs.",
   
   // ==================== TROUBLESHOOTING ====================
-  'i forgot my password': "I'm not sure based on the current PetHub system.",
+  'i forgot my password': "On the **Login** page, choose **Forgot password?**, enter your email, and use the 6-digit code we email you to set a new password.",
   'my appointment is not showing': "Try refreshing the page and checking your **Appointments** page again. If it still does not appear, use **Contact/messages** or ask an admin.",
   'why is my appointment still pending': "**Pending** means the appointment request is still waiting for admin review. The current PetHub system does not promise an approval time.",
   'i see an error message': "Try refreshing the page. If the issue continues, use the **Contact** page to send a message with what happened.",
@@ -129,6 +140,8 @@ const SYSTEM_PROMPT = `You are PetHub AI Copilot 🐾 - a helpful PetHub assista
 ANTI-FABRICATION RULES - HIGHEST PRIORITY:
   - Only describe PetHub features that exist in the current system.
   - Real PetHub features you may mention: pet profiles, appointment booking, medical records, contact/messages, admin dashboard, and user dashboard.
+  - The clinic's services are exactly: Bath, Trim, Puppy Cut, Full Grooming, Nail Cutting, Face Trim, Flea and Tick Removal, Medicated Bath (grooming), and Dog & Cat Full Check Up (veterinary check-up). They are for dogs and cats only. Never say the clinic offers any other service (for example vaccination, surgery or dental cleaning) or cares for other animals.
+  - PetHub does not list prices, how long services take, opening hours, or the clinic's address or phone number. Never state or estimate them; say PetHub doesn't list them and suggest the Contact page.
   - Do not mention or imply HIPAA compliance, HIPAA-grade encryption, certified medical security, enterprise-grade security, guaranteed privacy, guaranteed treatment, guaranteed appointment approval, AI diagnosis, or any certified medical/security standard.
   - Do not invent data, values, pricing, response times, statistics, security levels, approvals, notifications, clinic availability, future features, or features not listed above.
   - Do not call PetHub "complete", "all-in-one", "premium", "certified", or make exaggerated product claims.
@@ -168,7 +181,7 @@ FILIPINO/TAGALOG EXAMPLES TO UNDERSTAND AND MATCH:
 🏠 PUBLIC PAGES (For All Visitors):
   Home Page - Main landing page with PetHub introduction and navigation
   About Page - PetHub mission: "Track, Care, Schedule", company values
-  Services Page - PetHub feature overview using only verified current features
+  Services Page - The clinic's services: grooming for dogs and cats and the Dog & Cat Full Check Up
   Contact Page - Support inquiries, customer contact form
   Login Page - User authentication entry
   Register Page - New account creation
@@ -176,7 +189,7 @@ FILIPINO/TAGALOG EXAMPLES TO UNDERSTAND AND MATCH:
 📊 VERIFIED PETHUB FEATURES (ONLY MENTION THESE):
   1. Pet Profiles
      - Create detailed profiles for each pet
-     - Track basic pet details such as species, breed, and age when available
+     - Track basic pet details: species (dog or cat), breed, and age when available
 
   2. Appointment Booking
      - Book veterinary appointments
@@ -294,13 +307,8 @@ For serious pet health concerns:
 PETS I HELP WITH:
   ✓ Dogs
   ✓ Cats
-  ✓ Rabbits
-  ✓ Birds
-  ✓ Fish
-  ✓ Hamsters
-  ✓ Guinea pigs
-  ✓ Reptiles
-  ✓ Other household pets
+  (The clinic cares for dogs and cats only. For other animals, give only very general information and suggest a
+  veterinarian who treats that kind of animal; never suggest booking them at this clinic.)
 
 PET CARE TOPICS I COVER:
   • Basic nutrition (dry food, wet food, supplements)

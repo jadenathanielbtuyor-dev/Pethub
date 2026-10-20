@@ -41,11 +41,36 @@ function parsePort(value) {
   return Number.isInteger(port) && port > 0 ? port : 5000;
 }
 
-const supabaseKey = readFirstEnv([
-  'SUPABASE_ANON_KEY',
-  'SUPABASE_SERVICE_KEY',
-  'SUPABASE_KEY'
-]);
+// What a Supabase API key may do, read from its format (the key itself is never logged):
+// 'anon' for the public publishable/anon key, 'service_role' for the server-only secret key, otherwise 'unknown'
+function getSupabaseKeyRole(key) {
+  const value = String(key || '');
+  if (!value) return 'unknown';
+  if (value.startsWith('sb_publishable_')) return 'anon';
+  if (value.startsWith('sb_secret_')) return 'service_role';
+
+  const parts = value.split('.');
+  if (parts.length !== 3) return 'unknown';
+  try {
+    const role = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')).role;
+    return role === 'anon' || role === 'service_role' ? role : 'unknown';
+  } catch (error) {
+    return 'unknown';
+  }
+}
+
+// The browser never talks to Supabase: every query goes through this backend, so it uses the server-only service role
+// key when one is set. Row level security can then close the tables to the public key without breaking the app
+// (database/migrations/2026-10-20_rls_least_privilege.sql). Without a usable service key the public key is used as
+// before. A public key pasted into SUPABASE_SERVICE_KEY by mistake is ignored.
+function selectSupabaseKey() {
+  const serviceKey = readEnv('SUPABASE_SERVICE_KEY');
+  const serviceKeyUsable = serviceKey && getSupabaseKeyRole(serviceKey) !== 'anon' && serviceKey !== readEnv('SUPABASE_ANON_KEY');
+  if (serviceKeyUsable) return { name: 'SUPABASE_SERVICE_KEY', value: serviceKey };
+  return readFirstEnv(['SUPABASE_ANON_KEY', 'SUPABASE_KEY']);
+}
+
+const supabaseKey = selectSupabaseKey();
 
 const env = {
   nodeEnv: readEnv('NODE_ENV', 'development'),
@@ -53,7 +78,8 @@ const env = {
   supabase: {
     url: readEnv('SUPABASE_URL'),
     key: supabaseKey.value,
-    keyName: supabaseKey.name
+    keyName: supabaseKey.name,
+    keyRole: getSupabaseKeyRole(supabaseKey.value)
   },
   brevo: {
     apiKey: readEnv('BREVO_API_KEY'),
@@ -83,7 +109,7 @@ env.isProduction = env.nodeEnv === 'production';
 
 function requireSupabaseConfig() {
   if (!env.supabase.url || !env.supabase.key) {
-    throw new Error('Missing Supabase configuration. Set SUPABASE_URL and SUPABASE_ANON_KEY (or SUPABASE_SERVICE_KEY) in Railway/backend environment variables.');
+    throw new Error('Missing Supabase configuration. Set SUPABASE_URL and SUPABASE_SERVICE_KEY (or SUPABASE_ANON_KEY) in Railway/backend environment variables.');
   }
 
   return env.supabase;
@@ -91,5 +117,6 @@ function requireSupabaseConfig() {
 
 module.exports = {
   ...env,
-  requireSupabaseConfig
+  requireSupabaseConfig,
+  getSupabaseKeyRole
 };

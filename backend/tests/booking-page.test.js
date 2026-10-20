@@ -84,7 +84,7 @@ describe('Booking page: scripts and API wiring', () => {
   it('calls only the pet, appointment and booking endpoints that the backend mounts', () => {
     const script = read(path.join(FRONTEND, 'js', 'user', 'appointments.js'));
     const calls = [...script.matchAll(/`\$\{window\.API_BASE_URL\}(\/[^`?$]*)/g)].map(match => match[1]).sort();
-    assert.deepEqual([...new Set(calls)], ['/appointments/all', '/appointments/create', '/appointments/userAppointments', '/pets/userPets']);
+    assert.deepEqual([...new Set(calls)], ['/appointments/all', '/appointments/create', '/appointments/services', '/appointments/userAppointments', '/pets/userPets']);
     assert.doesNotMatch(script, PAYMENT_WORDING);
 
     const server = read(path.join(__dirname, '..', 'server.js'));
@@ -92,6 +92,7 @@ describe('Booking page: scripts and API wiring', () => {
     assert.match(server, /app\.use\('\/pets', petsRoutes\)/);
     assert.doesNotMatch(server, /payments/i);
     const appointmentRoutes = read(path.join(__dirname, '..', 'routes', 'appointments.js'));
+    assert.match(appointmentRoutes, /router\.get\('\/services', listServices\)/);
     assert.match(appointmentRoutes, /router\.post\('\/create', createAppointment\)/);
     assert.match(appointmentRoutes, /router\.get\('\/userAppointments', getUserAppointments\)/);
     assert.match(appointmentRoutes, /router\.get\('\/all', getAllAppointments\)/);

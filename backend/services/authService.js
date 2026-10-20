@@ -4,7 +4,8 @@ const env = require('../config/env');
 const { buildVerificationEmail } = require('../templates/email/verificationEmail');
 const { logUserActivity } = require('../utils/activityLogger');
 const { createAuthToken } = require('../utils/authToken');
-const { hashPassword, verifyPassword } = require('../utils/passwordHash');
+const { hashPassword, verifyPassword, isPasswordHash } = require('../utils/passwordHash');
+const logger = require('../utils/logger');
 const { runExclusive } = require('../utils/keyedLock');
 const { VERIFICATION_CODE_TTL_MINUTES, VERIFICATION_RESEND_COOLDOWN_SECONDS } = require('../constants/email');
 const { PROFILE_COLUMNS } = require('../constants/userProfile');
@@ -17,6 +18,7 @@ const {
 const {
   validateLogin,
   validateRegister,
+  validateProfileUpdate,
   validateVerifyEmail,
   validateResendVerificationCode,
   validateRequiredUserId
@@ -26,11 +28,13 @@ const isDev = !env.isProduction;
 
 const EMAIL_ALREADY_REGISTERED = { statusCode: 400, body: { success: false, error: 'Email already registered', field: 'email' } };
 
-// PostgREST codes for a column the database does not have: the optional profile columns
+// PostgREST codes for a column the database does not have: the profile columns
 // (database/migrations/2026-10-20_users_profile_fields.sql) have not been added yet
 function isMissingColumnError(error) {
   return error?.code === 'PGRST204' || error?.code === '42703';
 }
+
+const PROFILE_COLUMNS_MISSING_LOG = 'the profile columns are missing from users; apply database/migrations/2026-10-20_users_profile_fields.sql';
 
 // Checks the email and creates the account. Copies of one registration that arrive together (a double click,
 // two tabs) run one at a time for that email in this process, so the second finds the first account; the
@@ -61,11 +65,12 @@ function createAccount({ cleanName, normalizedEmail, cleanPassword, profile }) {
       const duplicateError = insertError.code === '23505' || /duplicate key|unique constraint|already exists/i.test(String(insertError.message || ''));
       if (duplicateError) return { response: EMAIL_ALREADY_REGISTERED };
 
+      // Nothing was saved: the account and its details are one insert
       if (isMissingColumnError(insertError)) {
-        console.error('Register error: the optional profile columns are missing from users; apply database/migrations/2026-10-20_users_profile_fields.sql', { code: insertError.code });
+        console.error(`Register error: ${PROFILE_COLUMNS_MISSING_LOG}`, { code: insertError.code });
         return { response: { statusCode: 503, body: {
           success: false,
-          error: 'Personal details cannot be saved right now. Clear the optional personal details to register now, or try again later.'
+          error: 'New accounts cannot be created right now while the clinic finishes an update. Please try again later.'
         } } };
       }
 
@@ -81,8 +86,13 @@ function createAccount({ cleanName, normalizedEmail, cleanPassword, profile }) {
   });
 }
 
-// The signed-in customer's optional profile details for their dashboard (GET /auth/user-status?include=profile).
-// null when they cannot be read, so the rest of the status reply still works (e.g. before the migration).
+function pickProfile(row) {
+  return Object.fromEntries(PROFILE_COLUMNS.map(column => [column, row[column] ?? null]));
+}
+
+// The signed-in customer's personal details for their dashboard (GET /auth/user-status?include=profile). Accounts
+// created before these details were asked for have nulls until they complete them. null when they cannot be read, so
+// the rest of the status reply still works (e.g. before the migration).
 async function loadProfile(userId) {
   const { data, error } = await usersRepository.findProfileById(userId);
   if (error) {
@@ -92,7 +102,22 @@ async function loadProfile(userId) {
 
   const row = Array.isArray(data) ? data[0] : null;
   if (!row) return null;
-  return Object.fromEntries(PROFILE_COLUMNS.map(column => [column, row[column] ?? null]));
+  return pickProfile(row);
+}
+
+// Accounts created before hashing still hold their password as plaintext or sha256$<hex>: the first successful login
+// replaces it with a scrypt hash. A failure here never blocks the login; the next login tries again.
+async function upgradeStoredPassword(userId, password) {
+  try {
+    const { data, error } = await usersRepository.upgradeLegacyPassword(userId, await hashPassword(password));
+    if (error) {
+      console.warn('Password upgrade failed:', { code: error.code });
+      return;
+    }
+    if (Array.isArray(data) && data.length > 0) logger.authEvent('password.upgraded', { user_id: String(userId) });
+  } catch (error) {
+    console.warn('Password upgrade failed:', error.message);
+  }
 }
 
 const login = async (req) => {
@@ -118,6 +143,8 @@ const login = async (req) => {
     if (!(await verifyPassword(cleanPassword, user.password))) {
       return { statusCode: 403, body: { success: false, error: 'Invalid email or password' } };
     }
+
+    if (!isPasswordHash(user.password)) await upgradeStoredPassword(user.id, cleanPassword);
 
     // Same rule as user-status and isUserVerified(): verified if the users flag is set OR the account
     // has a completed email verification record (only written after a correct, unexpired code).
@@ -511,6 +538,52 @@ const getUserStatus = async (req) => {
   }
 };
 
+// PUT /auth/profile: the signed-in customer completes or corrects their own name and personal details. The account is
+// the one in the verified token (req.authUserId), never an id from the body; email, password, role and verification
+// status are refused by the validator.
+const updateProfile = async (req) => {
+  try {
+    const validation = validateProfileUpdate(req.body);
+    if (validation.error) return validation.error;
+
+    const userId = String(req.authUserId || '').trim();
+    if (!userId) return { statusCode: 401, body: { success: false, error: 'Authentication required. Please log in again.' } };
+
+    const { data, error } = await usersRepository.updateProfile(userId, { fullname: validation.cleanName, ...validation.profile });
+
+    if (error) {
+      if (isMissingColumnError(error)) {
+        console.error(`Profile update error: ${PROFILE_COLUMNS_MISSING_LOG}`, { code: error.code });
+        return { statusCode: 503, body: { success: false, error: 'Your details cannot be saved right now while the clinic finishes an update. Please try again later.' } };
+      }
+      console.error('Profile update error:', { code: error.code });
+      return { statusCode: 500, body: { success: false, error: 'Your details could not be saved. Please try again.' } };
+    }
+
+    const row = Array.isArray(data) ? data[0] : null;
+    if (!row) return { statusCode: 404, body: { success: false, error: 'Account not found' } };
+
+    await logUserActivity(userId, 'profile_updated', 'Updated personal details');
+
+    return { statusCode: 200, body: {
+      success: true,
+      message: 'Your details were saved.',
+      user: {
+        id: String(row.id),
+        fullname: row.fullname,
+        email: row.email,
+        role: row.role,
+        is_verified: isVerifiedValue(row.is_verified),
+        created_at: row.created_at
+      },
+      profile: pickProfile(row)
+    } };
+  } catch (error) {
+    console.error('Update profile error:', error.message);
+    return { statusCode: 500, body: { success: false, error: 'Your details could not be saved. Please try again.' } };
+  }
+};
+
 const getActivityLogs = async (req) => {
   try {
     const validation = validateRequiredUserId(req.query.user_id);
@@ -539,5 +612,6 @@ module.exports = {
   resendVerificationCode,
   logout,
   getUserStatus,
+  updateProfile,
   getActivityLogs
 };

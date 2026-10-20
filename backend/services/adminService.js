@@ -34,15 +34,28 @@ const activityLogsRepository = require('../repositories/activityLogsRepository')
 const contactRepository = require('../repositories/contactRepository');
 const appointmentNotificationsService = require('./appointmentNotificationsService');
 const { APPOINTMENT_STATUS_CHANGED_MESSAGE } = require('../constants/appointments');
+const { CHECKUP_SERVICE_NAMES } = require('../constants/services');
+const { countServicesForAnalytics, isCheckupService, normalizeSpecies } = require('../utils/serviceCatalog');
 
-// "Due soon" = Pending or Approved vaccination appointments from today through today + 7 days (inclusive)
-const VACCINATIONS_DUE_SOON_WINDOW_DAYS = 7;
-const VACCINATIONS_DUE_SOON_STATUSES = ['Pending', 'Approved'];
+// "Upcoming check-ups" = Pending or Approved check-up appointments (constants/services.js CHECKUP_SERVICE_NAMES) from
+// today through today + 7 days (inclusive). Counted from appointments only: medical records describe past visits.
+const UPCOMING_CHECKUPS_WINDOW_DAYS = 7;
+const UPCOMING_CHECKUPS_STATUSES = ['Pending', 'Approved'];
 
-function getVaccinationsDueSoonEndDate(today) {
+function getUpcomingCheckupsEndDate(today) {
   const endDate = new Date(`${today}T00:00:00.000Z`);
-  endDate.setUTCDate(endDate.getUTCDate() + VACCINATIONS_DUE_SOON_WINDOW_DAYS);
+  endDate.setUTCDate(endDate.getUTCDate() + UPCOMING_CHECKUPS_WINDOW_DAYS);
   return endDate.toISOString().split('T')[0];
+}
+
+// Pets per species for the charts: Dog and Cat (the species the clinic serves), and Other for any earlier pet profile
+function countPetTypes(pets) {
+  const counts = { Dog: 0, Cat: 0, Other: 0 };
+  (pets || []).forEach(pet => {
+    const species = normalizeSpecies(pet?.species);
+    counts[species || 'Other'] += 1;
+  });
+  return counts;
 }
 
 function buildUserNameMap(users) {
@@ -293,13 +306,14 @@ const getDashboardStats = async (req) => {
     const totalMedicalRecords = medicalRecordsResult.count || 0;
 
     const today = new Date().toISOString().split('T')[0];
-    const { count: vaccinationsDueSoon, error: vaccinationsError } = await appointmentsRepository.countVaccinationsDueSoon(
+    const { count: upcomingCheckups, error: checkupsError } = await appointmentsRepository.countUpcomingByServices(
+      [...CHECKUP_SERVICE_NAMES],
       today,
-      getVaccinationsDueSoonEndDate(today),
-      VACCINATIONS_DUE_SOON_STATUSES
+      getUpcomingCheckupsEndDate(today),
+      UPCOMING_CHECKUPS_STATUSES
     );
 
-    if (vaccinationsError) throw vaccinationsError;
+    if (checkupsError) throw checkupsError;
 
     const { count: upcomingBookings, error: upcomingError } = await appointmentsRepository.countUpcomingBookings(today);
 
@@ -324,7 +338,7 @@ const getDashboardStats = async (req) => {
         totalAppointments: totalAppointments || 0,
         pendingAppointments: pendingAppointments || 0,
         completedAppointments: completedAppointments || 0,
-        vaccinationsDueSoon: vaccinationsDueSoon || 0,
+        upcomingCheckups: upcomingCheckups || 0,
         upcomingBookings: upcomingBookings || 0,
         completedAppointmentPercentage,
         verifiedUsers: verifiedUsers || 0,
@@ -366,13 +380,14 @@ const getAnalyticsSummary = async (req) => {
     if (completedError) throw completedError;
 
     const today = new Date().toISOString().split('T')[0];
-    const { count: vaccinationsDueSoon, error: vaccinationsError } = await appointmentsRepository.countVaccinationsDueSoon(
+    const { count: upcomingCheckups, error: checkupsError } = await appointmentsRepository.countUpcomingByServices(
+      [...CHECKUP_SERVICE_NAMES],
       today,
-      getVaccinationsDueSoonEndDate(today),
-      VACCINATIONS_DUE_SOON_STATUSES
+      getUpcomingCheckupsEndDate(today),
+      UPCOMING_CHECKUPS_STATUSES
     );
 
-    if (vaccinationsError) throw vaccinationsError;
+    if (checkupsError) throw checkupsError;
 
     const [upcomingBookingsResult, pendingVerificationsResult, activityLogsResult, medicalRecordsResult] = await Promise.all([
       appointmentsRepository.countUpcomingBookings(today),
@@ -404,7 +419,7 @@ const getAnalyticsSummary = async (req) => {
         totalAppointments: totalAppointments || 0,
         pendingAppointments: pendingAppointments || 0,
         completedAppointments: completedAppointments || 0,
-        vaccinationsDueSoon: vaccinationsDueSoon || 0,
+        upcomingCheckups: upcomingCheckups || 0,
         upcomingBookings: upcomingBookings || 0,
         completedAppointmentPercentage,
         verifiedUsers: verifiedUsers || 0,
@@ -512,12 +527,11 @@ const getDashboardOverview = async (req) => {
     const pendingVerifications = pendingVerificationsResult.count;
     const activityLogCount = activityLogsResult.count;
 
-    const vaccinationsDueSoonEndDate = getVaccinationsDueSoonEndDate(today);
-    const vaccinationsDueSoon = appointments.filter(apt => {
-      const service = (apt.service_type || '').toString().toLowerCase();
+    const upcomingCheckupsEndDate = getUpcomingCheckupsEndDate(today);
+    const upcomingCheckups = appointments.filter(apt => {
       const dateKey = apt.appointment_date ? apt.appointment_date.toString().split('T')[0] : null;
-      return service.includes('vaccination') && dateKey && VACCINATIONS_DUE_SOON_STATUSES.includes(apt.status) &&
-        dateKey >= today && dateKey <= vaccinationsDueSoonEndDate;
+      return isCheckupService(apt.service_type) && dateKey && UPCOMING_CHECKUPS_STATUSES.includes(apt.status) &&
+        dateKey >= today && dateKey <= upcomingCheckupsEndDate;
     }).length;
     const upcomingBookings = appointments.filter(apt => apt.appointment_date && apt.status !== 'Cancelled' && apt.appointment_date >= today).length;
 
@@ -525,41 +539,8 @@ const getDashboardOverview = async (req) => {
       ? Math.round((completedAppointments / totalAppointments) * 100)
       : 0;
 
-    const petTypeCounts = {
-      Dog: 0,
-      Cat: 0,
-      Rabbit: 0,
-      Bird: 0,
-      Other: 0
-    };
-
-    normalizedPets.forEach(pet => {
-      const species = (pet.species || 'Other').toString().trim().toLowerCase();
-      if (species.includes('dog')) petTypeCounts.Dog += 1;
-      else if (species.includes('cat')) petTypeCounts.Cat += 1;
-      else if (species.includes('rabbit')) petTypeCounts.Rabbit += 1;
-      else if (species.includes('bird')) petTypeCounts.Bird += 1;
-      else petTypeCounts.Other += 1;
-    });
-
-    const serviceCounts = {
-      Checkup: 0,
-      Vaccination: 0,
-      Grooming: 0,
-      'Dental Cleaning': 0,
-      Surgery: 0,
-      Other: 0
-    };
-
-    normalizedAppointments.forEach(apt => {
-      const service = (apt.service_type || 'Other').toString().trim().toLowerCase();
-      if (service.includes('checkup')) serviceCounts.Checkup += 1;
-      else if (service.includes('vaccination')) serviceCounts.Vaccination += 1;
-      else if (service.includes('groom')) serviceCounts.Grooming += 1;
-      else if (service.includes('dental')) serviceCounts['Dental Cleaning'] += 1;
-      else if (service.includes('surgery')) serviceCounts.Surgery += 1;
-      else serviceCounts.Other += 1;
-    });
+    const petTypeCounts = countPetTypes(normalizedPets);
+    const serviceCounts = countServicesForAnalytics(normalizedAppointments.map(apt => apt.service_type));
 
     const currentDate = new Date();
     const lastSevenDays = Array.from({ length: 7 }, (_, index) => {
@@ -606,7 +587,7 @@ const getDashboardOverview = async (req) => {
         totalAppointments,
         pendingAppointments,
         completedAppointments,
-        vaccinationsDueSoon,
+        upcomingCheckups,
         upcomingBookings,
         completedAppointmentPercentage,
         verifiedUsers,
@@ -623,10 +604,7 @@ const getDashboardOverview = async (req) => {
         labels: Object.keys(petTypeCounts),
         values: Object.values(petTypeCounts)
       },
-      services: {
-        labels: Object.keys(serviceCounts),
-        values: Object.values(serviceCounts)
-      },
+      services: serviceCounts,
       appointmentsTrend
     } };
   } catch (error) {
@@ -644,22 +622,7 @@ const getAnalyticsPetTypes = async (req) => {
 
     if (error) throw error;
 
-    const petTypeCounts = {
-      Dog: 0,
-      Cat: 0,
-      Rabbit: 0,
-      Bird: 0,
-      Other: 0
-    };
-
-    (pets || []).forEach(pet => {
-      const species = (pet.species || 'Other').toString().trim().toLowerCase();
-      if (species.includes('dog')) petTypeCounts.Dog += 1;
-      else if (species.includes('cat')) petTypeCounts.Cat += 1;
-      else if (species.includes('rabbit')) petTypeCounts.Rabbit += 1;
-      else if (species.includes('bird')) petTypeCounts.Bird += 1;
-      else petTypeCounts.Other += 1;
-    });
+    const petTypeCounts = countPetTypes(pets);
 
     return { statusCode: 200, body: {
       success: true,
@@ -681,29 +644,12 @@ const getAnalyticsServices = async (req) => {
 
     if (error) throw error;
 
-    const serviceCounts = {
-      'Checkup': 0,
-      'Vaccination': 0,
-      'Grooming': 0,
-      'Dental Cleaning': 0,
-      'Surgery': 0,
-      'Other': 0
-    };
-
-    (appointments || []).forEach(apt => {
-      const service = (apt.service_type || 'Other').toString().trim().toLowerCase();
-      if (service.includes('checkup')) serviceCounts['Checkup'] += 1;
-      else if (service.includes('vaccination')) serviceCounts['Vaccination'] += 1;
-      else if (service.includes('groom')) serviceCounts['Grooming'] += 1;
-      else if (service.includes('dental')) serviceCounts['Dental Cleaning'] += 1;
-      else if (service.includes('surgery')) serviceCounts['Surgery'] += 1;
-      else serviceCounts['Other'] += 1;
-    });
+    const { labels, values } = countServicesForAnalytics((appointments || []).map(apt => apt.service_type));
 
     return { statusCode: 200, body: {
       success: true,
-      labels: Object.keys(serviceCounts),
-      values: Object.values(serviceCounts)
+      labels,
+      values
     } };
   } catch (error) {
     console.error('Error fetching service usage analytics:', error);

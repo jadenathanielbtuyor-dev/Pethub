@@ -4,200 +4,270 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PetHub | Services</title>
-
-  <!-- CSS -->
+  <meta name="description" content="The clinic's grooming services for dogs and cats and the Dog &amp; Cat Full Check Up, bookable online through PetHub.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800&amp;display=swap">
   <link rel="stylesheet" href="../../assets/css/style.css">
-
-  <!-- Icons -->
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet">
 </head>
-<body class="flex flex-col min-h-screen">
+<body class="ph-site flex flex-col min-h-screen">
+  <!-- Apply the saved theme before first paint; main.js still owns the toggle -->
+  <script>try { if (localStorage.getItem('darkMode') === 'true') { document.documentElement.classList.add('dark'); document.body.classList.add('dark-mode'); } } catch (e) {}</script>
+  <a href="#main" class="ph-skip-link">Skip to main content</a>
 
-  <!-- ================= NAVIGATION ================= -->
-  <nav class="nav">
-    <div class="nav-container">
-
-      <!-- Logo -->
-      <a href="../../index.html" class="logo">
-        <img src="../../assets/images/paw.png" alt="PetHub">
-        <h1>PetHub</h1>
-      </a>
-
-      <!-- Links -->
-      <ul class="nav-links">
-        <li><a href="../../index.html">Home</a></li>
-        <li><a href="about.html">About</a></li>
-        <li><a href="services.html" class="active">Services</a></li>
-        <li><a href="contact.html">Contact</a></li>
-        <li><a href="../auth/login.html" class="btn-login">Login</a></li>
-      </ul>
-
-    </div>
-  </nav>
-
-  <!-- ================= MAIN CONTENT ================= -->
-  <main class="flex-grow">
-
-  <!-- ================= PAGE HEADER ================= -->
-  <header class="bg-gradient-to-r from-orange-50 to-orange-100 py-20 px-4">
-    <div class="max-w-6xl mx-auto text-center">
-      <h1 class="text-5xl md:text-6xl font-bold text-gray-900 mb-4">
-        PetHub Services
-      </h1>
-      <p class="text-xl text-gray-600">
-        Accurate service details based on the real application features.
-      </p>
-    </div>
+  <!-- ================= SITE HEADER (shared by the public and sign-in pages; main.js runs the mobile menu) ================= -->
+  <header class="ph-header">
+    <nav class="ph-nav" aria-label="Main">
+      <div class="ph-nav-inner">
+        <a href="../../index.html" class="ph-brand">
+          <img src="../../assets/images/paw.png" alt="" width="40" height="40">
+          <span>PetHub</span>
+        </a>
+        <button type="button" class="ph-nav-toggle" data-nav-toggle aria-controls="siteNavMenu" aria-expanded="false" aria-label="Open menu">
+          <i class="ri-menu-line" aria-hidden="true"></i>
+        </button>
+        <div id="siteNavMenu" class="ph-nav-menu">
+          <ul class="ph-nav-links">
+            <li><a href="../../index.html">Home</a></li>
+            <li><a href="../../pages/public/about.html">About</a></li>
+            <li><a href="../../pages/public/services.html" aria-current="page">Services</a></li>
+            <li><a href="../../pages/public/contact.html">Contact</a></li>
+          </ul>
+          <div class="ph-nav-actions">
+            <a href="../../pages/auth/login.html" class="ph-nav-login" data-auth-link>Log in</a>
+            <a href="../../pages/auth/login.html?next=appointments" class="ph-btn ph-btn-primary ph-btn-sm" data-book-link>
+              <i class="ri-calendar-check-line" aria-hidden="true"></i>Book an Appointment
+            </a>
+          </div>
+        </div>
+      </div>
+    </nav>
   </header>
 
-  <!-- ================= SERVICES SECTION ================= -->
-  <section class="bg-white py-32 px-4">
-    <div class="max-w-6xl mx-auto">
-      
-      <div class="text-center mb-20">
-        <h2 class="text-5xl font-bold text-gray-900 mb-6">
-          Core Capabilities
-        </h2>
-        <p class="text-xl text-gray-600 max-w-2xl mx-auto">
-          PetHub supports pet registration, appointment booking, record management, and an admin dashboard backed by Supabase.
-        </p>
+  <!-- ================= MAIN CONTENT ================= -->
+  <!-- The services, their descriptions and species come from backend/constants/services.js; backend/tests/services.test.js
+       checks that this page lists the same ones. -->
+  <main id="main" class="flex-grow" tabindex="-1">
+
+    <section class="ph-page-hero" aria-labelledby="pageTitle">
+      <div class="ph-container">
+        <p class="ph-eyebrow"><i class="ri-scissors-cut-line" aria-hidden="true"></i>Services</p>
+        <h1 id="pageTitle" class="ph-display">Grooming and check-ups for dogs and cats</h1>
+        <p class="ph-lead">Choose the service your pet needs, then book it online after you log in.</p>
       </div>
+    </section>
 
-      <!-- Services Grid -->
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        
-        <div class="group bg-white p-8 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-gray-100 hover:border-orange-200">
-          <div class="flex justify-center mb-6">
-            <div class="w-16 h-16 bg-gradient-to-br from-orange-100 to-orange-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
-              <i class="ri-bear-smile-line text-3xl text-orange-500"></i>
-            </div>
+    <!-- ================= GROOMING ================= -->
+    <section id="grooming" class="ph-section" aria-labelledby="groomingTitle">
+      <div class="ph-container">
+        <div class="ph-hero-grid mb-10">
+          <div>
+            <h2 id="groomingTitle" class="ph-title">Grooming</h2>
+            <p class="ph-lead">8 grooming services for dogs and cats, from a bath or a nail trim to full grooming.</p>
           </div>
-          <h3 class="text-lg font-bold text-gray-900 mb-3 text-center">
-            Pet Profiles
-          </h3>
-          <p class="text-gray-600 text-center text-sm leading-relaxed">
-            Add pets and view their health history, including vaccine and treatment details recorded by the clinic.
-          </p>
-        </div>
-
-        <div class="group bg-white p-8 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-gray-100 hover:border-blue-200">
-          <div class="flex justify-center mb-6">
-            <div class="w-16 h-16 bg-gradient-to-br from-blue-100 to-blue-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
-              <i class="ri-calendar-check-line text-3xl text-blue-500"></i>
+          <figure class="ph-figure">
+            <div class="ph-photo ph-photo-landscape">
+              <img src="../../assets/images/photos/cat-grooming.jpg" alt="A groomer trimming a long-haired cat's coat with clippers on a grooming table" width="960" height="640" loading="lazy">
             </div>
-          </div>
-          <h3 class="text-lg font-bold text-gray-900 mb-3 text-center">
-            Appointment Booking
-          </h3>
-          <p class="text-gray-600 text-center text-sm leading-relaxed">
-            Book appointments and track their status through the user and admin dashboards.
-          </p>
+            <figcaption>Photo: Reba Spike, <a href="https://creativecommons.org/licenses/by/2.0">CC BY 2.0</a>. Not taken at the clinic.</figcaption>
+          </figure>
         </div>
-
-        <div class="group bg-white p-8 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-gray-100 hover:border-green-200">
-          <div class="flex justify-center mb-6">
-            <div class="w-16 h-16 bg-gradient-to-br from-green-100 to-green-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
-              <i class="ri-file-text-line text-3xl text-green-600"></i>
+        <div class="ph-card-grid ph-card-grid-4">
+          <article id="service-bath" class="ph-card ph-service-card" data-service="Bath">
+            <span class="ph-icon"><i class="ri-drop-line" aria-hidden="true"></i></span>
+            <h3 class="ph-card-title">Bath</h3>
+            <p class="ph-card-text">A bath for your dog or cat.</p>
+            <div class="ph-card-footer">
+              <div>
+                <p class="ph-badges"><span class="sr-only">For </span><span class="ph-badge ph-badge-dog"><i class="ri-heart-3-line" aria-hidden="true"></i>Dogs</span><span class="ph-badge ph-badge-cat"><i class="ri-heart-3-line" aria-hidden="true"></i>Cats</span></p>
+              </div>
+              <a href="../../pages/auth/login.html?next=appointments&amp;service=Bath" class="ph-link-arrow" data-book-link>Book<span class="sr-only"> Bath</span> <i class="ri-arrow-right-line" aria-hidden="true"></i></a>
             </div>
-          </div>
-          <h3 class="text-lg font-bold text-gray-900 mb-3 text-center">
-            Medical Records
-          </h3>
-          <p class="text-gray-600 text-center text-sm leading-relaxed">
-            Save and review pet medical notes, treatment details, and record history from a central dashboard.
-          </p>
-        </div>
+          </article>
 
-        <div class="group bg-white p-8 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-gray-100 hover:border-purple-200">
-          <div class="flex justify-center mb-6">
-            <div class="w-16 h-16 bg-gradient-to-br from-purple-100 to-purple-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
-              <i class="ri-settings-5-line text-3xl text-purple-500"></i>
+          <article id="service-trim" class="ph-card ph-service-card" data-service="Trim">
+            <span class="ph-icon"><i class="ri-scissors-cut-line" aria-hidden="true"></i></span>
+            <h3 class="ph-card-title">Trim</h3>
+            <p class="ph-card-text">A trim of your pet’s coat.</p>
+            <div class="ph-card-footer">
+              <div>
+                <p class="ph-badges"><span class="sr-only">For </span><span class="ph-badge ph-badge-dog"><i class="ri-heart-3-line" aria-hidden="true"></i>Dogs</span><span class="ph-badge ph-badge-cat"><i class="ri-heart-3-line" aria-hidden="true"></i>Cats</span></p>
+              </div>
+              <a href="../../pages/auth/login.html?next=appointments&amp;service=Trim" class="ph-link-arrow" data-book-link>Book<span class="sr-only"> Trim</span> <i class="ri-arrow-right-line" aria-hidden="true"></i></a>
             </div>
-          </div>
-          <h3 class="text-lg font-bold text-gray-900 mb-3 text-center">
-            Admin Dashboard
-          </h3>
-          <p class="text-gray-600 text-center text-sm leading-relaxed">
-            Admin users can view statistics and pet lists, manage users and appointments, and update appointment status.
-          </p>
-        </div>
+          </article>
 
+          <article id="service-puppy-cut" class="ph-card ph-service-card" data-service="Puppy Cut">
+            <span class="ph-icon"><i class="ri-scissors-2-line" aria-hidden="true"></i></span>
+            <h3 class="ph-card-title">Puppy Cut</h3>
+            <p class="ph-card-text">A short, even haircut all over the coat.</p>
+            <div class="ph-card-footer">
+              <div>
+                <p class="ph-badges"><span class="sr-only">For </span><span class="ph-badge ph-badge-dog"><i class="ri-heart-3-line" aria-hidden="true"></i>Dogs</span><span class="ph-badge ph-badge-cat"><i class="ri-heart-3-line" aria-hidden="true"></i>Cats</span></p>
+                <span class="ph-placeholder" data-placeholder="species"><span class="ph-placeholder-tag">Placeholder</span>Which pets this suits: to be confirmed by the clinic</span>
+              </div>
+              <a href="../../pages/auth/login.html?next=appointments&amp;service=Puppy+Cut" class="ph-link-arrow" data-book-link>Book<span class="sr-only"> Puppy Cut</span> <i class="ri-arrow-right-line" aria-hidden="true"></i></a>
+            </div>
+          </article>
+
+          <article id="service-full-grooming" class="ph-card ph-service-card" data-service="Full Grooming">
+            <span class="ph-icon"><i class="ri-sparkling-line" aria-hidden="true"></i></span>
+            <h3 class="ph-card-title">Full Grooming</h3>
+            <p class="ph-card-text">A full grooming session for your dog or cat.</p>
+            <div class="ph-card-footer">
+              <div>
+                <p class="ph-badges"><span class="sr-only">For </span><span class="ph-badge ph-badge-dog"><i class="ri-heart-3-line" aria-hidden="true"></i>Dogs</span><span class="ph-badge ph-badge-cat"><i class="ri-heart-3-line" aria-hidden="true"></i>Cats</span></p>
+              </div>
+              <a href="../../pages/auth/login.html?next=appointments&amp;service=Full+Grooming" class="ph-link-arrow" data-book-link>Book<span class="sr-only"> Full Grooming</span> <i class="ri-arrow-right-line" aria-hidden="true"></i></a>
+            </div>
+          </article>
+
+          <article id="service-nail-cutting" class="ph-card ph-service-card" data-service="Nail Cutting">
+            <span class="ph-icon"><i class="ri-scissors-line" aria-hidden="true"></i></span>
+            <h3 class="ph-card-title">Nail Cutting</h3>
+            <p class="ph-card-text">Trimming of your pet’s nails.</p>
+            <div class="ph-card-footer">
+              <div>
+                <p class="ph-badges"><span class="sr-only">For </span><span class="ph-badge ph-badge-dog"><i class="ri-heart-3-line" aria-hidden="true"></i>Dogs</span><span class="ph-badge ph-badge-cat"><i class="ri-heart-3-line" aria-hidden="true"></i>Cats</span></p>
+              </div>
+              <a href="../../pages/auth/login.html?next=appointments&amp;service=Nail+Cutting" class="ph-link-arrow" data-book-link>Book<span class="sr-only"> Nail Cutting</span> <i class="ri-arrow-right-line" aria-hidden="true"></i></a>
+            </div>
+          </article>
+
+          <article id="service-face-trim" class="ph-card ph-service-card" data-service="Face Trim">
+            <span class="ph-icon"><i class="ri-emotion-happy-line" aria-hidden="true"></i></span>
+            <h3 class="ph-card-title">Face Trim</h3>
+            <p class="ph-card-text">A trim of the fur around your pet’s face.</p>
+            <div class="ph-card-footer">
+              <div>
+                <p class="ph-badges"><span class="sr-only">For </span><span class="ph-badge ph-badge-dog"><i class="ri-heart-3-line" aria-hidden="true"></i>Dogs</span><span class="ph-badge ph-badge-cat"><i class="ri-heart-3-line" aria-hidden="true"></i>Cats</span></p>
+              </div>
+              <a href="../../pages/auth/login.html?next=appointments&amp;service=Face+Trim" class="ph-link-arrow" data-book-link>Book<span class="sr-only"> Face Trim</span> <i class="ri-arrow-right-line" aria-hidden="true"></i></a>
+            </div>
+          </article>
+
+          <article id="service-flea-and-tick-removal" class="ph-card ph-service-card" data-service="Flea and Tick Removal">
+            <span class="ph-icon"><i class="ri-bug-line" aria-hidden="true"></i></span>
+            <h3 class="ph-card-title">Flea and Tick Removal</h3>
+            <p class="ph-card-text">Removal of fleas and ticks from your pet’s coat.</p>
+            <div class="ph-card-footer">
+              <div>
+                <p class="ph-badges"><span class="sr-only">For </span><span class="ph-badge ph-badge-dog"><i class="ri-heart-3-line" aria-hidden="true"></i>Dogs</span><span class="ph-badge ph-badge-cat"><i class="ri-heart-3-line" aria-hidden="true"></i>Cats</span></p>
+              </div>
+              <a href="../../pages/auth/login.html?next=appointments&amp;service=Flea+and+Tick+Removal" class="ph-link-arrow" data-book-link>Book<span class="sr-only"> Flea and Tick Removal</span> <i class="ri-arrow-right-line" aria-hidden="true"></i></a>
+            </div>
+          </article>
+
+          <article id="service-medicated-bath" class="ph-card ph-service-card" data-service="Medicated Bath">
+            <span class="ph-icon"><i class="ri-medicine-bottle-line" aria-hidden="true"></i></span>
+            <h3 class="ph-card-title">Medicated Bath</h3>
+            <p class="ph-card-text">A bath using a medicated product.</p>
+            <div class="ph-card-footer">
+              <div>
+                <p class="ph-badges"><span class="sr-only">For </span><span class="ph-badge ph-badge-dog"><i class="ri-heart-3-line" aria-hidden="true"></i>Dogs</span><span class="ph-badge ph-badge-cat"><i class="ri-heart-3-line" aria-hidden="true"></i>Cats</span></p>
+              </div>
+              <a href="../../pages/auth/login.html?next=appointments&amp;service=Medicated+Bath" class="ph-link-arrow" data-book-link>Book<span class="sr-only"> Medicated Bath</span> <i class="ri-arrow-right-line" aria-hidden="true"></i></a>
+            </div>
+          </article>
+        </div>
       </div>
+    </section>
 
-    </div>
-  </section>
-
-  <!-- ================= SERVICE DETAILS SECTION ================= -->
-  <section class="bg-gradient-to-b from-orange-50 to-white py-20 px-4">
-    <div class="max-w-6xl mx-auto">
-      
-      <h2 class="text-4xl font-bold text-gray-900 mb-12 text-center">
-        How the services connect
-      </h2>
-
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-        
-        <div class="text-center">
-          <div class="flex justify-center mb-4">
-            <div class="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center">
-              <i class="ri-shield-check-line text-2xl text-orange-500"></i>
+    <!-- ================= VETERINARY CHECK-UP ================= -->
+    <section id="check-up" class="ph-section ph-section-white" aria-labelledby="checkupTitle">
+      <div class="ph-container">
+        <div class="ph-hero-grid">
+          <div id="service-dog-and-cat-full-check-up" data-service="Dog &amp; Cat Full Check Up">
+            <p class="ph-eyebrow"><i class="ri-stethoscope-line" aria-hidden="true"></i>Veterinary check-up</p>
+            <h2 id="checkupTitle" class="ph-title">Dog &amp; Cat Full Check Up</h2>
+            <p class="ph-lead">A full veterinary check-up for your dog or cat.</p>
+            <div class="mt-4"><p class="ph-badges"><span class="sr-only">For </span><span class="ph-badge ph-badge-dog"><i class="ri-heart-3-line" aria-hidden="true"></i>Dogs</span><span class="ph-badge ph-badge-cat"><i class="ri-heart-3-line" aria-hidden="true"></i>Cats</span></p></div>
+            <div class="ph-actions">
+              <a href="../../pages/auth/login.html?next=appointments&amp;service=Dog+%26+Cat+Full+Check+Up" class="ph-btn ph-btn-primary" data-book-link><i class="ri-calendar-check-line" aria-hidden="true"></i>Book a check-up</a>
             </div>
           </div>
-          <h3 class="text-xl font-semibold text-gray-900 mb-2">
-            Secure Access
-          </h3>
-          <p class="text-gray-600">Sign-in and data access go through PetHub's API, so only verified users see appointment and pet data.</p>
-        </div>
-
-        <div class="text-center">
-          <div class="flex justify-center mb-4">
-            <div class="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center">
-              <i class="ri-file-list-3-line text-2xl text-orange-500"></i>
+          <figure class="ph-figure">
+            <div class="ph-photo ph-photo-standard ph-photo-focus-low">
+              <img src="../../assets/images/photos/cat-checkup.jpg" alt="A veterinary team listening to an orange cat's chest with a stethoscope on an examination table" width="960" height="1280" loading="lazy">
             </div>
-          </div>
-          <h3 class="text-xl font-semibold text-gray-900 mb-2">
-            Unified Records
-          </h3>
-          <p class="text-gray-600">Pet details, care history, and appointments are stored together so each decision is informed.</p>
+            <figcaption>Photo: Veterinarian Pet Alliance, <a href="https://creativecommons.org/licenses/by/4.0">CC BY 4.0</a>. Not taken at the clinic.</figcaption>
+          </figure>
         </div>
-
-        <div class="text-center">
-          <div class="flex justify-center mb-4">
-            <div class="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center">
-              <i class="ri-chat-3-line text-2xl text-orange-500"></i>
-            </div>
-          </div>
-          <h3 class="text-xl font-semibold text-gray-900 mb-2">
-            Real support flows
-          </h3>
-          <p class="text-gray-600">Contact support through the public form, and use the built-in AI chat widget for guided help.</p>
-        </div>
-
       </div>
+    </section>
 
-    </div>
-  </section>
+    <!-- ================= GOOD TO KNOW ================= -->
+    <section class="ph-section ph-section-alt" aria-labelledby="knowTitle">
+      <div class="ph-container">
+        <h2 id="knowTitle" class="ph-title">Good to know</h2>
+        <div class="ph-card-grid mt-6">
+          <div class="ph-alert ph-alert-info">
+            <i class="ri-information-line ph-alert-icon" aria-hidden="true"></i>
+            <div class="ph-alert-body">
+              <h3 class="ph-alert-title">Prices</h3>
+              <p>PetHub does not list prices. Please ask the clinic through the <a href="contact.html" class="ph-link-arrow">Contact page</a>.</p>
+            </div>
+          </div>
+          <div class="ph-alert ph-alert-info">
+            <i class="ri-time-line ph-alert-icon" aria-hidden="true"></i>
+            <div class="ph-alert-body">
+              <h3 class="ph-alert-title">Booking online</h3>
+              <p>A service can be booked online once the clinic confirms how long it takes. Every booking stays pending until the clinic approves it.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-  <!-- ================= CTA SECTION ================= -->
-  <section class="bg-gradient-to-r from-orange-500 to-orange-600 py-16 px-4">
-    <div class="max-w-4xl mx-auto text-center">
-      <h2 class="text-4xl font-bold text-white mb-4">
-        Ready to use PetHub?
-      </h2>
-      <p class="text-lg text-orange-100 mb-8">
-        Sign up to start managing your pets and appointments with the same system you see here.
-      </p>
-      <a href="../auth/register.html" class="inline-flex items-center bg-white text-orange-600 font-semibold py-3 px-8 rounded-lg hover:bg-gray-100 transition-colors duration-300">
-        <i class="ri-arrow-right-line mr-2" aria-hidden="true"></i>Start Now
-      </a>
-    </div>
-  </section>
+    <!-- ================= CALL TO ACTION ================= -->
+    <section class="ph-section" aria-labelledby="ctaTitle">
+      <div class="ph-container">
+        <div class="ph-cta">
+          <h2 id="ctaTitle" class="ph-title">Book a service for your pet</h2>
+          <p>Log in, choose your dog or cat, and pick a service, date and time.</p>
+          <div class="ph-actions">
+            <a href="../../pages/auth/login.html?next=appointments" class="ph-btn ph-btn-light ph-btn-lg" data-book-link><i class="ri-calendar-check-line" aria-hidden="true"></i>Book an Appointment</a>
+            <a href="../auth/register.html" class="ph-btn ph-btn-outline-light ph-btn-lg">Create an account</a>
+          </div>
+        </div>
+      </div>
+    </section>
 
   </main>
 
   <!-- ================= FOOTER ================= -->
-  <footer class="footer">
-    <p>&copy; 2026 PetHub. Caring for Your Pet's Health. All rights reserved.</p>
+  <footer class="footer ph-footer">
+    <div class="ph-container">
+      <div class="ph-footer-inner">
+        <div>
+          <a href="../../index.html" class="ph-brand">
+            <img src="../../assets/images/paw.png" alt="" width="40" height="40">
+            <span>PetHub</span>
+          </a>
+          <p class="mt-3">Online booking for grooming and check-ups for dogs and cats, with your pets' profiles and records in one place.</p>
+        </div>
+        <nav aria-label="Footer">
+          <p class="ph-footer-title">Explore</p>
+          <ul class="ph-footer-links">
+            <li><a href="../../index.html">Home</a></li>
+            <li><a href="../../pages/public/about.html">About</a></li>
+            <li><a href="../../pages/public/services.html">Services</a></li>
+            <li><a href="../../pages/public/contact.html">Contact</a></li>
+          </ul>
+        </nav>
+        <div>
+          <p class="ph-footer-title">Your account</p>
+          <ul class="ph-footer-links">
+            <li><a href="../../pages/auth/login.html?next=appointments" data-book-link>Book an appointment</a></li>
+            <li><a href="../../pages/auth/login.html">Log in</a></li>
+            <li><a href="../../pages/auth/register.html">Create an account</a></li>
+            <li><a href="../../pages/public/privacy.html">Privacy notice</a></li>
+          </ul>
+        </div>
+      </div>
+      <p class="ph-footer-legal">&copy; 2026 PetHub. All rights reserved. Photos are used under Creative Commons licences; see the <a href="../../pages/public/about.html#photo-credits">photo credits</a>.</p>
+    </div>
   </footer>
 
   <!-- ================= DARK MODE TOGGLE ================= -->

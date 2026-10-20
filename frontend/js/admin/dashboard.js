@@ -4,8 +4,10 @@
 const MAX_RETRIES = 2;
 const RETRY_DELAY = 500; // milliseconds
 const NEW_USER_WINDOW_DAYS = 7;
-const VACCINATIONS_DUE_SOON_WINDOW_DAYS = 7;
-const VACCINATIONS_DUE_SOON_STATUSES = ['Pending', 'Approved'];
+// "Upcoming check-ups": Pending or Approved check-up appointments in the next 7 days (same rule as backend/services/adminService.js)
+const UPCOMING_CHECKUPS_WINDOW_DAYS = 7;
+const UPCOMING_CHECKUPS_STATUSES = ['Pending', 'Approved'];
+const CHECKUP_SERVICE_NAMES = ['Dog & Cat Full Check Up', 'Checkup'];
 const CONTACT_MESSAGE_ACTIONABLE_STATUS = 'Unread';
 const CONTACT_MESSAGE_READ_STATUS = 'Read';
 const ADMIN_MANAGEMENT_TAB_STORAGE_KEY = 'pethubAdminDashboardManagementTab';
@@ -53,6 +55,7 @@ function getActivityIcon(action) {
     user_logged_in: 'ri-login-circle-line text-blue-500',
     user_registered: 'ri-user-add-line text-green-500',
     email_verified: 'ri-mail-check-line text-teal-500',
+    profile_updated: 'ri-user-settings-line text-orange-500',
     pet_created: 'ri-bear-smile-line text-orange-500',
     appointment_booked: 'ri-calendar-check-line text-purple-500',
     appointment_completed: 'ri-check-double-line text-green-500',
@@ -66,6 +69,7 @@ function formatActivityMessage(action, details) {
     user_logged_in: 'Signed in to your account',
     user_registered: 'Created a new account',
     email_verified: 'Verified an email address',
+    profile_updated: 'Updated personal details',
     pet_created: 'Added a new pet profile',
     appointment_booked: 'Booked a new appointment',
     appointment_completed: 'Completed an appointment',
@@ -398,7 +402,7 @@ function showAdminAnalyticsLoadingStates() {
   showChartLoadingState('petTypeChart', 'petTypeNoData', 'pet type data');
   showChartLoadingState('serviceUsageChart', 'serviceUsageNoData', 'service data');
   showChartLoadingState('appointmentTrendChart', 'appointmentTrendNoData', 'appointment trends');
-  ['insightPetType', 'insightService', 'insightBookings', 'insightCompletion'].forEach(id => {
+  ['insightPetType', 'insightService', 'insightBookings', 'insightCompletion', 'analyticsUpcomingCheckups'].forEach(id => {
     setElementLoading(id, 'Loading');
   });
 }
@@ -720,16 +724,16 @@ function countUpcomingBookings() {
   }).length;
 }
 
-function countVaccinationsDueSoon() {
+function countUpcomingCheckups() {
   const today = getTodayDateKey();
   const windowEndDate = new Date();
-  windowEndDate.setDate(windowEndDate.getDate() + VACCINATIONS_DUE_SOON_WINDOW_DAYS);
+  windowEndDate.setDate(windowEndDate.getDate() + UPCOMING_CHECKUPS_WINDOW_DAYS);
   const windowEnd = new Date(windowEndDate.getTime() - windowEndDate.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   return asArray(adminDashboardData.appointments).filter(appointment => {
-    const service = String(appointment.service_type || '').toLowerCase();
+    const service = String(appointment.service_type || '').trim();
     const dateKey = normalizeDashboardDateValue(appointment.appointment_date);
-    return service.includes('vaccination') && dateKey && dateKey >= today && dateKey <= windowEnd &&
-      VACCINATIONS_DUE_SOON_STATUSES.includes(getAppointmentStatus(appointment.status));
+    return CHECKUP_SERVICE_NAMES.includes(service) && dateKey && dateKey >= today && dateKey <= windowEnd &&
+      UPCOMING_CHECKUPS_STATUSES.includes(getAppointmentStatus(appointment.status));
   }).length;
 }
 
@@ -752,7 +756,7 @@ function buildRealDashboardSummary(summary = {}) {
   const unverifiedSummaryCount = getDashboardCount(summary?.unverifiedUsers);
   const pendingVerificationsCount = getDashboardCount(summary?.pendingVerifications);
   const activityLogCount = getDashboardCount(summary?.activityLogCount);
-  const vaccinationsDueSoonSummaryCount = getDashboardCount(summary?.vaccinationsDueSoon);
+  const upcomingCheckupsSummaryCount = getDashboardCount(summary?.upcomingCheckups);
 
   return {
     ...summary,
@@ -761,7 +765,7 @@ function buildRealDashboardSummary(summary = {}) {
     totalAppointments,
     pendingAppointments: countAppointmentsByStatus('Pending'),
     completedAppointments,
-    vaccinationsDueSoon: vaccinationsDueSoonSummaryCount !== null ? vaccinationsDueSoonSummaryCount : countVaccinationsDueSoon(),
+    upcomingCheckups: upcomingCheckupsSummaryCount !== null ? upcomingCheckupsSummaryCount : countUpcomingCheckups(),
     upcomingBookings: countUpcomingBookings(),
     completedAppointmentPercentage: totalAppointments > 0
       ? Math.round((completedAppointments / totalAppointments) * 100)
@@ -853,7 +857,7 @@ function displayAnalyticsSummary(summary) {
   const verifiedUsers = document.getElementById('analyticsVerifiedUsers');
   const activityLogs = document.getElementById('analyticsActivityLogs');
   const completedAppointments = document.getElementById('analyticsCompletedAppointments');
-  const vaccinationsDue = document.getElementById('analyticsVaccinationsDue');
+  const upcomingCheckups = document.getElementById('analyticsUpcomingCheckups');
   const medicalRecords = document.getElementById('analyticsMedicalRecords');
 
   const summaryData = buildRealDashboardSummary(summary || {});
@@ -867,7 +871,7 @@ function displayAnalyticsSummary(summary) {
   if (verifiedUsers) verifiedUsers.textContent = formatDashboardDataValue(summaryData.verifiedUsers, unavailable);
   if (activityLogs) activityLogs.textContent = formatDashboardDataValue(summaryData.activityLogCount, unavailable);
   if (completedAppointments) completedAppointments.textContent = formatDashboardDataValue(summaryData.completedAppointments, unavailable);
-  if (vaccinationsDue) vaccinationsDue.textContent = formatDashboardDataValue(summaryData.vaccinationsDueSoon, unavailable);
+  if (upcomingCheckups) upcomingCheckups.textContent = formatDashboardDataValue(summaryData.upcomingCheckups, unavailable);
   if (medicalRecords) {
     const displayValue = formatDashboardDataValue(medicalRecordsCount, unavailable);
     medicalRecords.textContent = displayValue;

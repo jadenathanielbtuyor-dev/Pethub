@@ -16,8 +16,8 @@ const userDashboardData = {
   pets: [],
   medicalRecords: [],
   medicalRecordsLoaded: false,
-  // Optional details from registration (GET /auth/user-status?include=profile). Kept in memory only, never in
-  // sessionStorage; null when they could not be loaded.
+  // Personal details (GET /auth/user-status?include=profile; edited through PUT /auth/profile). Kept in memory only,
+  // never in sessionStorage; null when they could not be loaded.
   profile: null
 };
 
@@ -59,6 +59,7 @@ async function initializeUserDashboard() {
   displayWelcome(userData);
   displayUserHeaderInfo();
   displayAccountDetails(userData, userDashboardData.profile);
+  setupAccountDetailsEditing();
 
   // Load dashboard data in parallel - use Promise.allSettled to prevent one failure from blocking all
   const results = await Promise.allSettled([
@@ -171,17 +172,13 @@ function displayWelcome(userData) {
   }
 }
 
-// +639171234567 -> +63 917 123 4567 (registration stores Philippine mobile numbers in that form)
-function formatContactNumber(value) {
-  const match = /^\+63(9\d{2})(\d{3})(\d{4})$/.exec(String(value || ''));
-  return match ? `+63 ${match[1]} ${match[2]} ${match[3]}` : String(value || '');
-}
-
-// "Your details": the account name, email and the optional details given at registration (read-only)
+// "Your details": the account name and email, and the personal details the clinic asks for. Accounts created before
+// those details were required show "Not provided" and a "Complete your details" banner until they are added.
 function displayAccountDetails(userData, profile) {
   const container = document.getElementById('accountDetailsContainer');
   if (!container || !userData) return;
 
+  const fields = window.PetHubProfileFields;
   const notProvided = '<span class="text-gray-500">Not provided</span>';
   const show = value => (hasRecordedValue(value) ? escapeHtml(String(value)) : notProvided);
   const details = profile || {};
@@ -191,16 +188,16 @@ function displayAccountDetails(userData, profile) {
     .join(', ');
 
   const rows = [
-    ['Full name', show(userData.fullname)],
+    ['Full legal name', show(userData.fullname)],
     ['Email', show(userData.email)],
     ['Member since', userData.created_at ? escapeHtml(formatDate(userData.created_at)) : notProvided]
   ];
   if (profile) {
     rows.push(
-      ['Contact number', hasRecordedValue(details.phone_number) ? escapeHtml(formatContactNumber(details.phone_number)) : notProvided],
+      ['Contact number', hasRecordedValue(details.phone_number) ? escapeHtml(fields.formatContactNumber(details.phone_number)) : notProvided],
       ['Date of birth', hasRecordedValue(details.date_of_birth) ? escapeHtml(formatDate(details.date_of_birth)) : notProvided],
       ['Gender', show(details.gender)],
-      ['Address', show(address), 'sm:col-span-2']
+      ['Home address', show(address), 'sm:col-span-2']
     );
   }
 
@@ -213,10 +210,231 @@ function displayAccountDetails(userData, profile) {
         </div>
       `).join('')}
     </dl>
-    <p class="mt-4 text-xs text-gray-500">${profile
-      ? 'Changing these details from PetHub is not available yet.'
-      : 'Your personal details could not be loaded right now. Please refresh the page to try again.'}</p>
+    ${profile ? '' : '<p class="mt-4 text-xs text-gray-500">Your personal details could not be loaded right now. Please refresh the page to try again.</p>'}
   `;
+
+  // Details can only be edited once they have been loaded, so a save never blanks out what could not be read
+  const editButton = document.getElementById('editAccountDetailsButton');
+  const form = document.getElementById('accountDetailsForm');
+  if (editButton) editButton.hidden = !profile || Boolean(form && !form.hidden);
+  updateProfileCompletionBanner(userData, profile);
+}
+
+function updateProfileCompletionBanner(userData, profile) {
+  const banner = document.getElementById('profileCompletionBanner');
+  if (!banner) return;
+  const isCustomer = String(userData?.role || 'user').toLowerCase() === 'user';
+  banner.hidden = !(isCustomer && profile && !window.PetHubProfileFields.isProfileComplete(profile));
+}
+
+// Form input id -> field name sent to PUT /auth/profile (and returned as `field` in its errors); errors are `${id}Error`
+const ACCOUNT_DETAILS_FIELDS = [
+  { id: 'profileFullname', name: 'fullname' },
+  { id: 'profileDateOfBirth', name: 'date_of_birth' },
+  { id: 'profileGender', name: 'gender' },
+  { id: 'profilePhoneNumber', name: 'phone_number' },
+  { id: 'profileAddressLine', name: 'address_line' },
+  { id: 'profileBarangay', name: 'barangay' },
+  { id: 'profileCityMunicipality', name: 'city_municipality' },
+  { id: 'profileProvince', name: 'province' },
+  { id: 'profilePostalCode', name: 'postal_code' }
+];
+let accountDetailsSaveInProgress = false;
+
+function readAccountDetailsValues() {
+  return Object.fromEntries(ACCOUNT_DETAILS_FIELDS.map(({ id, name }) => {
+    const input = document.getElementById(id);
+    // A date the browser could not understand reads as '' with validity.badInput set
+    if (name === 'date_of_birth' && input?.validity?.badInput) return [name, 'invalid'];
+    const value = input ? input.value : '';
+    return [name, name === 'gender' ? value : value.trim().replace(/\s+/g, ' ')];
+  }));
+}
+
+function getAccountDetailsFieldError(name, values) {
+  const fields = window.PetHubProfileFields;
+  return name === 'fullname' ? fields.getFullNameError(values.fullname) : fields.getProfileFieldError(name, values[name]);
+}
+
+function setAccountDetailsFieldError(field, message) {
+  const input = document.getElementById(field.id);
+  const error = document.getElementById(`${field.id}Error`);
+  if (input) {
+    input.classList.toggle('is-invalid', Boolean(message));
+    if (message) input.setAttribute('aria-invalid', 'true');
+    else input.removeAttribute('aria-invalid');
+  }
+  if (error) {
+    error.textContent = message || '';
+    error.hidden = !message;
+  }
+}
+
+// A message from the server stays until the value it was about changes (leaving the field unchanged must not clear it)
+function validateAccountDetailsField(field, values = readAccountDetailsValues()) {
+  const input = document.getElementById(field.id);
+  if (input && input.dataset.serverValue !== undefined) {
+    if (input.value === input.dataset.serverValue) return true;
+    delete input.dataset.serverValue;
+  }
+  const message = getAccountDetailsFieldError(field.name, values);
+  setAccountDetailsFieldError(field, message);
+  return Boolean(message);
+}
+
+function setAccountDetailsStatus(message) {
+  const status = document.getElementById('accountDetailsMessage');
+  if (!status) return;
+  status.textContent = message || '';
+  status.classList.toggle('is-visible', Boolean(message));
+}
+
+function openAccountDetailsForm() {
+  const form = document.getElementById('accountDetailsForm');
+  const view = document.getElementById('accountDetailsContainer');
+  const editButton = document.getElementById('editAccountDetailsButton');
+  if (!form || !userDashboardData.profile) return;
+
+  const user = getUser() || {};
+  const profile = userDashboardData.profile;
+  const fields = window.PetHubProfileFields;
+  const saved = {
+    fullname: user.fullname || '',
+    ...Object.fromEntries(fields.PROFILE_FIELDS.map(name => [name, profile[name] || '']))
+  };
+  saved.phone_number = saved.phone_number ? fields.formatContactNumber(saved.phone_number) : '';
+
+  ACCOUNT_DETAILS_FIELDS.forEach(field => {
+    const input = document.getElementById(field.id);
+    if (input) {
+      input.value = saved[field.name] || '';
+      delete input.dataset.touched;
+      delete input.dataset.serverValue;
+    }
+    setAccountDetailsFieldError(field, '');
+  });
+  const dateInput = document.getElementById('profileDateOfBirth');
+  if (dateInput) dateInput.max = fields.getClinicDate();
+  clearMessage(document.getElementById('accountDetailsFormMessage'));
+  setAccountDetailsStatus('');
+
+  form.hidden = false;
+  if (view) view.hidden = true;
+  if (editButton) {
+    editButton.hidden = true;
+    editButton.setAttribute('aria-expanded', 'true');
+  }
+  // Start at the first missing detail, or at the name
+  const firstMissing = ACCOUNT_DETAILS_FIELDS.find(field => !saved[field.name]) || ACCOUNT_DETAILS_FIELDS[0];
+  document.getElementById(firstMissing.id)?.focus();
+}
+
+function closeAccountDetailsForm() {
+  const form = document.getElementById('accountDetailsForm');
+  const view = document.getElementById('accountDetailsContainer');
+  const editButton = document.getElementById('editAccountDetailsButton');
+  if (form) form.hidden = true;
+  if (view) view.hidden = false;
+  if (editButton) {
+    editButton.hidden = !userDashboardData.profile;
+    editButton.setAttribute('aria-expanded', 'false');
+  }
+}
+
+async function saveAccountDetails(form) {
+  if (accountDetailsSaveInProgress || isFormSubmitting(form)) return;
+  const messageContainer = document.getElementById('accountDetailsFormMessage');
+  clearMessage(messageContainer);
+
+  const values = readAccountDetailsValues();
+  const invalidFields = ACCOUNT_DETAILS_FIELDS.filter(field => validateAccountDetailsField(field, values));
+  if (invalidFields.length > 0) {
+    displayMessage(messageContainer, invalidFields.length === 1
+      ? 'Please fix the highlighted field.'
+      : `Please fix the ${invalidFields.length} highlighted fields.`, 'error');
+    document.getElementById(invalidFields[0].id)?.focus();
+    return;
+  }
+
+  accountDetailsSaveInProgress = true;
+  setFormSubmitting(form, true, 'Saving...', 'Save details');
+  try {
+    const response = await fetch(`${window.API_BASE_URL}/auth/profile`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(values)
+    });
+    const data = await getJsonFromResponse(response);
+
+    if (!response.ok || data.success === false) {
+      const field = ACCOUNT_DETAILS_FIELDS.find(entry => entry.name === data.field);
+      if (field) {
+        const input = document.getElementById(field.id);
+        if (input) input.dataset.serverValue = input.value;
+        setAccountDetailsFieldError(field, data.error);
+        displayMessage(messageContainer, 'Please check the highlighted field.', 'error');
+        document.getElementById(field.id)?.focus();
+      } else {
+        displayMessage(messageContainer, data.error || `Your details could not be saved (${response.status}). Please try again.`, 'error');
+      }
+      return;
+    }
+
+    userDashboardData.profile = data.profile;
+    // Only the name changes in the stored session user; the personal details stay in memory
+    const current = getUser();
+    if (current && data.user?.fullname) setUser({ ...current, fullname: data.user.fullname });
+
+    const userData = getUser() || current;
+    closeAccountDetailsForm();
+    displayWelcome(userData);
+    displayUserHeaderInfo();
+    displayAccountDetails(userData, userDashboardData.profile);
+    setAccountDetailsStatus('Your details were saved.');
+    document.getElementById('accountDetailsTitle')?.focus();
+  } catch (error) {
+    console.error('Saving details failed:', error.message);
+    displayMessage(messageContainer, 'We could not save your details right now. Check your connection and try again.', 'error');
+  } finally {
+    accountDetailsSaveInProgress = false;
+    setFormSubmitting(form, false, 'Saving...', 'Save details');
+  }
+}
+
+function setupAccountDetailsEditing() {
+  const form = document.getElementById('accountDetailsForm');
+  if (!form || form.dataset.ready === 'true') return;
+  form.dataset.ready = 'true';
+
+  document.getElementById('editAccountDetailsButton')?.addEventListener('click', openAccountDetailsForm);
+  document.getElementById('completeDetailsButton')?.addEventListener('click', () => {
+    document.getElementById('accountDetails')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    openAccountDetailsForm();
+  });
+  document.getElementById('cancelAccountDetailsButton')?.addEventListener('click', () => {
+    closeAccountDetailsForm();
+    document.getElementById('editAccountDetailsButton')?.focus();
+  });
+
+  // Fields are checked when the customer leaves them, and re-checked while typing once they show a message
+  ACCOUNT_DETAILS_FIELDS.forEach(field => {
+    const input = document.getElementById(field.id);
+    if (!input) return;
+    input.addEventListener('blur', () => {
+      if (input.value || input.dataset.touched === 'true' || input.validity?.badInput) {
+        input.dataset.touched = 'true';
+        validateAccountDetailsField(field);
+      }
+    });
+    input.addEventListener(input.tagName === 'SELECT' ? 'change' : 'input', () => {
+      if (input.getAttribute('aria-invalid') === 'true') validateAccountDetailsField(field);
+    });
+  });
+
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    saveAccountDetails(form);
+  });
 }
 
 function displayUserHeaderInfo() {
@@ -611,14 +829,15 @@ function getAppointmentStatusLabel(status) {
   return statusMap[normalizedStatus] || String(status);
 }
 
+// Status badge colours (assets/css/input.css .ph-status-*), readable in both themes; the same as the booking page's
 function getStatusBadgeClasses(status) {
   const classes = {
-    'Pending': 'bg-yellow-50 text-yellow-600',
-    'Approved': 'bg-blue-50 text-blue-600',
-    'Completed': 'bg-green-50 text-green-600',
-    'Cancelled': 'bg-red-50 text-red-700'
+    'Pending': 'ph-status ph-status-pending',
+    'Approved': 'ph-status ph-status-approved',
+    'Completed': 'ph-status ph-status-completed',
+    'Cancelled': 'ph-status ph-status-cancelled'
   };
-  return classes[status] || 'bg-slate-100 text-slate-700';
+  return classes[status] || 'ph-status ph-status-other';
 }
 
 function formatAppointmentDate(dateString) {
@@ -679,7 +898,7 @@ function displayRecentMedicalRecords(records) {
         </div>
         <p class="text-gray-600 font-medium">No medical records yet</p>
         <p class="text-sm text-gray-500 mt-2">Official records are added by clinic staff after completed services, so nothing has been recorded here yet.</p>
-        <p class="text-sm text-gray-500 mt-2"><a href="appointments.html" class="text-blue-500 hover:underline">Book a consultation</a></p>
+        <p class="text-sm text-gray-500 mt-2"><a href="appointments.html" class="text-blue-600 hover:underline">Book an appointment</a></p>
       </div>
     `;
     return;
@@ -782,6 +1001,7 @@ function getUserActivityIconClass(action) {
     password_reset_completed: 'ri-lock-password-line',
     password_reset_failed: 'ri-lock-password-line',
     password_reset_email_failed: 'ri-mail-close-line',
+    profile_updated: 'ri-user-settings-line',
     contact_message: 'ri-chat-3-line'
   };
   return Object.prototype.hasOwnProperty.call(iconMap, action) ? iconMap[action] : 'ri-history-line';

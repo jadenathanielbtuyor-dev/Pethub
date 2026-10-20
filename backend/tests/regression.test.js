@@ -35,12 +35,21 @@ function codeIn(email) {
   return email.text.match(/\b(\d{6})\b/)[1];
 }
 
+// Registration requires the password confirmation and every personal detail
+function registration(fullname, email, password) {
+  return {
+    fullname, email, password, confirm_password: password,
+    date_of_birth: '1990-05-20', gender: 'Prefer not to say', phone_number: '0917 123 4567', address_line: '12 Mabini Street',
+    barangay: 'San Isidro', city_municipality: 'Quezon City', province: 'Metro Manila', postal_code: '1100'
+  };
+}
+
 describe('Registration, email verification and login', () => {
   it('registers, emails a verification code, verifies it and logs in with a session token', async () => {
     const email = `${crypto.randomUUID()}@example.test`;
     const password = 'Registered#2026';
 
-    const registered = await t.api('POST', '/auth/register', { body: { fullname: 'New Owner', email, password } });
+    const registered = await t.api('POST', '/auth/register', { body: registration('New Owner', email, password) });
     assert.equal(registered.status, 201);
 
     const blocked = await t.api('POST', '/auth/login', { body: { email, password } });
@@ -70,8 +79,10 @@ describe('Registration, email verification and login', () => {
 
   it('refuses a second registration with the same email', async () => {
     const email = `${crypto.randomUUID()}@example.test`;
-    assert.equal((await t.api('POST', '/auth/register', { body: { fullname: 'A', email, password: 'Password#2026' } })).status, 201);
-    assert.equal((await t.api('POST', '/auth/register', { body: { fullname: 'B', email, password: 'Password#2026' } })).status, 400);
+    assert.equal((await t.api('POST', '/auth/register', { body: registration('Ana Cruz', email, 'Password#2026') })).status, 201);
+    const again = await t.api('POST', '/auth/register', { body: registration('Ben Cruz', email, 'Password#2026') });
+    assert.equal(again.status, 400);
+    assert.equal(again.body.error, 'Email already registered');
   });
 });
 
