@@ -4,7 +4,10 @@ const env = require('../config/env');
 const { buildVerificationEmail } = require('../templates/email/verificationEmail');
 const { logUserActivity } = require('../utils/activityLogger');
 const { createAuthToken } = require('../utils/authToken');
+const { hashPassword, verifyPassword } = require('../utils/passwordHash');
+const { runExclusive } = require('../utils/keyedLock');
 const { VERIFICATION_CODE_TTL_MINUTES, VERIFICATION_RESEND_COOLDOWN_SECONDS } = require('../constants/email');
+const { PROFILE_COLUMNS } = require('../constants/userProfile');
 const usersRepository = require('../repositories/usersRepository');
 const emailVerificationsRepository = require('../repositories/emailVerificationsRepository');
 const activityLogsRepository = require('../repositories/activityLogsRepository');
@@ -21,17 +24,75 @@ const {
 
 const isDev = !env.isProduction;
 
-function hashPasswordLegacy(password) {
-  const crypto = require('crypto');
-  return `sha256$${crypto.createHash('sha256').update(password, 'utf8').digest('hex')}`;
+const EMAIL_ALREADY_REGISTERED = { statusCode: 400, body: { success: false, error: 'Email already registered', field: 'email' } };
+
+// PostgREST codes for a column the database does not have: the optional profile columns
+// (database/migrations/2026-10-20_users_profile_fields.sql) have not been added yet
+function isMissingColumnError(error) {
+  return error?.code === 'PGRST204' || error?.code === '42703';
 }
 
-async function comparePassword(password, storedPassword) {
-  if (!storedPassword) return false;
-  if (storedPassword.startsWith('sha256$')) {
-    return storedPassword === hashPasswordLegacy(password);
+// Checks the email and creates the account. Copies of one registration that arrive together (a double click,
+// two tabs) run one at a time for that email in this process, so the second finds the first account; the
+// database's duplicate-key error, when it reports one, covers requests handled elsewhere.
+function createAccount({ cleanName, normalizedEmail, cleanPassword, profile }) {
+  return runExclusive(`register:${normalizedEmail}`, async () => {
+    const { data: existingUsers, error: checkError } = await usersRepository.findIdsByEmail(normalizedEmail);
+
+    if (checkError) {
+      console.error('Check existing user error:', checkError);
+      return { response: { statusCode: 500, body: { success: false, error: 'Database error' } } };
+    }
+
+    if (existingUsers && existingUsers.length > 0) {
+      return { response: EMAIL_ALREADY_REGISTERED };
+    }
+
+    const { data: newUsers, error: insertError } = await usersRepository.createUser({
+      fullname: cleanName,
+      email: normalizedEmail,
+      password: await hashPassword(cleanPassword),
+      role: 'user',
+      is_verified: false,
+      ...profile
+    });
+
+    if (insertError) {
+      const duplicateError = insertError.code === '23505' || /duplicate key|unique constraint|already exists/i.test(String(insertError.message || ''));
+      if (duplicateError) return { response: EMAIL_ALREADY_REGISTERED };
+
+      if (isMissingColumnError(insertError)) {
+        console.error('Register error: the optional profile columns are missing from users; apply database/migrations/2026-10-20_users_profile_fields.sql', { code: insertError.code });
+        return { response: { statusCode: 503, body: {
+          success: false,
+          error: 'Personal details cannot be saved right now. Clear the optional personal details to register now, or try again later.'
+        } } };
+      }
+
+      console.error('Insert error:', { code: insertError.code, message: insertError.message });
+      return { response: { statusCode: 500, body: { success: false, error: 'Failed to register user' } } };
+    }
+
+    if (!newUsers || newUsers.length === 0) {
+      return { response: { statusCode: 500, body: { success: false, error: 'Registration failed' } } };
+    }
+
+    return { user: newUsers[0] };
+  });
+}
+
+// The signed-in customer's optional profile details for their dashboard (GET /auth/user-status?include=profile).
+// null when they cannot be read, so the rest of the status reply still works (e.g. before the migration).
+async function loadProfile(userId) {
+  const { data, error } = await usersRepository.findProfileById(userId);
+  if (error) {
+    console.warn('User profile lookup error:', { code: error.code });
+    return null;
   }
-  return String(password) === String(storedPassword);
+
+  const row = Array.isArray(data) ? data[0] : null;
+  if (!row) return null;
+  return Object.fromEntries(PROFILE_COLUMNS.map(column => [column, row[column] ?? null]));
 }
 
 const login = async (req) => {
@@ -54,7 +115,7 @@ const login = async (req) => {
 
     const user = users[0];
 
-    if (!(await comparePassword(cleanPassword, user.password))) {
+    if (!(await verifyPassword(cleanPassword, user.password))) {
       return { statusCode: 403, body: { success: false, error: 'Invalid email or password' } };
     }
 
@@ -104,41 +165,12 @@ const register = async (req) => {
     const validation = validateRegister(req.body);
     if (validation.error) return validation.error;
 
-    const { cleanName, normalizedEmail, cleanPassword } = validation;
+    const { cleanName, normalizedEmail } = validation;
 
-    const { data: existingUsers, error: checkError } = await usersRepository.findIdsByEmail(normalizedEmail);
+    const created = await createAccount(validation);
+    if (created.response) return created.response;
 
-    if (checkError) {
-      console.error('Check existing user error:', checkError);
-      return { statusCode: 500, body: { success: false, error: 'Database error' } };
-    }
-
-    if (existingUsers && existingUsers.length > 0) {
-      return { statusCode: 400, body: { success: false, error: 'Email already registered' } };
-    }
-
-    const { data: newUsers, error: insertError } = await usersRepository.createUser({
-      fullname: cleanName,
-      email: normalizedEmail,
-      password: cleanPassword,
-      role: 'user',
-      is_verified: false
-    });
-
-    if (insertError) {
-      console.error('Insert error:', insertError);
-      const duplicateError = insertError.code === '23505' || /duplicate key|unique constraint|already exists/i.test(String(insertError.message || ''));
-      if (duplicateError) {
-        return { statusCode: 400, body: { success: false, error: 'Email already registered' } };
-      }
-      return { statusCode: 500, body: { success: false, error: 'Failed to register user' } };
-    }
-
-    if (!newUsers || newUsers.length === 0) {
-      return { statusCode: 500, body: { success: false, error: 'Registration failed' } };
-    }
-
-    const user = newUsers[0];
+    const user = created.user;
     const verificationCode = generateVerificationCode();
     const expiresAt = getExpiryTimestamp();
     const { error: verificationError } = await emailVerificationsRepository.createVerification({
@@ -455,7 +487,7 @@ const getUserStatus = async (req) => {
       isVerified = Array.isArray(verifiedRows) && verifiedRows.length > 0;
     }
 
-    return { statusCode: 200, body: {
+    const body = {
       success: true,
       user: {
         id: String(user.id),
@@ -465,7 +497,14 @@ const getUserStatus = async (req) => {
         is_verified: isVerified,
         created_at: user.created_at
       }
-    } };
+    };
+
+    // Only the user dashboard asks for the profile; it is kept apart from `user`, which the frontend stores in sessionStorage
+    if (req.query.include === 'profile') {
+      body.profile = await loadProfile(user.id);
+    }
+
+    return { statusCode: 200, body };
   } catch (error) {
     console.error('Get user status error:', error);
     return { statusCode: 500, body: { success: false, error: 'Server error retrieving user status' } };

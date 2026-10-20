@@ -312,12 +312,21 @@ const uuid = () => crypto.randomUUID();
 // PetHub tables as the code uses them. The legacy payment schema stays in the real database (the payments table and
 // appointments.deposit_required / payment_status, from database/migrations/2026-10-17_paymongo_deposits.sql), so it is
 // modelled here too: the application must work alongside it without reading or writing it.
-function createPetHubDatabase() {
+// users has the columns the live database showed on 2026-10-20 plus the optional profile columns from
+// database/migrations/2026-10-20_users_profile_fields.sql; { usersProfileColumns: false } leaves those out, like the
+// database before that migration.
+const USERS_LIVE_COLUMNS = [
+  'id', 'fullname', 'email', 'password', 'role', 'created_at', 'is_verified',
+  'phone_number', 'profile_image', 'last_login_at', 'status', 'deleted_at'
+];
+const USERS_PROFILE_MIGRATION_COLUMNS = ['date_of_birth', 'gender', 'address_line', 'barangay', 'city_municipality', 'province', 'postal_code'];
+
+function createPetHubDatabase({ usersProfileColumns = true } = {}) {
   const definitions = {
     users: {
-      columns: ['id', 'fullname', 'email', 'password', 'role', 'is_verified', 'created_at'],
+      columns: usersProfileColumns ? [...USERS_LIVE_COLUMNS, ...USERS_PROFILE_MIGRATION_COLUMNS] : [...USERS_LIVE_COLUMNS],
       uuidColumns: ['id'],
-      defaults: { id: uuid, created_at: now, role: () => 'user', is_verified: () => false }
+      defaults: { id: uuid, created_at: now, role: () => 'user', is_verified: () => false, status: () => 'Active' }
     },
     email_verifications: {
       columns: ['id', 'user_id', 'verification_code', 'expires_at', 'is_verified', 'created_at'],
@@ -381,5 +390,6 @@ function createPetHubDatabase() {
 }
 
 module.exports = {
-  createPetHubDatabase
+  createPetHubDatabase,
+  USERS_PROFILE_MIGRATION_COLUMNS
 };

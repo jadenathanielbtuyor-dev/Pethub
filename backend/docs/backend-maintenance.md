@@ -24,6 +24,12 @@ Optional frontend origin settings:
 
 Online payments (PayMongo deposits) were removed from PetHub. `PAYMENTS_ENABLED`, `PAYMONGO_SECRET_KEY`, `PAYMONGO_WEBHOOK_SECRET` and `PAYMONGO_API_URL` are no longer read and can be deleted wherever they are still set. The old `/payments/*` endpoints answer with the API 404. The database keeps the `payments` table and the `appointments.deposit_required` / `appointments.payment_status` columns (historical data, see `database/migrations/2026-10-17_paymongo_deposits.sql`); the application no longer reads or writes them.
 
+## Accounts and Passwords
+
+New passwords (registration and password reset) are stored as salted scrypt hashes by `utils/passwordHash.js` (Node's built-in `crypto`, no dependency). Login also accepts the values stored before hashing was introduced (plaintext and `sha256$...`), so existing accounts keep working; their stored value only changes when the owner resets the password. Do not roll the backend back to a version older than this change: older code compares plaintext and would refuse every account created or reset since.
+
+Registration also accepts optional profile details (date of birth, gender, contact number, address), validated in `validators/authValidator.js` with the limits in `constants/userProfile.js`. They need `database/migrations/2026-10-20_users_profile_fields.sql` (apply it before deploying the backend). Until it is applied, registrations without those details still work and registrations with them are refused with a clear message (503). `users.phone_number` already existed and holds the contact number. The user dashboard reads the details through `GET /auth/user-status?include=profile` (owner only); admin user lists do not include them.
+
 ## Folder Roles
 
 - `config/`: runtime configuration and third-party client setup.

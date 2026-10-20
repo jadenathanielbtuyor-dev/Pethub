@@ -28,7 +28,8 @@ function manilaDate(daysFromToday) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
 }
 
-async function startTestApp({ env = {}, adminClientConfigured = true } = {}) {
+// database: options for the in-memory database (helpers/fakeSupabase.js), e.g. { usersProfileColumns: false }
+async function startTestApp({ env = {}, adminClientConfigured = true, database = {} } = {}) {
   const secrets = {
     authTokenSecret: crypto.randomBytes(32).toString('hex'),
     brevoApiKey: `xkeysib-fake-${crypto.randomBytes(12).toString('hex')}`
@@ -59,7 +60,7 @@ async function startTestApp({ env = {}, adminClientConfigured = true } = {}) {
 
   stubModule(require.resolve('dotenv', { paths: [BACKEND_DIR] }), { config: () => ({ parsed: {} }) });
 
-  const db = createPetHubDatabase();
+  const db = createPetHubDatabase(database);
   const adminState = { configured: adminClientConfigured };
   stubModule(path.join(BACKEND_DIR, 'config', 'supabase.js'), db.client());
   stubModule(path.join(BACKEND_DIR, 'config', 'supabaseAdmin.js'), {

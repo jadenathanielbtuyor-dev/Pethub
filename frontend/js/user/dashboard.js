@@ -15,7 +15,10 @@ document.addEventListener('DOMContentLoaded', () => {
 const userDashboardData = {
   pets: [],
   medicalRecords: [],
-  medicalRecordsLoaded: false
+  medicalRecordsLoaded: false,
+  // Optional details from registration (GET /auth/user-status?include=profile). Kept in memory only, never in
+  // sessionStorage; null when they could not be loaded.
+  profile: null
 };
 
 async function initializeUserDashboard() {
@@ -55,6 +58,7 @@ async function initializeUserDashboard() {
   // Display user info immediately
   displayWelcome(userData);
   displayUserHeaderInfo();
+  displayAccountDetails(userData, userDashboardData.profile);
 
   // Load dashboard data in parallel - use Promise.allSettled to prevent one failure from blocking all
   const results = await Promise.allSettled([
@@ -147,7 +151,8 @@ function renderUserDashboardLoadingStates() {
     ['recentPetsContainer', 'pets', 2],
     ['recentAppointmentsContainer', 'appointments', 2],
     ['recentRecordsContainer', 'medical records', 2],
-    ['recentActivityContainer', 'activity logs', 2]
+    ['recentActivityContainer', 'activity logs', 2],
+    ['accountDetailsContainer', 'your details', 1]
   ];
 
   loaders.forEach(([containerId, sectionName, rowCount]) => {
@@ -164,6 +169,54 @@ function displayWelcome(userData) {
     const firstName = userData.fullname ? userData.fullname.split(' ')[0] : '';
     welcomeMessage.textContent = firstName ? `Welcome back, ${firstName}!` : 'Welcome back';
   }
+}
+
+// +639171234567 -> +63 917 123 4567 (registration stores Philippine mobile numbers in that form)
+function formatContactNumber(value) {
+  const match = /^\+63(9\d{2})(\d{3})(\d{4})$/.exec(String(value || ''));
+  return match ? `+63 ${match[1]} ${match[2]} ${match[3]}` : String(value || '');
+}
+
+// "Your details": the account name, email and the optional details given at registration (read-only)
+function displayAccountDetails(userData, profile) {
+  const container = document.getElementById('accountDetailsContainer');
+  if (!container || !userData) return;
+
+  const notProvided = '<span class="text-gray-500">Not provided</span>';
+  const show = value => (hasRecordedValue(value) ? escapeHtml(String(value)) : notProvided);
+  const details = profile || {};
+  const address = ['address_line', 'barangay', 'city_municipality', 'province', 'postal_code']
+    .map(key => details[key])
+    .filter(hasRecordedValue)
+    .join(', ');
+
+  const rows = [
+    ['Full name', show(userData.fullname)],
+    ['Email', show(userData.email)],
+    ['Member since', userData.created_at ? escapeHtml(formatDate(userData.created_at)) : notProvided]
+  ];
+  if (profile) {
+    rows.push(
+      ['Contact number', hasRecordedValue(details.phone_number) ? escapeHtml(formatContactNumber(details.phone_number)) : notProvided],
+      ['Date of birth', hasRecordedValue(details.date_of_birth) ? escapeHtml(formatDate(details.date_of_birth)) : notProvided],
+      ['Gender', show(details.gender)],
+      ['Address', show(address), 'sm:col-span-2']
+    );
+  }
+
+  container.innerHTML = `
+    <dl class="grid gap-4 sm:grid-cols-2">
+      ${rows.map(([label, value, extraClass]) => `
+        <div class="min-w-0 ${extraClass || ''}">
+          <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">${label}</dt>
+          <dd class="mt-1 break-words text-sm font-medium text-gray-900">${value}</dd>
+        </div>
+      `).join('')}
+    </dl>
+    <p class="mt-4 text-xs text-gray-500">${profile
+      ? 'Changing these details from PetHub is not available yet.'
+      : 'Your personal details could not be loaded right now. Please refresh the page to try again.'}</p>
+  `;
 }
 
 function displayUserHeaderInfo() {
@@ -588,7 +641,7 @@ async function refreshCurrentUser() {
   }
 
   try {
-    const response = await fetchWithRetry(() => fetch(`${window.API_BASE_URL}/auth/user-status?user_id=${userData.id}`));
+    const response = await fetchWithRetry(() => fetch(`${window.API_BASE_URL}/auth/user-status?user_id=${encodeURIComponent(userData.id)}&include=profile`));
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       const refreshError = new Error(data.error || 'Unable to refresh user status');
@@ -602,6 +655,8 @@ async function refreshCurrentUser() {
     }
 
     setUser(data.user);
+    // The profile stays out of setUser(), which writes to sessionStorage
+    userDashboardData.profile = data.profile && typeof data.profile === 'object' ? data.profile : null;
     return data.user;
   } catch (error) {
     console.error('Error refreshing user status:', error);

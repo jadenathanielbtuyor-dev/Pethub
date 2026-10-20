@@ -4,6 +4,9 @@ const USER_AUTH_SELECT = 'id, fullname, email, password, role, is_verified, crea
 const USER_PUBLIC_SELECT = 'id, fullname, email, role, is_verified, created_at';
 const USER_ADMIN_LIST_SELECT = 'id, fullname, email, role, created_at, is_verified';
 const USER_NAME_SELECT = 'id, fullname';
+// Optional profile details (constants/userProfile.js PROFILE_COLUMNS). Deliberately not part of the selects above:
+// those keep working on a database where database/migrations/2026-10-20_users_profile_fields.sql is not applied yet.
+const USER_PROFILE_SELECT = 'id, phone_number, date_of_birth, gender, address_line, barangay, city_municipality, province, postal_code';
 
 function findByEmailForLogin(email) {
   return supabase
@@ -43,7 +46,7 @@ function updateVerificationStatus(userId, isVerified = true) {
     .select('id');
 }
 
-// Stores the password the same way registration does (createUser); .select lets callers confirm a row changed
+// Stores a new password hash (utils/passwordHash.js, as registration does); .select lets callers confirm a row changed
 function updatePassword(userId, password) {
   return supabase
     .from('users')
@@ -56,6 +59,14 @@ function findStatusById(userId) {
   return supabase
     .from('users')
     .select(USER_PUBLIC_SELECT)
+    .eq('id', userId)
+    .limit(1);
+}
+
+function findProfileById(userId) {
+  return supabase
+    .from('users')
+    .select(USER_PROFILE_SELECT)
     .eq('id', userId)
     .limit(1);
 }
@@ -120,6 +131,7 @@ module.exports = {
   updateVerificationStatus,
   updatePassword,
   findStatusById,
+  findProfileById,
   listVerificationStatusesWithCount,
   listForDashboardOverview,
   listAdminUsers,

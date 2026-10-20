@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PetHub | Register</title>
+  <title>PetHub | Create Account</title>
+  <meta name="description" content="Create a PetHub account to book clinic appointments, keep your pets' profiles and view their medical records.">
   <link rel="stylesheet" href="../../assets/css/style.css">
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet">
 </head>
@@ -25,68 +26,205 @@
 
   <main class="flex-grow">
     <section class="auth-section">
-      <div class="auth-card">
-        <h2>Create an Account</h2>
-        <p class="text-gray-500">Join PetHub today and manage your pets, appointments, and records in one place.</p>
-
-        <form id="registerForm" class="space-y-5">
-          <div class="form-group" id="fullnameGroup">
-            <label for="fullname" class="flex items-center gap-2 font-semibold text-gray-700 mb-2">
-              <i class="ri-user-line text-orange-500" aria-hidden="true"></i>
-              Full Name
-            </label>
-            <input type="text" id="fullname" placeholder="Enter your full name" required
-              class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-100 focus:outline-none transition-all duration-200 bg-white hover:border-orange-300">
+      <div class="register-card">
+        <!-- Why an account helps (wide screens; phones show the short lead under the heading instead) -->
+        <aside class="register-intro" aria-label="What a PetHub account gives you">
+          <div class="register-brand">
+            <img src="../../assets/images/paw.png" alt="" class="register-brand-paw">
+            <span>PetHub</span>
           </div>
+          <p class="register-intro-title">Your pets' clinic visits, all in one place</p>
+          <ul class="register-benefits">
+            <li>
+              <i class="ri-calendar-check-line" aria-hidden="true"></i>
+              <span><strong>Book appointments online</strong> and follow each request until the clinic approves it.</span>
+            </li>
+            <li>
+              <i class="ri-bear-smile-line" aria-hidden="true"></i>
+              <span><strong>Keep a profile for every pet</strong> you bring to the clinic.</span>
+            </li>
+            <li>
+              <i class="ri-health-book-line" aria-hidden="true"></i>
+              <span><strong>View medical records</strong> that clinic staff add after completed visits.</span>
+            </li>
+          </ul>
+          <p class="register-intro-note">
+            <i class="ri-shield-check-line" aria-hidden="true"></i>
+            <span>Your email address is verified before you can sign in, and your password is stored as a secure hash, never as plain text.</span>
+          </p>
+        </aside>
 
-          <div class="form-group" id="emailGroup">
-            <label for="email" class="flex items-center gap-2 font-semibold text-gray-700 mb-2">
-              <i class="ri-mail-line text-orange-500" aria-hidden="true"></i>
-              Email
-            </label>
-            <input type="email" id="email" placeholder="Enter your email" required
-              class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-100 focus:outline-none transition-all duration-200 bg-white hover:border-orange-300">
-            <p id="emailErrorMessage" class="mt-2 text-sm font-medium text-red-600"></p>
-          </div>
-
-          <div class="form-group" id="passwordGroup">
-            <label for="password" class="flex items-center gap-2 font-semibold text-gray-700 mb-2">
-              <i class="ri-lock-line text-orange-500" aria-hidden="true"></i>
-              Password
-            </label>
-            <div class="relative">
-              <input type="password" id="password" placeholder="Create a password" required
-                class="w-full px-4 py-3 pr-12 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-100 focus:outline-none transition-all duration-200 bg-white hover:border-orange-300">
-              <button type="button" id="togglePassword" aria-label="Show password" aria-pressed="false" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-orange-500 transition-colors duration-150">
-                <i class="ri-eye-line"></i>
-              </button>
+        <div class="register-main">
+          <div id="registerFormView">
+            <div class="register-mobile-brand">
+              <img src="../../assets/images/paw.png" alt="" class="register-brand-paw">
+              <span>PetHub</span>
             </div>
-            <p id="passwordHint" class="mt-2 text-sm text-gray-500">Use at least 8 characters.</p>
-          </div>
+            <h2 id="registerTitle" class="register-title">Create Your PetHub Account</h2>
+            <p class="register-lead">Book clinic appointments, keep your pets' profiles, and view their medical records in one place.</p>
+            <p class="register-required-note"><span class="register-required" aria-hidden="true">*</span> Required field</p>
 
-          <div class="form-group" id="confirmPasswordGroup">
-            <label for="confirmPassword" class="flex items-center gap-2 font-semibold text-gray-700 mb-2">
-              <i class="ri-shield-check-line text-orange-500" aria-hidden="true"></i>
-              Confirm Password
-            </label>
-            <div class="relative">
-              <input type="password" id="confirmPassword" placeholder="Confirm your password" required
-                class="w-full px-4 py-3 pr-12 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-100 focus:outline-none transition-all duration-200 bg-white hover:border-orange-300">
-              <button type="button" id="togglePasswordConfirm" aria-label="Show password confirmation" aria-pressed="false" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-orange-500 transition-colors duration-150">
-                <i class="ri-eye-line"></i>
+            <form id="registerForm" class="register-form" novalidate aria-labelledby="registerTitle">
+              <fieldset class="register-fieldset">
+                <legend class="register-legend"><i class="ri-shield-user-line" aria-hidden="true"></i>Account details</legend>
+                <div class="register-grid">
+                  <div class="register-field register-span-2">
+                    <label for="fullname" class="register-label"><i class="ri-user-line" aria-hidden="true"></i>Full name<span class="register-required" aria-hidden="true">*</span></label>
+                    <input type="text" id="fullname" name="fullname" class="register-input" autocomplete="name" maxlength="100" required
+                      aria-describedby="fullnameError" placeholder="e.g. Maria Santos">
+                    <p id="fullnameError" class="register-field-error" hidden></p>
+                  </div>
+
+                  <div class="register-field register-span-2">
+                    <label for="email" class="register-label"><i class="ri-mail-line" aria-hidden="true"></i>Email address<span class="register-required" aria-hidden="true">*</span></label>
+                    <input type="email" id="email" name="email" class="register-input" autocomplete="email" inputmode="email" maxlength="254" required
+                      aria-describedby="emailHelp emailError" placeholder="you@example.com">
+                    <p id="emailHelp" class="register-help">We'll send your verification code here.</p>
+                    <p id="emailError" class="register-field-error" hidden></p>
+                  </div>
+
+                  <div class="register-field">
+                    <label for="password" class="register-label"><i class="ri-lock-line" aria-hidden="true"></i>Password<span class="register-required" aria-hidden="true">*</span></label>
+                    <div class="register-input-wrap">
+                      <input type="password" id="password" name="password" class="register-input register-input-with-toggle" autocomplete="new-password" maxlength="128" required
+                        aria-describedby="passwordRules passwordError" placeholder="Create a password">
+                      <button type="button" id="togglePassword" class="register-toggle" aria-label="Show password" aria-pressed="false">
+                        <i class="ri-eye-line" aria-hidden="true"></i>
+                      </button>
+                    </div>
+                    <p id="passwordError" class="register-field-error" hidden></p>
+                  </div>
+
+                  <div class="register-field">
+                    <label for="confirmPassword" class="register-label"><i class="ri-lock-password-line" aria-hidden="true"></i>Confirm password<span class="register-required" aria-hidden="true">*</span></label>
+                    <div class="register-input-wrap">
+                      <input type="password" id="confirmPassword" name="confirm_password" class="register-input register-input-with-toggle" autocomplete="new-password" maxlength="128" required
+                        aria-describedby="confirmPasswordError" placeholder="Type it again">
+                      <button type="button" id="togglePasswordConfirm" class="register-toggle" aria-label="Show password confirmation" aria-pressed="false">
+                        <i class="ri-eye-line" aria-hidden="true"></i>
+                      </button>
+                    </div>
+                    <p id="confirmPasswordError" class="register-field-error" hidden></p>
+                  </div>
+
+                  <div id="passwordRules" class="register-password-rules register-span-2">
+                    <p id="passwordLengthRule" class="register-rule" data-met="false">
+                      <i class="ri-checkbox-blank-circle-line" aria-hidden="true"></i><span>8 to 128 characters. A longer passphrase is stronger.</span>
+                    </p>
+                    <p id="passwordStrength" class="register-strength" aria-live="polite"></p>
+                  </div>
+                </div>
+              </fieldset>
+
+              <details id="personalDetails" class="register-optional">
+                <summary class="register-optional-summary">
+                  <span class="register-optional-heading"><i class="ri-contacts-book-2-line" aria-hidden="true"></i>Personal details</span>
+                  <span class="register-optional-tag">Optional</span>
+                  <i class="ri-arrow-down-s-line register-optional-chevron" aria-hidden="true"></i>
+                </summary>
+
+                <div class="register-optional-body">
+                  <p class="register-help">You can leave any of these blank. What you enter is saved with your account and shown on your dashboard.</p>
+
+                  <div class="register-grid">
+                    <div class="register-field">
+                      <label for="dateOfBirth" class="register-label"><i class="ri-cake-2-line" aria-hidden="true"></i>Date of birth</label>
+                      <input type="date" id="dateOfBirth" name="date_of_birth" class="register-input" autocomplete="bday" min="1900-01-01"
+                        aria-describedby="dateOfBirthError">
+                      <p id="dateOfBirthError" class="register-field-error" hidden></p>
+                    </div>
+
+                    <div class="register-field">
+                      <label for="gender" class="register-label"><i class="ri-user-heart-line" aria-hidden="true"></i>Gender</label>
+                      <select id="gender" name="gender" class="register-input" autocomplete="sex" aria-describedby="genderHelp genderError">
+                        <option value="">Select an option</option>
+                        <option value="Female">Female</option>
+                        <option value="Male">Male</option>
+                        <option value="Non-binary">Non-binary</option>
+                        <option value="Other">Other</option>
+                        <option value="Prefer not to say">Prefer not to say</option>
+                      </select>
+                      <p id="genderHelp" class="register-help">Never needed to book an appointment.</p>
+                      <p id="genderError" class="register-field-error" hidden></p>
+                    </div>
+
+                    <div class="register-field register-span-2">
+                      <label for="phoneNumber" class="register-label"><i class="ri-phone-line" aria-hidden="true"></i>Contact number</label>
+                      <input type="tel" id="phoneNumber" name="phone_number" class="register-input" autocomplete="tel" inputmode="tel" maxlength="20"
+                        aria-describedby="phoneNumberHelp phoneNumberError" placeholder="0917 123 4567">
+                      <p id="phoneNumberHelp" class="register-help">Philippine mobile number, such as 0917 123 4567 or +63 917 123 4567.</p>
+                      <p id="phoneNumberError" class="register-field-error" hidden></p>
+                    </div>
+                  </div>
+
+                  <fieldset class="register-address">
+                    <legend class="register-sublegend"><i class="ri-map-pin-line" aria-hidden="true"></i>Address</legend>
+                    <div class="register-grid">
+                      <div class="register-field register-span-2">
+                        <label for="addressLine" class="register-label">House/Unit/Street</label>
+                        <input type="text" id="addressLine" name="address_line" class="register-input" autocomplete="address-line1" maxlength="150"
+                          aria-describedby="addressLineError" placeholder="e.g. Unit 4B, 12 Mabini Street">
+                        <p id="addressLineError" class="register-field-error" hidden></p>
+                      </div>
+
+                      <div class="register-field">
+                        <label for="barangay" class="register-label">Barangay</label>
+                        <input type="text" id="barangay" name="barangay" class="register-input" autocomplete="address-level3" maxlength="100"
+                          aria-describedby="barangayError">
+                        <p id="barangayError" class="register-field-error" hidden></p>
+                      </div>
+
+                      <div class="register-field">
+                        <label for="cityMunicipality" class="register-label">City/Municipality</label>
+                        <input type="text" id="cityMunicipality" name="city_municipality" class="register-input" autocomplete="address-level2" maxlength="100"
+                          aria-describedby="cityMunicipalityError">
+                        <p id="cityMunicipalityError" class="register-field-error" hidden></p>
+                      </div>
+
+                      <div class="register-field">
+                        <label for="province" class="register-label">Province</label>
+                        <input type="text" id="province" name="province" class="register-input" autocomplete="address-level1" maxlength="100"
+                          aria-describedby="provinceError">
+                        <p id="provinceError" class="register-field-error" hidden></p>
+                      </div>
+
+                      <div class="register-field">
+                        <label for="postalCode" class="register-label">Postal code</label>
+                        <input type="text" id="postalCode" name="postal_code" class="register-input" autocomplete="postal-code" inputmode="numeric" maxlength="4"
+                          aria-describedby="postalCodeError" placeholder="e.g. 1605">
+                        <p id="postalCodeError" class="register-field-error" hidden></p>
+                      </div>
+                    </div>
+                  </fieldset>
+                </div>
+              </details>
+
+              <div class="register-notice">
+                <i class="ri-mail-check-line" aria-hidden="true"></i>
+                <p>After you create your account, we'll email you a 6-digit code. Verify your email address before you log in.</p>
+              </div>
+
+              <div id="formMessageContainer" class="register-message"></div>
+
+              <button type="submit" class="register-submit">
+                <i class="ri-user-add-line" aria-hidden="true"></i>Create Account
               </button>
-            </div>
+            </form>
+
+            <p class="register-login-link">Already have an account? <a href="login.html">Log in</a></p>
           </div>
 
-          <div id="formMessageContainer" class="min-h-10 text-sm font-medium rounded-lg transition-all duration-200"></div>
-
-          <button type="submit" class="w-full py-3 mt-6 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 active:from-orange-700 active:to-orange-800 text-white font-semibold rounded-lg transition-all duration-200 cursor-pointer border-none transform hover:scale-105 active:scale-95 shadow-lg hover:shadow-xl">Register</button>
-        </form>
-
-        <p class="auth-link">
-          Already have an account?
-          <a href="login.html">Login here</a>
-        </p>
+          <!-- Shown after the account is created: the next step is the email verification page -->
+          <div id="registerSuccess" class="register-success" hidden>
+            <div id="registerSuccessIcon" class="register-success-icon" aria-hidden="true"><i class="ri-mail-send-line"></i></div>
+            <h2 id="registerSuccessTitle" class="register-title" tabindex="-1">Check your email</h2>
+            <p id="registerSuccessMessage" class="register-success-text"></p>
+            <a id="registerContinueLink" href="verify-email.html" class="register-submit register-continue">
+              <i class="ri-shield-keyhole-line" aria-hidden="true"></i>Enter verification code
+            </a>
+            <p class="register-success-note">Codes expire after 10 minutes. You can request a new one on the verification page.</p>
+          </div>
+        </div>
       </div>
     </section>
   </main>
