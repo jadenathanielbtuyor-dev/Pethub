@@ -3,313 +3,286 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PetHub | Dashboard</title>
+  <title>PetHub | Pet Owner Dashboard</title>
 
   <!-- CSS -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800&amp;display=swap">
   <link rel="stylesheet" href="../../assets/css/style.css">
 
   <!-- Icons -->
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet">
 </head>
-<body class="flex flex-col min-h-screen bg-slate-50 user-page">
+<!-- PET OWNER DASHBOARD: OVERVIEW (section 1 of 4: Overview, My Pets, Appointments, Pet Health & AI Assistant).
+     js/user/dashboard.js fills it for the signed-in owner only:
+     - account and personal details: GET /auth/user-status?include=profile (details edited through PUT /auth/profile)
+     - pet count and the "Your pets" list: GET /pets/userPets
+     - upcoming appointments and their clinic statuses: GET /appointments/userAppointments
+     - recent activity: GET /auth/activity-logs
+     Each request carries the session token (js/core/api.js) and a user_id that the server matches to that token
+     (backend/middleware/requireAuth.js), so an owner can only ever load their own records. A figure that cannot be
+     loaded says "Unavailable"; it is never shown as 0. -->
+<body class="ph-dash-page user-page" data-dashboard="owner" data-dashboard-section="overview">
   <!-- Apply the saved theme before first paint; main.js still owns the toggle -->
   <script>try { if (localStorage.getItem('darkMode') === 'true') { document.documentElement.classList.add('dark'); document.body.classList.add('dark-mode'); } } catch (e) {}</script>
+  <a href="#main" class="ph-skip-link">Skip to main content</a>
 
-  <!-- ================= DASHBOARD NAVIGATION ================= -->
-  <nav class="nav sticky top-0 z-50 bg-white/95 backdrop-blur-xl shadow-xl border-b border-orange-100">
-    <div class="nav-container flex flex-wrap items-center justify-between gap-4 py-4 px-4">
-      <div class="flex items-center gap-3">
-        <img src="../../assets/images/paw.png" alt="PetHub" class="w-10 h-10 rounded-full bg-orange-100 p-2">
-        <div>
-          <p class="text-base font-bold text-gray-900">PetHub</p>
-          <p class="text-xs text-gray-500 uppercase tracking-wide">User Dashboard</p>
-        </div>
-      </div>
-      <ul class="nav-links flex flex-wrap items-center gap-1">
-        <li><a href="dashboard.html" class="flex items-center gap-2 text-orange-600 font-semibold px-3 py-2 rounded-lg bg-orange-50 transition-all duration-200 hover:bg-orange-100"><i class="ri-home-line"></i>Dashboard</a></li>
-        <li><a href="pets.html" class="flex items-center gap-2 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-100 hover:text-orange-600 transition-all duration-200"><i class="ri-bear-smile-line"></i>Pets</a></li>
-        <li><a href="appointments.html" class="flex items-center gap-2 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-100 hover:text-orange-600 transition-all duration-200"><i class="ri-calendar-line"></i>Appointments</a></li>
-        <li><a href="#logout" class="btn-logout flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white transition-all duration-200 hover:bg-orange-600 hover:shadow-lg active:scale-95"><i class="ri-logout-circle-line"></i>Logout</a></li>
-      </ul>
-    </div>
-  </nav>
+  <div class="ph-dash-shell">
+    <!-- Sidebar / section bar: rendered by js/shared/dashboard-shell.js -->
+    <div id="dashboardNavRoot"></div>
 
-  <!-- ================= MAIN CONTENT ================= -->
-  <main class="flex-grow bg-slate-50">
+    <div class="ph-dash-content">
+      <main id="main" class="ph-dash-main" tabindex="-1">
 
-    <!-- ================= DASHBOARD HEADER ================= -->
-    <section class="border-b border-gray-200 bg-white">
-      <div class="max-w-6xl mx-auto px-4 py-8">
-        <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <!-- ================= PAGE HEADER ================= -->
+        <header class="ph-dash-header">
           <div>
-            <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">Dashboard</p>
-            <h1 id="welcomeMessage" class="mt-2 text-3xl font-bold text-gray-900">Welcome back</h1>
+            <p class="ph-dash-eyebrow">Pet Owner Dashboard</p>
+            <h1 id="welcomeMessage" class="ph-dash-title">Welcome back</h1>
+            <p class="ph-dash-lead">Your pets, your upcoming visits and what the clinic has updated, in one place.</p>
           </div>
-          <div class="inline-flex w-fit items-center gap-2 rounded-full border border-orange-100 bg-orange-50 px-4 py-2 text-sm font-semibold text-orange-700">
-            <i class="ri-user-line"></i>
-            <span id="userBadge">User</span>
-          </div>
-        </div>
-      </div>
-    </section>
+        </header>
 
-    <!-- ================= DASHBOARD CONTENT ================= -->
-    <section class="px-4 py-8">
-      <div class="max-w-6xl mx-auto space-y-6">
+        <div class="ph-dash-stack">
 
-        <!-- ================= COMPLETE YOUR DETAILS (accounts created before the details were required) ================= -->
-        <section id="profileCompletionBanner" class="ph-alert ph-alert-warning" aria-labelledby="profileCompletionTitle" hidden>
-          <i class="ri-user-follow-line ph-alert-icon" aria-hidden="true"></i>
-          <div class="ph-alert-body">
-            <h2 id="profileCompletionTitle" class="ph-alert-title">Complete your details</h2>
-            <p>PetHub now asks every customer for their date of birth, gender, contact number and home address. Please add yours so the clinic can reach you about your appointments.</p>
-          </div>
-          <button type="button" id="completeDetailsButton" class="ph-btn ph-btn-primary ph-btn-sm">
-            <i class="ri-edit-line" aria-hidden="true"></i>Complete your details
-          </button>
-        </section>
-
-        <!-- ================= QUICK ACTIONS SECTION ================= -->
-        <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm" aria-labelledby="quickActionsTitle">
-          <div class="mb-5">
-            <h2 id="quickActionsTitle" class="flex items-center gap-2 text-xl font-bold text-gray-900">
-              <i class="ri-flashlight-line text-orange-500"></i>
-              Quick actions
-            </h2>
-          </div>
-
-          <div class="flex flex-col gap-3 sm:flex-row">
-            <a href="pets.html" class="flex flex-1 items-center justify-between gap-3 rounded-lg border border-orange-100 bg-orange-50 px-4 py-4 text-left font-semibold text-orange-700 transition-all duration-200 hover:bg-orange-100">
-              <span class="flex items-center gap-3">
-                <i class="ri-add-circle-line text-xl"></i>
-                <span>Add a pet</span>
-              </span>
-              <i class="ri-arrow-right-line"></i>
-            </a>
-
-            <a href="appointments.html" class="flex flex-1 items-center justify-between gap-3 rounded-lg border border-blue-100 bg-blue-50 px-4 py-4 text-left font-semibold text-blue-700 transition-all duration-200 hover:bg-blue-100">
-              <span class="flex items-center gap-3">
-                <i class="ri-calendar-event-line text-xl"></i>
-                <span>Book appointment</span>
-              </span>
-              <i class="ri-arrow-right-line"></i>
-            </a>
-
-            <a href="pets.html#medicalRecordsList" class="flex flex-1 items-center justify-between gap-3 rounded-lg border border-green-100 bg-green-50 px-4 py-4 text-left font-semibold text-green-700 transition-all duration-200 hover:bg-green-100">
-              <span class="flex items-center gap-3">
-                <i class="ri-health-book-line text-xl"></i>
-                <span>View records</span>
-              </span>
-              <i class="ri-arrow-right-line"></i>
-            </a>
-          </div>
-        </section>
-
-        <!-- ================= APPOINTMENTS SECTION ================= -->
-        <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-          <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 class="flex items-center gap-2 text-xl font-bold text-gray-900">
-              <i class="ri-calendar-2-line text-blue-500"></i>
-              Next appointment
-            </h2>
-            <a href="appointments.html" class="inline-flex items-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-700">
-              View appointments
-              <i class="ri-arrow-right-line"></i>
-            </a>
-          </div>
-
-          <div id="recentAppointmentsContainer" class="text-center text-gray-500 py-8">
-            <div class="dashboard-loading-state" role="status" aria-live="polite">
-              <div class="dashboard-loading-spinner" aria-hidden="true"></div>
-              <div>
-                <p class="dashboard-loading-title">Loading appointments...</p>
-                <p class="dashboard-loading-copy">Fetching the latest PetHub records.</p>
-              </div>
+          <!-- ================= COMPLETE YOUR DETAILS (accounts created before the details were required) ================= -->
+          <section id="profileCompletionBanner" class="ph-alert ph-alert-warning" aria-labelledby="profileCompletionTitle" hidden>
+            <i class="ri-user-follow-line ph-alert-icon" aria-hidden="true"></i>
+            <div class="ph-alert-body">
+              <h2 id="profileCompletionTitle" class="ph-alert-title">Complete your details</h2>
+              <p>PetHub now asks every customer for their date of birth, gender, contact number and home address. Please add yours so the clinic can reach you about your appointments.</p>
             </div>
-          </div>
-        </section>
-
-        <!-- ================= PETS SECTION ================= -->
-        <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-          <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 class="flex items-center gap-2 text-xl font-bold text-gray-900">
-              <i class="ri-bear-smile-line text-orange-500"></i>
-              Your pets
-            </h2>
-            <a href="pets.html" class="inline-flex items-center gap-2 text-sm font-semibold text-orange-600 hover:text-orange-700">
-              View pets
-              <i class="ri-arrow-right-line"></i>
-            </a>
-          </div>
-
-          <div id="recentPetsContainer" class="text-center text-gray-500 py-8">
-            <div class="dashboard-loading-state" role="status" aria-live="polite">
-              <div class="dashboard-loading-spinner" aria-hidden="true"></div>
-              <div>
-                <p class="dashboard-loading-title">Loading pets...</p>
-                <p class="dashboard-loading-copy">Fetching the latest PetHub records.</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- ================= MEDICAL RECORDS SECTION ================= -->
-        <section id="recentRecordsCard" class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-          <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 class="flex items-center gap-2 text-xl font-bold text-gray-900">
-              <i class="ri-health-book-line text-green-600"></i>
-              Recent medical records
-            </h2>
-            <a href="pets.html#medicalRecordsList" class="inline-flex items-center gap-2 text-sm font-semibold text-green-600 hover:text-green-700">
-              View records
-              <i class="ri-arrow-right-line"></i>
-            </a>
-          </div>
-
-          <div id="recentRecordsContainer" class="space-y-4 text-sm text-gray-600">
-            <div class="dashboard-loading-state" role="status" aria-live="polite">
-              <div class="dashboard-loading-spinner" aria-hidden="true"></div>
-              <div>
-                <p class="dashboard-loading-title">Loading medical records...</p>
-                <p class="dashboard-loading-copy">Fetching the latest PetHub records.</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- ================= YOUR DETAILS SECTION ================= -->
-        <!-- Shown by js/user/dashboard.js; "Edit details" opens the form below, which saves through PUT /auth/profile -->
-        <section id="accountDetails" class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm" aria-labelledby="accountDetailsTitle">
-          <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 id="accountDetailsTitle" class="flex items-center gap-2 text-xl font-bold text-gray-900" tabindex="-1">
-              <i class="ri-contacts-book-2-line text-orange-600" aria-hidden="true"></i>
-              Your details
-            </h2>
-            <button type="button" id="editAccountDetailsButton" class="ph-btn ph-btn-secondary ph-btn-sm" aria-controls="accountDetailsForm" aria-expanded="false" hidden>
-              <i class="ri-edit-line" aria-hidden="true"></i>Edit details
+            <button type="button" id="completeDetailsButton" class="ph-btn ph-btn-primary ph-btn-sm">
+              <i class="ri-edit-line" aria-hidden="true"></i>Complete your details
             </button>
+          </section>
+
+          <!-- ================= AT A GLANCE: counted from the owner's own records once they load ================= -->
+          <section aria-labelledby="ownerStatsTitle">
+            <h2 id="ownerStatsTitle" class="sr-only">At a glance</h2>
+            <div class="ph-dash-stats ph-dash-stats-3">
+              <a href="pets.html" class="ph-dash-stat">
+                <span class="ph-dash-stat-icon"><i class="ri-bear-smile-line" aria-hidden="true"></i></span>
+                <span class="ph-dash-stat-body">
+                  <span class="ph-dash-stat-label">Your pets</span>
+                  <span id="ownerStatPets" class="ph-dash-stat-value is-muted">Loading...</span>
+                </span>
+              </a>
+              <a href="appointments.html" class="ph-dash-stat">
+                <span class="ph-dash-stat-icon"><i class="ri-calendar-check-line" aria-hidden="true"></i></span>
+                <span class="ph-dash-stat-body">
+                  <span class="ph-dash-stat-label">Upcoming appointments</span>
+                  <span id="ownerStatUpcoming" class="ph-dash-stat-value is-muted">Loading...</span>
+                </span>
+              </a>
+              <a href="appointments.html" class="ph-dash-stat">
+                <span class="ph-dash-stat-icon"><i class="ri-time-line" aria-hidden="true"></i></span>
+                <span class="ph-dash-stat-body">
+                  <span class="ph-dash-stat-label">Awaiting clinic approval</span>
+                  <span id="ownerStatPending" class="ph-dash-stat-value is-muted">Loading...</span>
+                </span>
+              </a>
+            </div>
+          </section>
+
+          <div class="ph-dash-grid-main">
+            <!-- ================= UPCOMING APPOINTMENTS: Pending or Approved and not over yet, soonest first ================= -->
+            <section class="ph-dash-panel" aria-labelledby="upcomingTitle">
+              <div class="ph-dash-panel-head">
+                <h2 id="upcomingTitle" class="ph-dash-panel-title"><i class="ri-calendar-2-line" aria-hidden="true"></i>Upcoming appointments</h2>
+                <a href="appointments.html" class="ph-dash-link">All appointments <i class="ri-arrow-right-line" aria-hidden="true"></i></a>
+              </div>
+              <div id="recentAppointmentsContainer">
+                <div class="dashboard-loading-state" role="status" aria-live="polite">
+                  <div class="dashboard-loading-spinner" aria-hidden="true"></div>
+                  <div>
+                    <p class="dashboard-loading-title">Loading appointments...</p>
+                    <p class="dashboard-loading-copy">Fetching the latest PetHub records.</p>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- ================= SHORTCUTS to the other three sections ================= -->
+            <section class="ph-dash-panel" aria-labelledby="shortcutsTitle">
+              <div class="ph-dash-panel-head">
+                <h2 id="shortcutsTitle" class="ph-dash-panel-title"><i class="ri-flashlight-line" aria-hidden="true"></i>Shortcuts</h2>
+              </div>
+              <ul class="ph-dash-list">
+                <li>
+                  <a href="pets.html" class="ph-dash-stat">
+                    <span class="ph-dash-stat-icon"><i class="ri-bear-smile-line" aria-hidden="true"></i></span>
+                    <span class="ph-dash-stat-body">
+                      <span class="ph-dash-list-title">My Pets</span>
+                      <span class="ph-dash-list-meta">Add a pet or open a pet's profile and history</span>
+                    </span>
+                  </a>
+                </li>
+                <li>
+                  <a href="appointments.html" class="ph-dash-stat">
+                    <span class="ph-dash-stat-icon"><i class="ri-calendar-check-line" aria-hidden="true"></i></span>
+                    <span class="ph-dash-stat-body">
+                      <span class="ph-dash-list-title">Appointments</span>
+                      <span class="ph-dash-list-meta">Booking status and your appointment history</span>
+                    </span>
+                  </a>
+                </li>
+                <li>
+                  <a href="health.html" class="ph-dash-stat">
+                    <span class="ph-dash-stat-icon"><i class="ri-heart-pulse-line" aria-hidden="true"></i></span>
+                    <span class="ph-dash-stat-body">
+                      <span class="ph-dash-list-title">Pet Health &amp; AI Assistant</span>
+                      <span class="ph-dash-list-meta">Official clinic records and general pet-care questions</span>
+                    </span>
+                  </a>
+                </li>
+              </ul>
+            </section>
           </div>
 
-          <p id="accountDetailsMessage" class="ph-form-status" role="status" aria-live="polite"></p>
-
-          <div id="accountDetailsContainer" class="text-sm text-gray-600">
-            <div class="dashboard-loading-state" role="status" aria-live="polite">
-              <div class="dashboard-loading-spinner" aria-hidden="true"></div>
-              <div>
-                <p class="dashboard-loading-title">Loading your details...</p>
-                <p class="dashboard-loading-copy">Fetching your PetHub account.</p>
+          <div class="ph-dash-grid">
+            <!-- ================= YOUR PETS (preview; the full list and each pet's details are on My Pets) ================= -->
+            <section class="ph-dash-panel" aria-labelledby="petsPreviewTitle">
+              <div class="ph-dash-panel-head">
+                <h2 id="petsPreviewTitle" class="ph-dash-panel-title"><i class="ri-bear-smile-line" aria-hidden="true"></i>Your pets</h2>
+                <a href="pets.html" class="ph-dash-link">My Pets <i class="ri-arrow-right-line" aria-hidden="true"></i></a>
               </div>
-            </div>
+              <div id="recentPetsContainer">
+                <div class="dashboard-loading-state" role="status" aria-live="polite">
+                  <div class="dashboard-loading-spinner" aria-hidden="true"></div>
+                  <div>
+                    <p class="dashboard-loading-title">Loading pets...</p>
+                    <p class="dashboard-loading-copy">Fetching the latest PetHub records.</p>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- ================= RECENT ACTIVITY: the account's own activity log entries ================= -->
+            <section class="ph-dash-panel" aria-labelledby="activityTitle">
+              <div class="ph-dash-panel-head">
+                <h2 id="activityTitle" class="ph-dash-panel-title"><i class="ri-history-line" aria-hidden="true"></i>Recent activity</h2>
+              </div>
+              <div id="recentActivityContainer">
+                <div class="dashboard-loading-state" role="status" aria-live="polite">
+                  <div class="dashboard-loading-spinner" aria-hidden="true"></div>
+                  <div>
+                    <p class="dashboard-loading-title">Loading activity logs...</p>
+                    <p class="dashboard-loading-copy">Fetching the latest PetHub records.</p>
+                  </div>
+                </div>
+              </div>
+            </section>
           </div>
 
-          <form id="accountDetailsForm" class="ph-form" novalidate hidden aria-labelledby="accountDetailsTitle">
-            <p class="ph-help">Every field is required (marked <span class="ph-required" aria-hidden="true">*</span><span class="sr-only">with an asterisk</span>). Your email address cannot be changed here; to change your password, use Forgot Password on the login page.</p>
+          <!-- ================= YOUR DETAILS ================= -->
+          <!-- Shown by js/user/dashboard.js; "Edit details" opens the form below, which saves through PUT /auth/profile.
+               The server validates every field again and only ever updates the signed-in account. -->
+          <section id="accountDetails" class="ph-dash-panel" aria-labelledby="accountDetailsTitle">
+            <div class="ph-dash-panel-head">
+              <h2 id="accountDetailsTitle" class="ph-dash-panel-title" tabindex="-1">
+                <i class="ri-contacts-book-2-line" aria-hidden="true"></i>
+                Your details
+              </h2>
+              <button type="button" id="editAccountDetailsButton" class="ph-btn ph-btn-secondary ph-btn-sm" aria-controls="accountDetailsForm" aria-expanded="false" hidden>
+                <i class="ri-edit-line" aria-hidden="true"></i>Edit details
+              </button>
+            </div>
 
-            <div class="ph-form-grid">
-              <div class="ph-field ph-span-2">
-                <label for="profileFullname" class="ph-label">Full legal name<span class="ph-required" aria-hidden="true">*</span></label>
-                <input type="text" id="profileFullname" name="fullname" class="ph-input" autocomplete="name" maxlength="100" required aria-describedby="profileFullnameError">
-                <p id="profileFullnameError" class="ph-field-error" hidden></p>
-              </div>
+            <p id="accountDetailsMessage" class="ph-form-status" role="status" aria-live="polite"></p>
 
-              <div class="ph-field">
-                <label for="profileDateOfBirth" class="ph-label">Date of birth<span class="ph-required" aria-hidden="true">*</span></label>
-                <input type="date" id="profileDateOfBirth" name="date_of_birth" class="ph-input" autocomplete="bday" min="1900-01-01" required aria-describedby="profileDateOfBirthError">
-                <p id="profileDateOfBirthError" class="ph-field-error" hidden></p>
-              </div>
-
-              <div class="ph-field">
-                <label for="profileGender" class="ph-label">Gender<span class="ph-required" aria-hidden="true">*</span></label>
-                <select id="profileGender" name="gender" class="ph-input" autocomplete="sex" required aria-describedby="profileGenderHelp profileGenderError">
-                  <option value="">Select an option</option>
-                  <option value="Female">Female</option>
-                  <option value="Male">Male</option>
-                  <option value="Non-binary">Non-binary</option>
-                  <option value="Other">Other</option>
-                  <option value="Prefer not to say">Prefer not to say</option>
-                </select>
-                <p id="profileGenderHelp" class="ph-help">You can choose "Prefer not to say".</p>
-                <p id="profileGenderError" class="ph-field-error" hidden></p>
-              </div>
-
-              <div class="ph-field ph-span-2">
-                <label for="profilePhoneNumber" class="ph-label">Contact number<span class="ph-required" aria-hidden="true">*</span></label>
-                <input type="tel" id="profilePhoneNumber" name="phone_number" class="ph-input" autocomplete="tel" inputmode="tel" maxlength="25" required aria-describedby="profilePhoneNumberHelp profilePhoneNumberError" placeholder="0917 123 4567">
-                <p id="profilePhoneNumberHelp" class="ph-help">Mobile or landline, such as 0917 123 4567 or 02 8123 4567. Outside the Philippines? Start with + and the country code.</p>
-                <p id="profilePhoneNumberError" class="ph-field-error" hidden></p>
-              </div>
-
-              <div class="ph-field ph-span-2">
-                <label for="profileAddressLine" class="ph-label">House/unit number and street<span class="ph-required" aria-hidden="true">*</span></label>
-                <input type="text" id="profileAddressLine" name="address_line" class="ph-input" autocomplete="address-line1" maxlength="150" required aria-describedby="profileAddressLineError">
-                <p id="profileAddressLineError" class="ph-field-error" hidden></p>
-              </div>
-
-              <div class="ph-field">
-                <label for="profileBarangay" class="ph-label">Barangay<span class="ph-required" aria-hidden="true">*</span></label>
-                <input type="text" id="profileBarangay" name="barangay" class="ph-input" autocomplete="address-level3" maxlength="100" required aria-describedby="profileBarangayError">
-                <p id="profileBarangayError" class="ph-field-error" hidden></p>
-              </div>
-
-              <div class="ph-field">
-                <label for="profileCityMunicipality" class="ph-label">City/municipality<span class="ph-required" aria-hidden="true">*</span></label>
-                <input type="text" id="profileCityMunicipality" name="city_municipality" class="ph-input" autocomplete="address-level2" maxlength="100" required aria-describedby="profileCityMunicipalityError">
-                <p id="profileCityMunicipalityError" class="ph-field-error" hidden></p>
-              </div>
-
-              <div class="ph-field">
-                <label for="profileProvince" class="ph-label">Province<span class="ph-required" aria-hidden="true">*</span></label>
-                <input type="text" id="profileProvince" name="province" class="ph-input" autocomplete="address-level1" maxlength="100" required aria-describedby="profileProvinceError">
-                <p id="profileProvinceError" class="ph-field-error" hidden></p>
-              </div>
-
-              <div class="ph-field">
-                <label for="profilePostalCode" class="ph-label">Postal code<span class="ph-required" aria-hidden="true">*</span></label>
-                <input type="text" id="profilePostalCode" name="postal_code" class="ph-input" autocomplete="postal-code" inputmode="numeric" maxlength="4" required aria-describedby="profilePostalCodeError">
-                <p id="profilePostalCodeError" class="ph-field-error" hidden></p>
+            <div id="accountDetailsContainer" class="text-sm text-gray-600">
+              <div class="dashboard-loading-state" role="status" aria-live="polite">
+                <div class="dashboard-loading-spinner" aria-hidden="true"></div>
+                <div>
+                  <p class="dashboard-loading-title">Loading your details...</p>
+                  <p class="dashboard-loading-copy">Fetching your PetHub account.</p>
+                </div>
               </div>
             </div>
 
-            <div id="accountDetailsFormMessage" class="ph-form-message" aria-live="assertive"></div>
+            <form id="accountDetailsForm" class="ph-form" novalidate hidden aria-labelledby="accountDetailsTitle">
+              <p class="ph-help">Every field is required (marked <span class="ph-required" aria-hidden="true">*</span><span class="sr-only">with an asterisk</span>). Your email address cannot be changed here; to change your password, use Forgot Password on the login page.</p>
 
-            <div class="ph-form-actions">
-              <button type="submit" class="ph-btn ph-btn-primary"><i class="ri-save-3-line" aria-hidden="true"></i>Save details</button>
-              <button type="button" id="cancelAccountDetailsButton" class="ph-btn ph-btn-secondary">Cancel</button>
-            </div>
-          </form>
-        </section>
+              <div class="ph-form-grid">
+                <div class="ph-field ph-span-2">
+                  <label for="profileFullname" class="ph-label">Full legal name<span class="ph-required" aria-hidden="true">*</span></label>
+                  <input type="text" id="profileFullname" name="fullname" class="ph-input" autocomplete="name" maxlength="100" required aria-describedby="profileFullnameError">
+                  <p id="profileFullnameError" class="ph-field-error" hidden></p>
+                </div>
 
-        <!-- ================= RECENT ACTIVITY SECTION ================= -->
-        <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-          <div class="mb-5">
-            <h2 class="flex items-center gap-2 text-xl font-bold text-gray-900">
-              <i class="ri-history-line text-slate-500"></i>
-              Account activity
-            </h2>
-          </div>
+                <div class="ph-field">
+                  <label for="profileDateOfBirth" class="ph-label">Date of birth<span class="ph-required" aria-hidden="true">*</span></label>
+                  <input type="date" id="profileDateOfBirth" name="date_of_birth" class="ph-input" autocomplete="bday" min="1900-01-01" required aria-describedby="profileDateOfBirthError">
+                  <p id="profileDateOfBirthError" class="ph-field-error" hidden></p>
+                </div>
 
-          <div id="recentActivityContainer" class="space-y-3 text-sm text-gray-600">
-            <div class="dashboard-loading-state" role="status" aria-live="polite">
-              <div class="dashboard-loading-spinner" aria-hidden="true"></div>
-              <div>
-                <p class="dashboard-loading-title">Loading activity logs...</p>
-                <p class="dashboard-loading-copy">Fetching the latest PetHub records.</p>
+                <div class="ph-field">
+                  <label for="profileGender" class="ph-label">Gender<span class="ph-required" aria-hidden="true">*</span></label>
+                  <select id="profileGender" name="gender" class="ph-input" autocomplete="sex" required aria-describedby="profileGenderHelp profileGenderError">
+                    <option value="">Select an option</option>
+                    <option value="Female">Female</option>
+                    <option value="Male">Male</option>
+                    <option value="Non-binary">Non-binary</option>
+                    <option value="Other">Other</option>
+                    <option value="Prefer not to say">Prefer not to say</option>
+                  </select>
+                  <p id="profileGenderHelp" class="ph-help">You can choose "Prefer not to say".</p>
+                  <p id="profileGenderError" class="ph-field-error" hidden></p>
+                </div>
+
+                <div class="ph-field ph-span-2">
+                  <label for="profilePhoneNumber" class="ph-label">Contact number<span class="ph-required" aria-hidden="true">*</span></label>
+                  <input type="tel" id="profilePhoneNumber" name="phone_number" class="ph-input" autocomplete="tel" inputmode="tel" maxlength="25" required aria-describedby="profilePhoneNumberHelp profilePhoneNumberError" placeholder="0917 123 4567">
+                  <p id="profilePhoneNumberHelp" class="ph-help">Mobile or landline, such as 0917 123 4567 or 02 8123 4567. Outside the Philippines? Start with + and the country code.</p>
+                  <p id="profilePhoneNumberError" class="ph-field-error" hidden></p>
+                </div>
+
+                <div class="ph-field ph-span-2">
+                  <label for="profileAddressLine" class="ph-label">House/unit number and street<span class="ph-required" aria-hidden="true">*</span></label>
+                  <input type="text" id="profileAddressLine" name="address_line" class="ph-input" autocomplete="address-line1" maxlength="150" required aria-describedby="profileAddressLineError">
+                  <p id="profileAddressLineError" class="ph-field-error" hidden></p>
+                </div>
+
+                <div class="ph-field">
+                  <label for="profileBarangay" class="ph-label">Barangay<span class="ph-required" aria-hidden="true">*</span></label>
+                  <input type="text" id="profileBarangay" name="barangay" class="ph-input" autocomplete="address-level3" maxlength="100" required aria-describedby="profileBarangayError">
+                  <p id="profileBarangayError" class="ph-field-error" hidden></p>
+                </div>
+
+                <div class="ph-field">
+                  <label for="profileCityMunicipality" class="ph-label">City/municipality<span class="ph-required" aria-hidden="true">*</span></label>
+                  <input type="text" id="profileCityMunicipality" name="city_municipality" class="ph-input" autocomplete="address-level2" maxlength="100" required aria-describedby="profileCityMunicipalityError">
+                  <p id="profileCityMunicipalityError" class="ph-field-error" hidden></p>
+                </div>
+
+                <div class="ph-field">
+                  <label for="profileProvince" class="ph-label">Province<span class="ph-required" aria-hidden="true">*</span></label>
+                  <input type="text" id="profileProvince" name="province" class="ph-input" autocomplete="address-level1" maxlength="100" required aria-describedby="profileProvinceError">
+                  <p id="profileProvinceError" class="ph-field-error" hidden></p>
+                </div>
+
+                <div class="ph-field">
+                  <label for="profilePostalCode" class="ph-label">Postal code<span class="ph-required" aria-hidden="true">*</span></label>
+                  <input type="text" id="profilePostalCode" name="postal_code" class="ph-input" autocomplete="postal-code" inputmode="numeric" maxlength="4" required aria-describedby="profilePostalCodeError">
+                  <p id="profilePostalCodeError" class="ph-field-error" hidden></p>
+                </div>
               </div>
-            </div>
-          </div>
-        </section>
 
-      </div>
-    </section>
+              <div id="accountDetailsFormMessage" class="ph-form-message" aria-live="assertive"></div>
 
-  </main>
+              <div class="ph-form-actions">
+                <button type="submit" class="ph-btn ph-btn-primary"><i class="ri-save-3-line" aria-hidden="true"></i>Save details</button>
+                <button type="button" id="cancelAccountDetailsButton" class="ph-btn ph-btn-secondary">Cancel</button>
+              </div>
+            </form>
+          </section>
 
-  <!-- ================= FOOTER ================= -->
-  <footer class="footer bg-gray-900 text-white py-8 px-4">
-    <div class="max-w-6xl mx-auto text-center">
-      <p>&copy; 2026 PetHub. All rights reserved.</p>
+        </div>
+      </main>
     </div>
-  </footer>
+  </div>
 
   <!-- ================= DARK MODE TOGGLE ================= -->
   <button id="darkModeToggle" class="dark-mode-toggle" title="Toggle Dark Mode">
@@ -321,6 +294,7 @@
   <script src="../../js/core/utils.js"></script>
   <script src="../../js/core/storage.js"></script>
   <script src="../../js/main.js"></script>
+  <script src="../../js/shared/dashboard-shell.js"></script>
   <script src="../../js/shared/appointment-durations.js"></script>
   <script src="../../js/shared/profile-fields.js"></script>
   <script src="../../js/user/dashboard.js"></script>

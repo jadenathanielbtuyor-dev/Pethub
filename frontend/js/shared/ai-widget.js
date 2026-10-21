@@ -39,6 +39,29 @@
     restoreChatSession();
   }
 
+  // ==================== PAGE API ====================
+  // Lets a page open this same assistant (the Pet Owner Dashboard's Pet Health & AI Assistant uses it) instead of
+  // running a second chat. ask() sends exactly what the visitor could type: the question text and the page name.
+  function openAssistant() {
+    const popup = document.getElementById('pethub-ai-popup');
+    const input = document.getElementById('pethub-ai-input');
+    if (!popup) return false;
+    setPopupOpen(popup, true);
+    saveChatState();
+    if (input) input.focus();
+    return true;
+  }
+
+  function askAssistant(question) {
+    const input = document.getElementById('pethub-ai-input');
+    if (!openAssistant() || !input || aiMessageInProgress) return false;
+    input.value = String(question || '').trim();
+    handleSendMessage();
+    return true;
+  }
+
+  window.PetHubAI = Object.freeze({ open: openAssistant, ask: askAssistant });
+
   // ==================== INJECT STYLES ====================
 
   function injectStyles() {
@@ -553,7 +576,7 @@
 
         <!-- Footer -->
         <div class="pethub-ai-footer">
-          <i class="ri-alert-line" aria-hidden="true"></i> For emergencies visit a vet
+          <i class="ri-alert-line" aria-hidden="true"></i> General information, not a diagnosis or a clinic record. For emergencies visit a vet
         </div>
       </div>
     `;
@@ -854,19 +877,17 @@
   }
 
   /**
-   * Get current page context for AI awareness
+   * Get current page context for AI awareness: only the page's name is sent with a question, never page content
    */
   function getPageContext() {
     const pathname = window.location.pathname;
-    
+
     // Map paths to friendly names
-    if (pathname.includes('/pages/user/dashboard')) return 'User Dashboard';
-    if (pathname.includes('/pages/user/pets')) return 'User Pets Page';
-    if (pathname.includes('/pages/user/appointments')) return 'User Appointments Page';
+    if (pathname.includes('/pages/user/dashboard')) return 'Pet Owner Dashboard - Overview';
+    if (pathname.includes('/pages/user/pets')) return 'Pet Owner Dashboard - My Pets';
+    if (pathname.includes('/pages/user/appointments')) return 'Pet Owner Dashboard - Appointments';
+    if (pathname.includes('/pages/user/health')) return 'Pet Owner Dashboard - Pet Health & AI Assistant';
     if (pathname.includes('/pages/admin/dashboard')) return 'Admin Dashboard';
-    if (pathname.includes('/pages/admin/appointments')) return 'Admin Appointments';
-    if (pathname.includes('/pages/admin/pets')) return 'Admin Pets';
-    if (pathname.includes('/pages/admin/users')) return 'Admin Users';
     if (pathname.includes('/pages/public/about')) return 'About Page';
     if (pathname.includes('/pages/public/services')) return 'Services Page';
     if (pathname.includes('/pages/public/contact')) return 'Contact Page';

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PetHub | Pet Health &amp; AI Assistant</title>
+
+  <!-- CSS -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800&amp;display=swap">
+  <link rel="stylesheet" href="../../assets/css/style.css">
+
+  <!-- Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet">
+</head>
+<!-- PET OWNER DASHBOARD: PET HEALTH & AI ASSISTANT (section 4 of 4). js/user/health.js:
+     - Official clinic records, read-only: the owner's pets from GET /pets/userPets and their medical records from
+       GET /pets/medical-records (record_date, weight, vaccination_status, treatment, medical_notes, recorded by).
+       Only clinic administrators create records (POST /admin/dashboard/medical-records/create).
+     - The AI assistant is the site's existing Gemini assistant (js/shared/ai-widget.js -> POST /ai/chat); this page only
+       opens it with a general question. The assistant receives the question and the page name, never the pet's name,
+       profile or records, so its answers are general information and are kept apart from the official records. -->
+<body class="ph-dash-page user-page" data-dashboard="owner" data-dashboard-section="health">
+  <!-- Apply the saved theme before first paint; main.js still owns the toggle -->
+  <script>try { if (localStorage.getItem('darkMode') === 'true') { document.documentElement.classList.add('dark'); document.body.classList.add('dark-mode'); } } catch (e) {}</script>
+  <a href="#main" class="ph-skip-link">Skip to main content</a>
+
+  <div class="ph-dash-shell">
+    <!-- Sidebar / section bar: rendered by js/shared/dashboard-shell.js -->
+    <div id="dashboardNavRoot"></div>
+
+    <div class="ph-dash-content">
+      <main id="main" class="ph-dash-main" tabindex="-1">
+
+        <header class="ph-dash-header">
+          <div>
+            <p class="ph-dash-eyebrow">Pet Owner Dashboard</p>
+            <h1 class="ph-dash-title">Pet Health &amp; AI Assistant</h1>
+            <p class="ph-dash-lead">Your pet's official records from the clinic, and an AI assistant for general pet-care questions. The two are kept separate: only the clinic's records are official.</p>
+          </div>
+        </header>
+
+        <div class="ph-dash-stack">
+
+          <!-- ================= CHOOSE A PET ================= -->
+          <section class="ph-dash-panel" aria-labelledby="healthPetTitle">
+            <div class="ph-dash-panel-head">
+              <h2 id="healthPetTitle" class="ph-dash-panel-title"><i class="ri-bear-smile-line" aria-hidden="true"></i>Pet</h2>
+            </div>
+            <div id="healthPetPicker">
+              <div class="dashboard-loading-state" role="status" aria-live="polite">
+                <div class="dashboard-loading-spinner" aria-hidden="true"></div>
+                <div>
+                  <p class="dashboard-loading-title">Loading pets...</p>
+                  <p class="dashboard-loading-copy">Fetching the latest PetHub records.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div class="ph-dash-grid-main">
+
+            <!-- ================= OFFICIAL CLINIC RECORDS (read-only) ================= -->
+            <section class="ph-dash-panel" aria-labelledby="officialRecordsTitle">
+              <div class="ph-dash-panel-head">
+                <h2 id="officialRecordsTitle" class="ph-dash-panel-title"><i class="ri-health-book-line" aria-hidden="true"></i>Official clinic records</h2>
+                <span class="ph-badge ph-badge-official"><i class="ri-shield-check-line" aria-hidden="true"></i>From the clinic</span>
+              </div>
+              <p class="ph-dash-panel-text">Recorded by clinic staff after completed visits. You can read them here; only the clinic can add or change them.</p>
+              <div id="healthRecords" class="ph-dash-stack mt-4">
+                <div class="dashboard-loading-state" role="status" aria-live="polite">
+                  <div class="dashboard-loading-spinner" aria-hidden="true"></div>
+                  <div>
+                    <p class="dashboard-loading-title">Loading medical records...</p>
+                    <p class="dashboard-loading-copy">Fetching the latest PetHub records.</p>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- ================= AI ASSISTANT (general information, not a clinic record) ================= -->
+            <section class="ph-dash-panel" aria-labelledby="aiAssistantTitle">
+              <div class="ph-dash-panel-head">
+                <h2 id="aiAssistantTitle" class="ph-dash-panel-title"><i class="ri-robot-line" aria-hidden="true"></i>PetHub AI Assistant</h2>
+                <span class="ph-badge ph-badge-ai"><i class="ri-sparkling-line" aria-hidden="true"></i>AI-generated</span>
+              </div>
+              <ul class="ph-dash-list">
+                <li class="ph-dash-list-item"><p class="ph-dash-list-meta"><strong>General information only.</strong> Answers are not a diagnosis and are not reviewed or approved by a veterinarian.</p></li>
+                <li class="ph-dash-list-item"><p class="ph-dash-list-meta"><strong>It doesn't see your pet's records.</strong> Only your question and the page name are sent; your pet's name, profile and records are not.</p></li>
+                <li class="ph-dash-list-item"><p class="ph-dash-list-meta"><strong>Emergencies:</strong> if your pet is badly hurt, struggling to breathe, bleeding or poisoned, contact a veterinarian right away.</p></li>
+              </ul>
+
+              <h3 class="ph-dash-card-title mt-5">Suggested questions</h3>
+              <p class="ph-dash-note">These mention only your pet's species<span id="aiSpeciesNote"></span>.</p>
+              <div id="aiSuggestions" class="ph-dash-card-actions"></div>
+              <div class="ph-dash-card-actions">
+                <button type="button" id="openAiAssistant" class="ph-btn ph-btn-primary ph-btn-sm"><i class="ri-chat-3-line" aria-hidden="true"></i>Open the AI assistant</button>
+              </div>
+              <p id="aiAssistantStatus" class="ph-dash-note mt-3 ph-dash-status" role="status" aria-live="polite"></p>
+            </section>
+
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- ================= DARK MODE TOGGLE ================= -->
+  <button id="darkModeToggle" class="dark-mode-toggle" title="Toggle Dark Mode">
+    <i class="ri-moon-line"></i>
+  </button>
+
+  <!-- JAVASCRIPT -->
+  <script src="../../js/core/api.js"></script>
+  <script src="../../js/core/utils.js"></script>
+  <script src="../../js/core/storage.js"></script>
+  <script src="../../js/main.js"></script>
+  <script src="../../js/shared/dashboard-shell.js"></script>
+  <script src="../../js/user/health.js"></script>
+  <script src="../../js/shared/ai-widget.js"></script>
+
+</body>
+</html>

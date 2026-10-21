@@ -2,144 +2,122 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>PetHub | Manage Pets</title>
+  <title>PetHub | My Pets</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <!-- CSS -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800&amp;display=swap">
   <link rel="stylesheet" href="../../assets/css/style.css">
 
   <!-- Icons -->
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet">
 </head>
+<!-- PET OWNER DASHBOARD: MY PETS (section 2 of 4). js/user/pets.js:
+     - lists the owner's pets: GET /pets/userPets (only pets whose user_id is the signed-in account)
+     - adds a pet: POST /pets/create (name, species Dog/Cat, breed, age; the server validates them again)
+     - deletes a pet after a second click: DELETE /pets/delete/:id (the server deletes only the owner's own pet)
+     - shows one pet's profile and its official medical history, read-only: GET /pets/medical-records
+     Medical records are written by clinic administrators only (POST /admin/dashboard/medical-records/create; the
+     owner route POST /pets/medical-records/create always answers 403). There is no API to edit a saved pet profile. -->
+<body class="ph-dash-page user-page" data-dashboard="owner" data-dashboard-section="pets">
+  <!-- Apply the saved theme before first paint; main.js still owns the toggle -->
+  <script>try { if (localStorage.getItem('darkMode') === 'true') { document.documentElement.classList.add('dark'); document.body.classList.add('dark-mode'); } } catch (e) {}</script>
+  <a href="#main" class="ph-skip-link">Skip to main content</a>
 
-<body class="flex flex-col min-h-screen user-page">
+  <div class="ph-dash-shell">
+    <!-- Sidebar / section bar: rendered by js/shared/dashboard-shell.js -->
+    <div id="dashboardNavRoot"></div>
 
-  <!-- ================= NAVIGATION ================= -->
-  <nav class="nav sticky top-0 z-50 bg-white shadow-md border-b-2 border-orange-100">
-    <div class="nav-container flex flex-wrap items-center justify-between gap-4 py-4 px-4">
-      <div class="flex items-center gap-3">
-        <img src="../../assets/images/paw.png" alt="PetHub" class="w-10 h-10 rounded-full bg-orange-100 p-2">
-        <div>
-          <p class="text-base font-bold text-gray-900">PetHub</p>
-          <p class="text-xs text-gray-500 uppercase tracking-wide">User Dashboard</p>
-        </div>
-      </div>
-      <ul class="nav-links flex flex-wrap items-center gap-1">
-        <li><a href="dashboard.html" class="flex items-center gap-2 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-100 hover:text-orange-600 transition-all duration-200"><i class="ri-home-line"></i>Dashboard</a></li>
-        <li><a href="pets.html" class="flex items-center gap-2 text-orange-600 font-semibold px-3 py-2 rounded-lg bg-orange-50 transition-all duration-200 hover:bg-orange-100"><i class="ri-bear-smile-line"></i>Pets</a></li>
-        <li><a href="appointments.html" class="flex items-center gap-2 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-100 hover:text-orange-600 transition-all duration-200"><i class="ri-calendar-line"></i>Appointments</a></li>
-        <li><a href="#logout" class="btn-logout flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white transition-all duration-200 hover:bg-orange-600 hover:shadow-lg active:scale-95"><i class="ri-logout-circle-line"></i>Logout</a></li>
-      </ul>
-    </div>
-  </nav>
+    <div class="ph-dash-content">
+      <main id="main" class="ph-dash-main" tabindex="-1">
 
-  <!-- ================= MAIN CONTENT ================= -->
-  <main class="flex-grow py-12 px-4">
-    <div class="max-w-5xl mx-auto">
+        <header class="ph-dash-header">
+          <div>
+            <p class="ph-dash-eyebrow">Pet Owner Dashboard</p>
+            <h1 class="ph-dash-title">My Pets</h1>
+            <p class="ph-dash-lead">The pet profiles you've added. Open a pet to see its details and the official medical history the clinic has recorded.</p>
+          </div>
+        </header>
 
-      <!-- Header -->
-      <header class="mb-8">
-        <h1 class="text-4xl font-bold text-gray-900 mb-2">My Pets</h1>
-        <p class="text-gray-600">Create pet profiles using saved PetHub records</p>
-      </header>
+        <!-- ================= ONE PET: profile and official medical history (opened from a pet card, or ?pet=<id>) ================= -->
+        <section id="petDetailPanel" class="ph-dash-panel mb-5" aria-labelledby="petDetailTitle" hidden>
+          <div class="ph-dash-panel-head">
+            <h2 id="petDetailTitle" class="ph-dash-panel-title" tabindex="-1"><i class="ri-bear-smile-line" aria-hidden="true"></i><span id="petDetailName">Pet details</span></h2>
+            <button type="button" id="petDetailClose" class="ph-btn ph-btn-secondary ph-btn-sm"><i class="ri-arrow-left-line" aria-hidden="true"></i>Back to all pets</button>
+          </div>
+          <div id="petDetailContent"></div>
+        </section>
 
-      <!-- Add Pet Form Section -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
-        
-        <!-- Add Pet Form -->
-        <div class="lg:col-span-1 bg-white rounded-2xl shadow-lg p-8 border border-gray-100 h-fit lg:sticky lg:top-24">
-          <h2 class="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-            <i class="ri-add-circle-line text-orange-500"></i>
-            Add New Pet
-          </h2>
+        <div class="ph-dash-grid-main">
 
-          <div id="petError" class="mb-4 p-3 rounded-lg bg-red-50 text-red-700 text-sm hidden"></div>
-          <div id="petSuccess" class="mb-4 p-3 rounded-lg bg-green-50 text-green-700 text-sm hidden"></div>
-
-          <form id="petForm" class="space-y-4">
-            <div>
-              <label for="petName" class="block text-gray-700 font-semibold text-sm mb-2">Pet Name</label>
-              <input type="text" id="petName" placeholder="e.g., Max" required
-                class="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-colors">
+          <!-- ================= YOUR PETS ================= -->
+          <section class="ph-dash-panel" aria-labelledby="petsListTitle">
+            <div class="ph-dash-panel-head">
+              <h2 id="petsListTitle" class="ph-dash-panel-title"><i class="ri-bear-smile-line" aria-hidden="true"></i>Your pets</h2>
             </div>
-
-            <div>
-              <label for="petType" class="block text-gray-700 font-semibold text-sm mb-2">Species</label>
-              <select id="petType" required
-                class="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-colors">
-                <option value="">Select Species</option>
-                <option value="Dog">Dog</option>
-                <option value="Cat">Cat</option>
-              </select>
-              <p id="petTypeHelp" class="mt-2 text-sm text-gray-600">The clinic cares for dogs and cats.</p>
-            </div>
-
-            <div>
-              <label for="petBreed" class="block text-gray-700 font-semibold text-sm mb-2">Breed</label>
-              <input type="text" id="petBreed" placeholder="e.g., Golden Retriever"
-                class="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-colors">
-            </div>
-
-            <div>
-              <label for="petAge" class="block text-gray-700 font-semibold text-sm mb-2">Age (years)</label>
-              <input type="number" id="petAge" placeholder="e.g., 3" min="0"
-                class="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-colors">
-              <p id="petAgeWarning" class="mt-2 text-sm font-medium text-amber-700 hidden" aria-live="polite">This age is uncommon. Please confirm.</p>
-            </div>
-
-            <button type="submit"
-              class="w-full py-3 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-semibold rounded-lg transition-all duration-200 transform hover:scale-105 active:scale-95 mt-6">
-              <i class="ri-add-line mr-2"></i>Add Pet
-            </button>
-          </form>
-        </div>
-
-        <!-- Pets List -->
-        <div class="lg:col-span-2">
-          <div class="bg-white rounded-2xl shadow-lg p-8 border border-gray-100">
-            <h2 class="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <i class="ri-bear-smile-line text-orange-500"></i>
-              Your Pets
-            </h2>
-
-            <div id="petsList" class="space-y-4">
-              <div class="text-center py-12 text-gray-500">
-                <p class="text-4xl mb-3">🐾</p>
-                <p class="font-medium">Loading pets...</p>
-                <p class="text-sm">Fetching the latest PetHub records.</p>
-              </div>
-            </div>
-
-            <div id="medicalRecordsList" class="mt-8 rounded-3xl border border-gray-100 bg-slate-50 p-6 shadow-sm">
-              <h3 class="text-lg font-bold text-gray-900 mb-1 flex items-center gap-2">
-                <i class="ri-health-book-line text-green-600" aria-hidden="true"></i>
-                Pet Medical History
-              </h3>
-              <p class="text-sm text-gray-500 mb-4">Official records from clinic visits are shown here.</p>
-              <div id="medicalRecordsContainer" class="space-y-4 text-sm text-gray-600">
-                <div class="dashboard-loading-state" role="status" aria-live="polite">
-                  <div class="dashboard-loading-spinner" aria-hidden="true"></div>
-                  <div>
-                    <p class="dashboard-loading-title">Loading medical records...</p>
-                    <p class="dashboard-loading-copy">Fetching the latest PetHub records.</p>
-                  </div>
+            <div id="petsList" class="ph-dash-stack">
+              <div class="dashboard-loading-state" role="status" aria-live="polite">
+                <div class="dashboard-loading-spinner" aria-hidden="true"></div>
+                <div>
+                  <p class="dashboard-loading-title">Loading pets...</p>
+                  <p class="dashboard-loading-copy">Fetching the latest PetHub records.</p>
                 </div>
               </div>
             </div>
-          </div>
+          </section>
+
+          <!-- ================= ADD A PET: POST /pets/create ================= -->
+          <section class="ph-dash-panel" aria-labelledby="addPetTitle">
+            <div class="ph-dash-panel-head">
+              <h2 id="addPetTitle" class="ph-dash-panel-title"><i class="ri-add-circle-line" aria-hidden="true"></i>Add a pet</h2>
+            </div>
+
+            <div id="petError" class="mb-4 p-3 rounded-lg bg-red-50 text-red-700 text-sm hidden"></div>
+            <div id="petSuccess" class="mb-4 p-3 rounded-lg bg-green-50 text-green-700 text-sm hidden"></div>
+
+            <form id="petForm" class="ph-form">
+              <div class="ph-field">
+                <label for="petName" class="ph-label">Pet name<span class="ph-required" aria-hidden="true">*</span></label>
+                <input type="text" id="petName" class="ph-input" placeholder="e.g., Max" maxlength="50" required>
+              </div>
+
+              <div class="ph-field">
+                <label for="petType" class="ph-label">Species<span class="ph-required" aria-hidden="true">*</span></label>
+                <select id="petType" class="ph-input" required aria-describedby="petTypeHelp">
+                  <option value="">Select Species</option>
+                  <option value="Dog">Dog</option>
+                  <option value="Cat">Cat</option>
+                </select>
+                <p id="petTypeHelp" class="ph-help">The clinic cares for dogs and cats.</p>
+              </div>
+
+              <div class="ph-field">
+                <label for="petBreed" class="ph-label">Breed</label>
+                <input type="text" id="petBreed" class="ph-input" placeholder="e.g., Golden Retriever" maxlength="50">
+              </div>
+
+              <div class="ph-field">
+                <label for="petAge" class="ph-label">Age (years)</label>
+                <input type="number" id="petAge" class="ph-input" placeholder="e.g., 3" min="0" aria-describedby="petAgeWarning">
+                <p id="petAgeWarning" class="ph-help font-semibold hidden" aria-live="polite">This age is uncommon. Please confirm.</p>
+              </div>
+
+              <p class="ph-help">A saved profile can't be edited online yet. If a detail is wrong, add the pet again and delete the old profile, or contact the clinic if it already has appointments or records.</p>
+
+              <div class="ph-form-actions">
+                <button type="submit" class="ph-btn ph-btn-primary ph-btn-block">
+                  <i class="ri-add-line" aria-hidden="true"></i>Add Pet
+                </button>
+              </div>
+            </form>
+          </section>
+
         </div>
-
-      </div>
-
+      </main>
     </div>
-  </main>
-
-  <!-- ================= FOOTER ================= -->
-  <footer class="footer bg-gray-900 text-white py-8 px-4">
-    <div class="max-w-6xl mx-auto text-center">
-      <p>© 2026 PetHub. All rights reserved.</p>
-    </div>
-  </footer>
+  </div>
 
   <!-- ================= DARK MODE TOGGLE ================= -->
   <button id="darkModeToggle" class="dark-mode-toggle" title="Toggle Dark Mode">
@@ -151,6 +129,7 @@
   <script src="../../js/core/utils.js"></script>
   <script src="../../js/core/storage.js"></script>
   <script src="../../js/main.js"></script>
+  <script src="../../js/shared/dashboard-shell.js"></script>
   <script src="../../js/user/pets.js"></script>
   <script src="../../js/shared/ai-widget.js"></script>
 

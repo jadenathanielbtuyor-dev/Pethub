@@ -1,4 +1,19 @@
-// PetHub User Appointments
+// PetHub Pet Owner Dashboard: Appointments (pages/user/appointments.html)
+//
+// Section 3 of the Pet Owner Dashboard.
+// - List: GET /appointments/userAppointments?user_id= returns only this owner's appointments (requireAuth matches
+//   user_id to the session token; another owner's id gets 403). Upcoming / History / All and the status filter are
+//   applied in the browser to that list; statuses are the backend's own values (Pending, Approved, Completed,
+//   Cancelled) and are never changed here.
+// - Booking: GET /appointments/services lists the clinic's nine services; POST /appointments/create books one.
+//   The flow: the owner picks a pet, service, date and time -> the form checks them (service bookable for the pet's
+//   species, date and time not in the past, slot not already taken by an approved appointment) -> the server checks
+//   everything again, including that the clinic has confirmed the service's duration (409 until it has) and that the
+//   slot is free (400 with a suggested time) -> on success the appointment is saved as Pending and the list is reloaded
+//   from the server; on failure nothing is saved and the form keeps the owner's choices.
+// - Not available online: cancelling or rescheduling. Only administrators change a status
+//   (PUT /admin/dashboard/appointment-status), so each card tells the owner what happens next and the page points to
+//   the clinic for changes.
 
 // Module-level user variable
 let currentUser = null;
@@ -31,6 +46,10 @@ const BOOKING_DETAILS_HINTS = {
 };
 // Whether the availability check flagged the selected time as taken
 let bookingSlotUnavailable = false;
+// The list as the server last returned it, and the filters applied to it in the browser
+let loadedAppointments = [];
+const appointmentListFilter = { when: "upcoming", status: "all" };
+const UPCOMING_APPOINTMENT_STATUSES = ["Pending", "Approved"];
 
 // Initialize on page load
 document.addEventListener("DOMContentLoaded", initAppointments);
@@ -65,6 +84,7 @@ function initAppointments() {
   // Which services can be chosen depends on the selected pet's species
   getAppointmentPetSelect()?.addEventListener("change", renderServiceOptions);
   setupBookingSummary();
+  setupAppointmentFilters();
   loadAppointments(currentUser.id);
   setupFormHandler();
 }
@@ -470,6 +490,17 @@ async function loadServiceCatalog() {
   serviceCatalogLoaded = true;
   renderServiceOptions();
   applyRequestedService();
+  updateBookingClosedNotice();
+}
+
+// The "Online booking isn't open yet" notice: shown when the list loaded and no service has a confirmed duration
+function updateBookingClosedNotice() {
+  const notice = document.getElementById("bookingClosedNotice");
+  const catalog = window.AppointmentDurations;
+  if (!notice || !catalog) return;
+  const services = catalog.getServices();
+  notice.hidden = !(serviceCatalogLoaded && !serviceCatalogError && services.length > 0
+    && !services.some(service => catalog.isBookable(service.name)));
 }
 
 // A "Book" link on the Services page names its service (?service=Bath); it is chosen once the list has loaded, if it
@@ -861,6 +892,8 @@ async function loadAppointments(userId) {
     return appointments;
   } catch (error) {
     console.error("Error loading appointments:", error);
+    loadedAppointments = [];
+    setAppointmentListSummary("");
     if (container) {
       container.innerHTML = getUserAppointmentsErrorHtml(error.message);
     }
@@ -882,86 +915,129 @@ function getUserAppointmentsLoadingHtml() {
 
 function getUserAppointmentsErrorHtml(message) {
   return `
-    <div class="rounded-lg border border-red-200 bg-red-50 p-5 text-center text-red-700">
-      <p class="font-semibold">Unable to load appointments</p>
-      <p class="mt-1 text-sm">${escapeHtml(message || "Please refresh the page or try again later.")}</p>
+    <div class="ph-dash-error" role="alert">
+      <p class="ph-dash-error-title">Unable to load appointments</p>
+      <p class="ph-dash-error-text">${escapeHtml(message || "Please refresh the page or try again later.")}</p>
     </div>
   `;
 }
 
 /**
- * Display appointments list
+ * Display appointments list: keeps the server's list and shows it with the current filters
  */
 function displayAppointments(appointments) {
+  loadedAppointments = Array.isArray(appointments) ? appointments : [];
+  renderAppointmentList();
+}
+
+// Upcoming: Pending or Approved and not over yet (start + saved duration, browser-local time like the times shown);
+// everything else (Completed, Cancelled, or a date that has passed) is History
+function isUpcomingAppointment(appointment, now = new Date()) {
+  if (!UPCOMING_APPOINTMENT_STATUSES.includes(getAppointmentStatusLabel(appointment?.status))) return false;
+  const startTime = parseAppointmentDateTime(getAppointmentRecordDateValue(appointment?.appointment_date), appointment?.appointment_time);
+  if (!startTime) return false;
+  const durationMinutes = getStoredAppointmentDurationMinutes(appointment);
+  const endTime = Number.isFinite(durationMinutes) ? new Date(startTime.getTime() + durationMinutes * 60000) : startTime;
+  return endTime > now;
+}
+
+function getAppointmentStartMs(appointment) {
+  const startTime = parseAppointmentDateTime(getAppointmentRecordDateValue(appointment?.appointment_date), appointment?.appointment_time);
+  return startTime ? startTime.getTime() : 0;
+}
+
+function setAppointmentListSummary(text) {
+  const summary = document.getElementById("appointmentListSummary");
+  if (summary) summary.textContent = text;
+}
+
+function renderAppointmentList() {
   const container = document.getElementById("appointmentsList");
   if (!container) return;
 
-  if (!appointments || appointments.length === 0) {
+  if (loadedAppointments.length === 0) {
+    setAppointmentListSummary("");
     container.innerHTML = `
-      <div class="rounded-lg border border-gray-200 bg-white p-5 text-center text-gray-500">
-        <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 text-blue-500">
-          <i class="ri-calendar-event-line text-2xl" aria-hidden="true"></i>
-        </div>
-        <p class="font-medium text-gray-700">No appointments yet</p>
-        <p class="mt-1 text-sm">Appointments you book will appear here with their clinic status.</p>
+      <div class="ph-dash-empty">
+        <p class="ph-dash-empty-title">No appointments yet</p>
+        <p class="ph-dash-empty-text">Appointments you book will appear here with their clinic status.</p>
       </div>
     `;
     return;
   }
 
-  container.innerHTML = appointments
-    .map((apt) => {
-      const handledBy = getHandledByLabel(apt);
-      const status = getAppointmentStatusLabel(apt.status);
-      const handledByRow = handledBy
-        ? `
-          <div>
-            <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">Handled by</dt>
-            <dd class="mt-1 text-sm font-medium text-gray-700">${escapeHtml(handledBy)}</dd>
-          </div>
-        `
-        : "";
-      return `
-        <div class="rounded-lg border border-gray-100 bg-white p-5 shadow-sm">
-          <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <div>
-              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">Reference</dt>
-              <dd class="mt-1 text-sm font-semibold text-gray-700">${escapeHtml(getAppointmentReference(apt))}</dd>
-            </div>
-            <div>
-              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">Pet</dt>
-              <dd class="mt-1 text-sm font-semibold text-gray-900">${escapeHtml(apt.pet_name || 'N/A')}</dd>
-            </div>
-            <div>
-              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">Service</dt>
-              <dd class="mt-1 text-sm font-medium text-gray-700">${escapeHtml(apt.service_type || 'N/A')}</dd>
-            </div>
-            <div>
-              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">Duration</dt>
-              <dd class="mt-1 text-sm font-medium text-gray-700">${escapeHtml(getAppointmentDisplayDuration(apt))}</dd>
-            </div>
-            <div>
-              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">Date</dt>
-              <dd class="mt-1 text-sm font-medium text-gray-700">${escapeHtml(formatAppointmentDateDisplay(apt.appointment_date))}</dd>
-            </div>
-            <div>
-              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">Time range</dt>
-              <dd class="mt-1 text-sm font-medium text-gray-700">${escapeHtml(getAppointmentTimeRangeDisplay(apt))}</dd>
-            </div>
-            <div>
-              <dt class="text-xs font-semibold uppercase tracking-wide text-gray-500">Status</dt>
-              <dd class="mt-1">
-                <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getStatusClass(status)}">
-                  ${escapeHtml(status)}
-                </span>
-              </dd>
-            </div>
-            ${handledByRow}
-          </dl>
+  const now = new Date();
+  const upcoming = loadedAppointments.filter(apt => isUpcomingAppointment(apt, now));
+  const history = loadedAppointments.filter(apt => !isUpcomingAppointment(apt, now));
+  const byWhen = { upcoming, history, all: loadedAppointments }[appointmentListFilter.when] || loadedAppointments;
+  const shown = byWhen
+    .filter(apt => appointmentListFilter.status === "all" || getAppointmentStatusLabel(apt.status) === appointmentListFilter.status)
+    // Upcoming: soonest first; History and All keep the server's order (newest first)
+    .sort((a, b) => (appointmentListFilter.when === "upcoming" ? getAppointmentStartMs(a) - getAppointmentStartMs(b) : 0));
+
+  setAppointmentListSummary(`Showing ${shown.length} of ${loadedAppointments.length} appointment${loadedAppointments.length === 1 ? "" : "s"} (${upcoming.length} upcoming, ${history.length} in history).`);
+
+  if (shown.length === 0) {
+    container.innerHTML = `
+      <div class="ph-dash-empty">
+        <p class="ph-dash-empty-title">No appointments match these filters</p>
+        <p class="ph-dash-empty-text">Choose History or All, or another status, to see your other appointments.</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = shown.map(apt => getAppointmentCardHtml(apt, isUpcomingAppointment(apt, now))).join("");
+}
+
+function getAppointmentCardHtml(apt, isUpcoming) {
+  const handledBy = getHandledByLabel(apt);
+  const status = getAppointmentStatusLabel(apt.status);
+  const fact = (label, value) => `<div><dt>${escapeHtml(label)}</dt> <dd>${escapeHtml(value)}</dd></div>`;
+  return `
+    <article class="ph-dash-card">
+      <div class="ph-dash-card-head">
+        <div>
+          <p class="ph-dash-card-title">${escapeHtml(apt.pet_name || "N/A")} &middot; ${escapeHtml(apt.service_type || "N/A")}</p>
+          <p class="ph-dash-note">Reference ${escapeHtml(getAppointmentReference(apt))}</p>
         </div>
-      `;
-    })
-    .join("");
+        <span class="${getStatusClass(status)} px-3 py-1 text-xs">${escapeHtml(status)}</span>
+      </div>
+      <dl class="ph-dash-facts ph-dash-facts-3">
+        ${fact("Date", formatAppointmentDateDisplay(apt.appointment_date))}
+        ${fact("Time range", getAppointmentTimeRangeDisplay(apt))}
+        ${fact("Duration", getAppointmentDisplayDuration(apt))}
+        ${handledBy ? fact("Handled by", handledBy) : ""}
+      </dl>
+      <p class="ph-dash-next"><i class="ri-arrow-right-circle-line" aria-hidden="true"></i><span>${escapeHtml(getAppointmentNextStep(status, isUpcoming))}</span></p>
+    </article>
+  `;
+}
+
+// What the owner can expect or do next, from the appointment's status as the server reports it
+function getAppointmentNextStep(status, isUpcoming) {
+  if (status === "Pending" && isUpcoming) return "Waiting for the clinic to approve this request. You'll be emailed when it is approved or cancelled.";
+  if (status === "Approved" && isUpcoming) return "Approved by the clinic for the date and time shown.";
+  if (status === "Pending" || status === "Approved") return "This date has passed and the clinic has not updated the status yet.";
+  if (status === "Completed") return "Completed. Any official record the clinic adds appears under Pet Health & AI Assistant.";
+  if (status === "Cancelled") return "Cancelled. Book again when online booking is open, or contact the clinic.";
+  return "Contact the clinic if you have questions about this appointment.";
+}
+
+function setupAppointmentFilters() {
+  document.querySelectorAll("[data-appointment-when]").forEach(button => {
+    button.addEventListener("click", () => {
+      appointmentListFilter.when = button.dataset.appointmentWhen;
+      document.querySelectorAll("[data-appointment-when]").forEach(other => {
+        other.setAttribute("aria-pressed", String(other === button));
+      });
+      renderAppointmentList();
+    });
+  });
+  document.getElementById("appointmentStatusFilter")?.addEventListener("change", event => {
+    appointmentListFilter.status = event.target.value;
+    renderAppointmentList();
+  });
 }
 
 function getHandledByLabel(appointment) {

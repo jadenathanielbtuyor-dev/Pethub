@@ -1,10 +1,22 @@
-// PetHub User Dashboard
+// PetHub Pet Owner Dashboard: Overview (pages/user/dashboard.html)
+//
+// Section 1 of the Pet Owner Dashboard (Overview, My Pets, Appointments, Pet Health & AI Assistant). Everything here is
+// read for the signed-in owner only:
+// - GET /auth/user-status?include=profile  -> greeting, "Your details" and the "Complete your details" banner
+// - GET /pets/userPets                     -> the pet count and the "Your pets" preview
+// - GET /appointments/userAppointments     -> upcoming appointments, their clinic statuses and the two counts
+// - GET /auth/activity-logs                -> recent activity on the account
+// Authorization: core/api.js attaches the session token; backend/middleware/requireAuth.js refuses (403) any request
+// whose user_id is not the token's account, so changing user_id in the browser cannot load another owner's records.
+// Failures: each section shows its own error and its figure says "Unavailable", never a misleading 0; the other
+// sections still load (Promise.allSettled).
+// Medical records are shown on Pet Health & AI Assistant (health.html), not here.
 
 // Connection retry configuration
 const MAX_RETRIES = 2;
 const RETRY_DELAY = 500; // milliseconds
 const DASHBOARD_PET_PREVIEW_LIMIT = 3;
-const DASHBOARD_RECORD_PREVIEW_LIMIT = 3;
+const DASHBOARD_MORE_UPCOMING_LIMIT = 3;
 // Pending and Approved bookings can still take place; Completed and Cancelled ones cannot
 const UPCOMING_APPOINTMENT_STATUSES = ['Pending', 'Approved'];
 
@@ -14,8 +26,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 const userDashboardData = {
   pets: [],
-  medicalRecords: [],
-  medicalRecordsLoaded: false,
   // Personal details (GET /auth/user-status?include=profile; edited through PUT /auth/profile). Kept in memory only,
   // never in sessionStorage; null when they could not be loaded.
   profile: null
@@ -48,7 +58,7 @@ async function initializeUserDashboard() {
 
   // Load all dashboard data in parallel with proper error isolation
   userData = getUser();
-  
+
   if (!userData) {
     console.error('User data not available after verification');
     logout();
@@ -65,14 +75,13 @@ async function initializeUserDashboard() {
   const results = await Promise.allSettled([
     loadUserPets(),
     loadUserAppointments(),
-    loadUserMedicalRecords(),
     loadUserActivityLogs()
   ]);
 
   // Log any failures but continue
   results.forEach((result, index) => {
     if (result.status === 'rejected') {
-      const section = ['Pets', 'Appointments', 'Medical Records', 'Recent Activity'][index];
+      const section = ['Pets', 'Appointments', 'Recent Activity'][index];
       console.warn(`Failed to load ${section}:`, result.reason);
     }
   });
@@ -107,20 +116,35 @@ function getFriendlyDashboardErrorMessage(sectionName) {
   return `We couldn't load ${sectionName} right now. Please refresh the page or try again later.`;
 }
 
-function renderUserSectionError(containerId, sectionName, actionHref, actionLabel, iconClass = 'ri-error-warning-line') {
+function renderUserSectionError(containerId, sectionName) {
   const container = document.getElementById(containerId);
   if (!container) return;
 
   container.innerHTML = `
-    <div class="empty-state text-center py-8">
-      <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-red-100 text-red-600">
-        <i class="${iconClass} text-2xl"></i>
-      </div>
-      <p class="font-medium text-gray-700">Unable to load ${escapeHtml(sectionName)}</p>
-      <p class="text-sm text-gray-500 mt-2">${escapeHtml(getFriendlyDashboardErrorMessage(sectionName))}</p>
-      ${actionHref && actionLabel ? `<p class="text-sm text-gray-500 mt-2"><a href="${actionHref}" class="text-orange-500 hover:underline">${escapeHtml(actionLabel)}</a></p>` : ''}
+    <div class="ph-dash-error" role="alert">
+      <p class="ph-dash-error-title">Unable to load ${escapeHtml(sectionName)}</p>
+      <p class="ph-dash-error-text">${escapeHtml(getFriendlyDashboardErrorMessage(sectionName))}</p>
     </div>
   `;
+}
+
+function getEmptyStateHtml(title, text, actionHref = '', actionLabel = '') {
+  return `
+    <div class="ph-dash-empty">
+      <p class="ph-dash-empty-title">${escapeHtml(title)}</p>
+      <p class="ph-dash-empty-text">${escapeHtml(text)}</p>
+      ${actionHref && actionLabel ? `<a href="${actionHref}" class="ph-dash-link">${escapeHtml(actionLabel)} <i class="ri-arrow-right-line" aria-hidden="true"></i></a>` : ''}
+    </div>
+  `;
+}
+
+// A figure in the "At a glance" row: a count once loaded, "Unavailable" when its request failed
+function setOwnerStat(elementId, value) {
+  const element = document.getElementById(elementId);
+  if (!element) return;
+  const isCount = Number.isInteger(value) && value >= 0;
+  element.textContent = isCount ? String(value) : 'Unavailable';
+  element.classList.toggle('is-muted', !isCount);
 }
 
 function getDashboardSectionLoadingHtml(sectionName, rowCount = 2) {
@@ -151,7 +175,6 @@ function renderUserDashboardLoadingStates() {
   const loaders = [
     ['recentPetsContainer', 'pets', 2],
     ['recentAppointmentsContainer', 'appointments', 2],
-    ['recentRecordsContainer', 'medical records', 2],
     ['recentActivityContainer', 'activity logs', 2],
     ['accountDetailsContainer', 'your details', 1]
   ];
@@ -437,12 +460,11 @@ function setupAccountDetailsEditing() {
   });
 }
 
+// The signed-in name in the dashboard navigation (js/shared/dashboard-shell.js), also after the name is edited
 function displayUserHeaderInfo() {
   const userData = getUser();
-  const userBadge = document.getElementById('userBadge');
-  if (!userData || !userBadge) return;
-  const firstName = userData.fullname ? userData.fullname.split(' ')[0] : '';
-  userBadge.textContent = firstName || 'Name not recorded';
+  if (!userData || !window.PetHubDashboardShell) return;
+  window.PetHubDashboardShell.setAccountName(userData.fullname || 'Name not recorded');
 }
 
 function loadUserPets() {
@@ -464,15 +486,14 @@ function loadUserPets() {
     .then(response => {
       const pets = Array.isArray(response.pets) ? response.pets : [];
       userDashboardData.pets = pets;
+      setOwnerStat('ownerStatPets', pets.length);
       displayPets(pets);
-      if (userDashboardData.medicalRecordsLoaded) {
-        displayRecentMedicalRecords(userDashboardData.medicalRecords);
-      }
       return pets;
     })
     .catch(error => {
       console.error('Error loading pets:', error);
-      renderUserSectionError('recentPetsContainer', 'pets', 'pets.html', 'Manage pets');
+      setOwnerStat('ownerStatPets', null);
+      renderUserSectionError('recentPetsContainer', 'pets');
       return [];
     });
 }
@@ -483,43 +504,35 @@ function displayPets(pets) {
   const petList = Array.isArray(pets) ? pets : [];
 
   if (petList.length === 0) {
-    petsContainer.innerHTML = `
-      <div class="empty-state text-center py-8">
-        <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
-          <i class="ri-bear-smile-line text-2xl"></i>
-        </div>
-        <p class="font-medium text-gray-700">No pets added yet</p>
-        <p class="text-sm text-gray-500 mt-2">Pet profiles you add will appear here and help connect appointments and records to the right pet.</p>
-        <p class="text-sm text-gray-500 mt-2"><a href="pets.html" class="text-orange-500 hover:underline">Add your first pet</a></p>
-      </div>
-    `;
+    petsContainer.innerHTML = getEmptyStateHtml(
+      'No pets added yet',
+      'Pet profiles you add will appear here and help connect appointments and records to the right pet.',
+      'pets.html',
+      'Add your first pet'
+    );
     return;
   }
 
   const previewPets = petList.slice(0, DASHBOARD_PET_PREVIEW_LIMIT);
-  petsContainer.innerHTML = previewPets.map(pet => `
-    <div class="flex items-center justify-between rounded-2xl border border-gray-100 bg-white p-4 shadow-sm hover:shadow-md transition-shadow">
-      <div class="flex items-center gap-4 flex-1">
-        <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
-          <i class="${getPetSpeciesIconClass(pet.species)} text-2xl"></i>
-        </div>
-        <div class="flex-1 min-w-0">
-          <p class="font-semibold text-gray-900">${escapeHtml(pet.name || 'Unnamed pet')}</p>
-          <p class="text-sm text-gray-600">${escapeHtml(getPetSummary(pet))}</p>
-        </div>
-      </div>
-      <div class="flex gap-2">
-        <a href="pets.html" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-orange-50 text-orange-600 text-sm font-semibold hover:bg-orange-100 transition-all">
-          <i class="ri-arrow-right-line"></i>Open
-        </a>
-      </div>
-    </div>
-  `).join('') + getPreviewFooterHtml(previewPets.length, petList.length, 'pets', 'pets.html', 'View all pets', 'text-orange-500');
+  petsContainer.innerHTML = `
+    <ul class="ph-dash-list">
+      ${previewPets.map(pet => `
+        <li class="ph-dash-list-item">
+          <div class="ph-dash-list-main">
+            <p class="ph-dash-list-title">${escapeHtml(pet.name || 'Unnamed pet')}</p>
+            <p class="ph-dash-list-meta">${escapeHtml(getPetSummary(pet))}</p>
+          </div>
+          <a href="pets.html?pet=${encodeURIComponent(String(pet.id || ''))}" class="ph-dash-link">Open<span class="sr-only"> ${escapeHtml(pet.name || 'pet')}</span> <i class="ri-arrow-right-line" aria-hidden="true"></i></a>
+        </li>
+      `).join('')}
+    </ul>
+    ${getPreviewFooterHtml(previewPets.length, petList.length, 'pets', 'pets.html', 'View all pets')}
+  `;
 }
 
-function getPreviewFooterHtml(shownCount, totalCount, noun, href, linkLabel, linkClass) {
+function getPreviewFooterHtml(shownCount, totalCount, noun, href, linkLabel) {
   if (totalCount <= shownCount) return '';
-  return `<p class="mt-3 text-center text-sm text-gray-500">Showing ${shownCount} of ${totalCount} ${noun}. <a href="${href}" class="${linkClass} hover:underline">${escapeHtml(linkLabel)}</a></p>`;
+  return `<p class="ph-dash-note mt-3">Showing ${shownCount} of ${totalCount} ${noun}. <a href="${href}" class="ph-dash-link">${escapeHtml(linkLabel)}</a></p>`;
 }
 
 function getPetSummary(pet) {
@@ -531,56 +544,8 @@ function getPetSummary(pet) {
   return details.join(' | ');
 }
 
-function getPetSpeciesIconClass(species) {
-  const normalizedSpecies = String(species || '').toLowerCase().trim();
-  const iconMap = {
-    dog: 'ri-bear-smile-line',
-    cat: 'ri-bear-smile-line',
-    bird: 'ri-bear-smile-line',
-    fish: 'ri-bear-smile-line',
-    rabbit: 'ri-bear-smile-line',
-    hamster: 'ri-bear-smile-line',
-    reptile: 'ri-bear-smile-line',
-    snake: 'ri-bear-smile-line',
-    horse: 'ri-bear-smile-line',
-    other: 'ri-bear-smile-line'
-  };
-
-  return iconMap[normalizedSpecies] || 'ri-bear-smile-line';
-}
-
 function hasRecordedValue(value) {
   return value !== undefined && value !== null && String(value).trim() !== '';
-}
-
-function getUserPetById(petId) {
-  if (!hasRecordedValue(petId)) return null;
-  const id = String(petId);
-  return userDashboardData.pets.find(pet => String(pet.id) === id) || null;
-}
-
-function getMedicalRecordPetLabel(record) {
-  const pet = getUserPetById(record?.pet_id);
-  if (hasRecordedValue(pet?.name)) return String(pet.name);
-  if (hasRecordedValue(record?.pet_name)) return String(record.pet_name);
-  if (hasRecordedValue(record?.pet_id)) return `Pet ID: ${record.pet_id}`;
-  return 'Pet profile unavailable';
-}
-
-function getMedicalRecordRecorderLabel(record) {
-  if (!hasRecordedValue(record?.created_by)) return 'Not specified';
-  if (hasRecordedValue(record?.created_by_name)) return String(record.created_by_name);
-  if (hasRecordedValue(record?.recorded_by_name)) return String(record.recorded_by_name);
-  return 'Not specified';
-}
-
-function getMedicalRecordDisplayValue(value) {
-  return hasRecordedValue(value) ? String(value) : 'Not recorded';
-}
-
-function getMedicalRecordWeightDisplay(record) {
-  const weight = getMedicalRecordDisplayValue(record?.weight);
-  return weight === 'Not recorded' ? weight : `${weight} kg`;
 }
 
 function getAppointmentDurationMinutes(appointment) {
@@ -676,41 +641,19 @@ function loadUserAppointments() {
     })
     .then(response => {
       const appointments = Array.isArray(response.appointments) ? response.appointments : [];
+      const upcoming = getUpcomingAppointments(appointments);
+      setOwnerStat('ownerStatUpcoming', upcoming.length);
+      setOwnerStat('ownerStatPending', upcoming.filter(apt => getAppointmentStatusLabel(apt.status) === 'Pending').length);
       displayAppointments(appointments);
       return appointments;
     })
     .catch(error => {
       console.error('Error loading appointments:', error);
-      renderUserSectionError('recentAppointmentsContainer', 'appointments', 'appointments.html', 'Manage appointments');
+      setOwnerStat('ownerStatUpcoming', null);
+      setOwnerStat('ownerStatPending', null);
+      renderUserSectionError('recentAppointmentsContainer', 'appointments');
       return [];
     });
-}
-
-async function loadUserMedicalRecords() {
-  const userData = getUser();
-  if (!userData) {
-    displayRecentMedicalRecords([]);
-    return Promise.resolve([]);
-  }
-
-  try {
-    const response = await fetchWithRetry(() => fetch(`${window.API_BASE_URL}/pets/medical-records?user_id=${userData.id}`));
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data.error || `Failed to load medical records (${response.status})`);
-    }
-
-    const data = await response.json();
-    const records = Array.isArray(data.records) ? data.records : [];
-    userDashboardData.medicalRecords = records;
-    userDashboardData.medicalRecordsLoaded = true;
-    displayRecentMedicalRecords(records);
-    return records;
-  } catch (error) {
-    console.error('Error loading medical records:', error);
-    renderUserSectionError('recentRecordsContainer', 'medical records', 'pets.html#medicalRecordsList', 'View records');
-    return [];
-  }
 }
 
 async function loadUserActivityLogs() {
@@ -733,7 +676,7 @@ async function loadUserActivityLogs() {
     return logs;
   } catch (error) {
     console.error('Error loading recent activity:', error);
-    renderUserSectionError('recentActivityContainer', 'recent activity', '', '');
+    renderUserSectionError('recentActivityContainer', 'recent activity');
     return [];
   }
 }
@@ -744,72 +687,80 @@ function displayAppointments(appointments) {
   const appointmentList = Array.isArray(appointments) ? appointments : [];
 
   if (appointmentList.length === 0) {
-    appointmentsContainer.innerHTML = `
-      <div class="empty-state text-center py-8">
-        <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 text-blue-500">
-          <i class="ri-calendar-event-line text-2xl"></i>
-        </div>
-        <p class="font-medium text-gray-700">No appointments yet</p>
-        <p class="text-sm text-gray-500 mt-2">Appointments you book will appear here with their clinic approval status.</p>
-        <p class="text-sm text-gray-500 mt-2"><a href="appointments.html" class="text-blue-500 hover:underline">Book an appointment</a></p>
-      </div>
-    `;
+    appointmentsContainer.innerHTML = getEmptyStateHtml(
+      'No appointments yet',
+      'Appointments you book will appear here with their clinic approval status.',
+      'appointments.html',
+      'Go to Appointments'
+    );
     return;
   }
 
   const upcomingAppointments = getUpcomingAppointments(appointmentList);
   if (upcomingAppointments.length === 0) {
-    appointmentsContainer.innerHTML = `
-      <div class="empty-state text-center py-8">
-        <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 text-blue-500">
-          <i class="ri-calendar-event-line text-2xl"></i>
-        </div>
-        <p class="font-medium text-gray-700">No upcoming appointments</p>
-        <p class="text-sm text-gray-500 mt-2">Past, completed, and cancelled appointments are listed on the Appointments page.</p>
-        <p class="text-sm text-gray-500 mt-2"><a href="appointments.html" class="text-blue-500 hover:underline">Book an appointment</a></p>
-      </div>
-    `;
+    appointmentsContainer.innerHTML = getEmptyStateHtml(
+      'No upcoming appointments',
+      'Past, completed, and cancelled appointments are listed on the Appointments page.',
+      'appointments.html',
+      'See your appointment history'
+    );
     return;
   }
 
   const apt = upcomingAppointments[0];
   const handledBy = getHandledByLabel(apt);
   const status = getAppointmentStatusLabel(apt.status);
-  const handledByRow = handledBy
-    ? `<p><span class="font-semibold text-slate-500">Handled by:</span> ${escapeHtml(handledBy)}</p>`
-    : '';
-  const moreUpcomingCount = upcomingAppointments.length - 1;
-  const moreUpcomingRow = moreUpcomingCount > 0
-    ? `<p class="mt-3 text-center text-sm text-gray-500">You have ${moreUpcomingCount} more upcoming appointment${moreUpcomingCount === 1 ? '' : 's'}. <a href="appointments.html" class="text-blue-500 hover:underline">View all appointments</a></p>`
+  const handledByRow = handledBy ? getFactHtml('Handled by', handledBy) : '';
+  const moreUpcoming = upcomingAppointments.slice(1);
+  const moreUpcomingHtml = moreUpcoming.length > 0
+    ? `
+      <p class="ph-dash-note mt-4">You have ${moreUpcoming.length} more upcoming appointment${moreUpcoming.length === 1 ? '' : 's'}:</p>
+      <ul class="ph-dash-list mt-2">
+        ${moreUpcoming.slice(0, DASHBOARD_MORE_UPCOMING_LIMIT).map(next => {
+          const nextStatus = getAppointmentStatusLabel(next.status);
+          return `
+            <li class="ph-dash-list-item">
+              <div class="ph-dash-list-main">
+                <p class="ph-dash-list-title">${escapeHtml(hasRecordedValue(next.pet_name) ? next.pet_name : 'N/A')} &middot; ${escapeHtml(hasRecordedValue(next.service_type) ? next.service_type : 'N/A')}</p>
+                <p class="ph-dash-list-meta">${escapeHtml(formatAppointmentDate(next.appointment_date))}, ${escapeHtml(getAppointmentTimeRangeDisplay(next))}</p>
+              </div>
+              <span class="${getStatusBadgeClasses(nextStatus)} px-2 py-1 text-xs">${escapeHtml(nextStatus)}</span>
+            </li>
+          `;
+        }).join('')}
+      </ul>
+      ${moreUpcoming.length > DASHBOARD_MORE_UPCOMING_LIMIT ? `<p class="ph-dash-note mt-2">More are listed on the <a href="appointments.html" class="ph-dash-link">Appointments page</a>.</p>` : ''}
+    `
     : '';
 
   appointmentsContainer.innerHTML = `
-    <div class="rounded-2xl border border-blue-100 bg-blue-50 p-5 text-left">
-      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div class="flex items-start gap-4">
-          <div class="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-white text-blue-500">
-            <i class="ri-calendar-check-line text-2xl"></i>
-          </div>
-          <div class="min-w-0">
-            <p class="text-lg font-bold text-gray-900">${escapeHtml(formatAppointmentDate(apt.appointment_date))}</p>
-            <p class="text-sm font-semibold text-blue-700">${escapeHtml(getAppointmentTimeRangeDisplay(apt))}</p>
-          </div>
+    <article class="ph-dash-card" aria-label="Next appointment">
+      <div class="ph-dash-card-head">
+        <div>
+          <p class="ph-dash-eyebrow">Next appointment</p>
+          <p class="ph-dash-card-title">${escapeHtml(formatAppointmentDate(apt.appointment_date))}</p>
+          <p class="ph-dash-list-meta">${escapeHtml(getAppointmentTimeRangeDisplay(apt))}</p>
         </div>
         <div>
-          <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ${getStatusBadgeClasses(status)}">${escapeHtml(status)}</span>
-          <p class="mt-1 text-xs text-gray-500">${escapeHtml(getAppointmentStatusNote(status))}</p>
+          <span class="${getStatusBadgeClasses(status)} px-2 py-1 text-xs">${escapeHtml(status)}</span>
+          <p class="ph-dash-note mt-1">${escapeHtml(getAppointmentStatusNote(status))}</p>
         </div>
       </div>
-      <div class="mt-4 grid grid-cols-1 gap-x-5 gap-y-2 text-sm text-gray-600 sm:grid-cols-2">
-        <p><span class="font-semibold text-slate-500">Pet:</span> ${escapeHtml(hasRecordedValue(apt.pet_name) ? apt.pet_name : 'N/A')}</p>
-        <p><span class="font-semibold text-slate-500">Service:</span> ${escapeHtml(hasRecordedValue(apt.service_type) ? apt.service_type : 'N/A')}</p>
-        <p><span class="font-semibold text-slate-500">Duration:</span> ${escapeHtml(getAppointmentDurationLabel(apt))}</p>
-        <p><span class="font-semibold text-slate-500">Reference:</span> ${escapeHtml(getAppointmentReference(apt))}</p>
+      <dl class="ph-dash-facts">
+        ${getFactHtml('Pet', hasRecordedValue(apt.pet_name) ? apt.pet_name : 'N/A')}
+        ${getFactHtml('Service', hasRecordedValue(apt.service_type) ? apt.service_type : 'N/A')}
+        ${getFactHtml('Duration', getAppointmentDurationLabel(apt))}
+        ${getFactHtml('Reference', getAppointmentReference(apt))}
         ${handledByRow}
-      </div>
-    </div>
-    ${moreUpcomingRow}
+      </dl>
+    </article>
+    ${moreUpcomingHtml}
   `;
+}
+
+// One label and value of a details list; the visually hidden colon keeps "Label: value" when read or copied as text
+function getFactHtml(label, value) {
+  return `<div><dt>${escapeHtml(label)}<span class="sr-only">:</span></dt> <dd>${escapeHtml(value)}</dd></div>`;
 }
 
 function getHandledByLabel(appointment) {
@@ -883,106 +834,39 @@ async function refreshCurrentUser() {
   }
 }
 
-function displayRecentMedicalRecords(records) {
-  const recordsContainer = document.getElementById('recentRecordsContainer');
-  if (!recordsContainer) {
-    return;
-  }
-  const recordList = Array.isArray(records) ? records : [];
-
-  if (recordList.length === 0) {
-    recordsContainer.innerHTML = `
-      <div class="text-center py-8">
-        <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-green-100 text-green-500">
-          <i class="ri-health-book-line text-2xl"></i>
-        </div>
-        <p class="text-gray-600 font-medium">No medical records yet</p>
-        <p class="text-sm text-gray-500 mt-2">Official records are added by clinic staff after completed services, so nothing has been recorded here yet.</p>
-        <p class="text-sm text-gray-500 mt-2"><a href="appointments.html" class="text-blue-600 hover:underline">Book an appointment</a></p>
-      </div>
-    `;
-    return;
-  }
-
-  const sortedRecords = [...recordList]
-    .sort((a, b) => (new Date(b.record_date || b.created_at || 0) - new Date(a.record_date || a.created_at || 0))
-      || (new Date(b.created_at || 0) - new Date(a.created_at || 0)));
-  const previewRecords = sortedRecords.slice(0, DASHBOARD_RECORD_PREVIEW_LIMIT);
-
-  recordsContainer.innerHTML = previewRecords.map(record => {
-    const petName = getMedicalRecordPetLabel(record);
-    const date = record.record_date ? formatDate(record.record_date) : 'Date not recorded';
-    const recordedBy = getMedicalRecordRecorderLabel(record);
-    
-    return `
-      <div class="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm hover:shadow-md transition-shadow">
-        <div class="flex justify-between items-start mb-3">
-          <div>
-            <p class="text-xs text-gray-500 font-semibold uppercase tracking-wide">Record date: ${escapeHtml(date)}</p>
-            <p class="font-semibold text-gray-900 mt-1">${escapeHtml(petName)}</p>
-          </div>
-        </div>
-        <dl class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-          <div>
-            <dt class="font-semibold text-gray-500">Weight</dt>
-            <dd class="mt-1 text-gray-800">${escapeHtml(getMedicalRecordWeightDisplay(record))}</dd>
-          </div>
-          <div>
-            <dt class="font-semibold text-gray-500">Vaccination status</dt>
-            <dd class="mt-1 text-gray-800">${escapeHtml(getMedicalRecordDisplayValue(record.vaccination_status))}</dd>
-          </div>
-          <div>
-            <dt class="font-semibold text-gray-500">Treatment</dt>
-            <dd class="mt-1 text-gray-800">${escapeHtml(getMedicalRecordDisplayValue(record.treatment))}</dd>
-          </div>
-          <div>
-            <dt class="font-semibold text-gray-500">Recorded by</dt>
-            <dd class="mt-1 text-gray-800">${escapeHtml(recordedBy)}</dd>
-          </div>
-          <div class="sm:col-span-2">
-            <dt class="font-semibold text-gray-500">Notes</dt>
-            <dd class="mt-1 whitespace-pre-line text-gray-800">${escapeHtml(getMedicalRecordDisplayValue(record.medical_notes))}</dd>
-          </div>
-        </dl>
-      </div>
-    `;
-  }).join('') + getPreviewFooterHtml(previewRecords.length, sortedRecords.length, 'records', 'pets.html#medicalRecordsList', 'View full history', 'text-green-600');
-}
-
 function displayRecentActivity(logs) {
   const activityContainer = document.getElementById('recentActivityContainer');
   if (!activityContainer) return;
   const activityLogs = Array.isArray(logs) ? logs : [];
 
   if (activityLogs.length === 0) {
-    activityContainer.innerHTML = `
-      <div class="text-center py-6">
-        <p class="text-gray-600 font-medium">No recent activity yet</p>
-        <p class="text-sm text-gray-500 mt-2">Activity appears here after account actions like signing in or verifying your email.</p>
-        <p class="text-sm text-gray-500 mt-2"><a href="pets.html" class="text-orange-500 hover:underline">Add a pet</a></p>
-      </div>
-    `;
+    activityContainer.innerHTML = getEmptyStateHtml(
+      'No recent activity yet',
+      'Activity appears here after account actions like signing in or verifying your email.'
+    );
     return;
   }
 
-  activityContainer.innerHTML = activityLogs.slice(0, 5).map(log => {
-    const action = formatActivityAction(log.action);
-    const details = log.details ? String(log.details) : '';
-    const date = log.created_at ? formatDate(log.created_at) : 'Date not recorded';
+  activityContainer.innerHTML = `
+    <ul class="ph-dash-list">
+      ${activityLogs.slice(0, 5).map(log => {
+        const action = formatActivityAction(log.action);
+        const details = log.details ? String(log.details) : '';
+        const date = log.created_at ? formatDate(log.created_at) : 'Date not recorded';
 
-    return `
-      <div class="flex items-start gap-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
-        <div class="mt-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
-          <i class="${getUserActivityIconClass(log.action)}" aria-hidden="true"></i>
-        </div>
-        <div class="min-w-0 flex-1">
-          <p class="font-semibold text-gray-900">${escapeHtml(action)}</p>
-          ${details ? `<p class="mt-1 text-sm text-gray-600">${escapeHtml(details)}</p>` : ''}
-          <p class="mt-2 text-xs text-gray-500">${escapeHtml(date)}</p>
-        </div>
-      </div>
-    `;
-  }).join('');
+        return `
+          <li class="ph-dash-list-item">
+            <span class="ph-dash-stat-icon"><i class="${getUserActivityIconClass(log.action)}" aria-hidden="true"></i></span>
+            <div class="ph-dash-list-main">
+              <p class="ph-dash-list-title">${escapeHtml(action)}</p>
+              ${details ? `<p class="ph-dash-list-meta">${escapeHtml(details)}</p>` : ''}
+              <p class="ph-dash-list-meta">${escapeHtml(date)}</p>
+            </div>
+          </li>
+        `;
+      }).join('')}
+    </ul>
+  `;
 }
 
 // Same icons as the admin activity log (admin/dashboard.js getActivityIcon) where the actions overlap;

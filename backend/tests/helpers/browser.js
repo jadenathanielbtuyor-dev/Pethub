@@ -68,10 +68,16 @@ async function startBrowser() {
   debuggerOrigin = `http://127.0.0.1:${port}`;
 }
 
+// Waits for Chrome to exit before removing its profile: with several browser test files running at once, Windows can
+// keep the profile's files locked for a moment after the kill
 async function stopBrowser() {
-  if (browser) browser.kill();
+  if (browser) {
+    const exited = browser.exitCode !== null ? Promise.resolve() : new Promise(resolve => browser.once('exit', resolve));
+    browser.kill();
+    await Promise.race([exited, sleep(5000)]);
+  }
   await sleep(300);
-  if (profileDir) fs.rmSync(profileDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  if (profileDir) fs.rmSync(profileDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
 }
 
 // session: a user object to sign in as (sessionStorage user + a placeholder token)

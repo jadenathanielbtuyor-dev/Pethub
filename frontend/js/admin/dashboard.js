@@ -1,4 +1,30 @@
 // ==================== ADMIN DASHBOARD ====================
+// pages/admin/dashboard.html: four sections on one page, chosen from the address hash and the dashboard navigation
+// (js/shared/dashboard-shell.js calls window.showAdminView):
+//   #overview      Real totals, pending requests, today's and upcoming approved appointments, recent administrative
+//                  activity, shortcuts and clinic charts.
+//   #appointments  Appointment Management: every appointment, searchable and filterable by pet/owner/reference,
+//                  status, service and date; approve, complete or cancel.
+//   #records       Pet & Medical Records: pets with their owners, each pet's official records, and adding a record for
+//                  a completed appointment.
+//   #system        System Management: users and roles, contact messages, activity logs, service catalog and booking.
+//
+// Data (all real PetHub records; nothing here is a placeholder figure):
+//   GET /admin/dashboard/overview          users, pets, appointments (with owner and handler names), medical records
+//   GET /admin/system-logs                 the activity log (newest first)
+//   GET /admin/dashboard/contact-messages  contact form messages (if the overview does not include them)
+//   GET /appointments/services             the clinic's nine services and whether each can be booked online
+// Changes:
+//   PUT  /admin/dashboard/appointment-status          { id, status }
+//   POST /admin/dashboard/medical-records/create      { pet_id, appointment_id, record_date, weight, ... }
+//   PUT  /admin/dashboard/user-role                   { id, role }
+//   PUT  /admin/dashboard/contact-message-status      { id, status: 'Read' }
+// Authorization: every request carries the session token (core/api.js). backend/routes/admin.js runs requireAuth (the
+// token must match the user_id sent) and validateAdminAccess (the account's admin role is re-read from the database)
+// before any /admin handler; a non-admin gets 403 whatever this page shows. The role check below only redirects
+// non-admins to their own dashboard.
+// Every change is shown as done only after the server confirms it; the dashboard then reloads its data from the
+// server, so what is displayed is always the server's state. Failures show the server's message and change nothing.
 
 // Connection retry configuration
 const MAX_RETRIES = 2;
@@ -10,8 +36,29 @@ const UPCOMING_CHECKUPS_STATUSES = ['Pending', 'Approved'];
 const CHECKUP_SERVICE_NAMES = ['Dog & Cat Full Check Up', 'Checkup'];
 const CONTACT_MESSAGE_ACTIONABLE_STATUS = 'Unread';
 const CONTACT_MESSAGE_READ_STATUS = 'Read';
-const ADMIN_MANAGEMENT_TAB_STORAGE_KEY = 'pethubAdminDashboardManagementTab';
+const ADMIN_SYSTEM_TAB_STORAGE_KEY = 'pethubAdminDashboardSystemTab';
 const ADMIN_APPOINTMENT_STATUS_STORAGE_KEY = 'pethubAdminDashboardAppointmentStatusFilter';
+const ADMIN_VIEWS = ['overview', 'appointments', 'records', 'system'];
+const SYSTEM_TABS = ['users', 'messages', 'activity', 'services'];
+const APPOINTMENT_STATUSES = ['Pending', 'Approved', 'Completed', 'Cancelled'];
+const OVERVIEW_LIST_LIMIT = 5;
+const SYSTEM_LOG_LIMIT = 50;
+// Earlier addresses of these sections (the previous dashboard views and the retired Users, Pets and Appointments pages)
+const LEGACY_ADMIN_HASHES = {
+  dashboard: { view: 'overview' },
+  dashboardOverview: { view: 'overview' },
+  analytics: { view: 'overview' },
+  analyticsSummary: { view: 'overview' },
+  management: { view: 'appointments' },
+  medicalRecords: { view: 'records' },
+  medicalRecordsSection: { view: 'records' },
+  pets: { view: 'records' },
+  users: { view: 'system', tab: 'users' },
+  messages: { view: 'system', tab: 'messages' },
+  activityLogs: { view: 'system', tab: 'activity' },
+  systemLogs: { view: 'system', tab: 'activity' },
+  services: { view: 'system', tab: 'services' }
+};
 
 document.addEventListener('DOMContentLoaded', () => {
   initializeAdminDashboard();
@@ -21,10 +68,10 @@ let petTypeChart = null;
 let serviceUsageChart = null;
 let appointmentTrendChart = null;
 let currentAdminView = 'overview';
-let currentAdminManagementTab = 'users';
+let currentSystemTab = 'users';
+let selectedAdminPetId = '';
 let dashboardOverviewLoadPromise = null;
 let adminDashboardInteractionsBound = false;
-let adminDashboardActionsBound = false;
 let adminStatusTimeoutId = null;
 let dashboardRefreshInProgress = false;
 let adminDashboardData = {
@@ -45,8 +92,12 @@ let adminDashboardData = {
   overviewError: '',
   stats: {},
   summary: {},
+  // The clinic's service catalog (GET /appointments/services)
+  serviceCatalog: [],
+  serviceCatalogLoaded: false,
+  serviceCatalogError: '',
   petTypes: { labels: [], values: [] },
-  services: { labels: [], values: [] },
+  serviceUsage: { labels: [], values: [] },
   appointmentsTrend: { labels: [], values: [] }
 };
 
@@ -118,14 +169,18 @@ async function initializeAdminDashboard() {
   adminDashboardData.activityLogsLoading = true;
 
   displayAdminHeaderInfo();
+  currentSystemTab = getStoredSystemTab();
   setupAdminDashboardInteractions();
-  setupAdminDashboardActions();
 
-  const initialView = normalizeAdminViewName(window.location.hash.replace(/^#/, ''));
-  showAdminView(initialView);
-  window.addEventListener('hashchange', () => showAdminView(window.location.hash.replace(/^#/, '')));
+  const initial = resolveAdminLocation(window.location.hash);
+  showAdminView(initial.view, { systemTab: initial.tab });
+  // Back/forward and typed addresses; other hashes (none are used on this page) are ignored
+  window.addEventListener('hashchange', () => {
+    const location = resolveAdminLocation(window.location.hash, false);
+    if (location) showAdminView(location.view, { systemTab: location.tab });
+  });
 
-  await loadDashboardOverview();
+  await Promise.all([loadDashboardOverview(), loadServiceCatalog()]);
 }
 
 function displayAdminHeaderInfo() {
@@ -140,43 +195,37 @@ function displayAdminHeaderInfo() {
   if (adminRoleBadge) {
     adminRoleBadge.textContent = formatRoleLabel(userData?.role);
   }
+
+  if (window.PetHubDashboardShell && userData) {
+    window.PetHubDashboardShell.setAccountName(userData.fullname || userData.email || 'Admin');
+  }
 }
 
-function normalizeAdminViewName(viewName) {
-  const value = String(viewName || '').replace(/^#/, '').trim();
-  const map = {
-    dashboard: 'overview',
-    dashboardOverview: 'overview',
-    overview: 'overview',
-    analytics: 'analytics',
-    analyticsSummary: 'analytics',
-    management: 'management',
-    medicalRecords: 'medicalRecords',
-    medicalRecordsSection: 'medicalRecords',
-    activityLogs: 'activityLogs',
-    systemLogs: 'activityLogs',
-    messages: 'messages'
-  };
-
-  return map[value] || 'overview';
+// "#appointments" -> { view: 'appointments' }; earlier hashes map to the section that replaced them. With
+// fallback=false an unknown hash gives null instead of the Overview.
+function resolveAdminLocation(hash, fallback = true) {
+  const value = String(hash || '').replace(/^#/, '').trim();
+  if (ADMIN_VIEWS.includes(value)) return { view: value };
+  if (LEGACY_ADMIN_HASHES[value]) return LEGACY_ADMIN_HASHES[value];
+  return fallback ? { view: 'overview' } : null;
 }
 
-function normalizeAdminManagementTab(tab) {
-  return ['users', 'pets', 'appointments'].includes(tab) ? tab : 'users';
+function normalizeSystemTab(tab) {
+  return SYSTEM_TABS.includes(tab) ? tab : 'users';
 }
 
-function getStoredAdminManagementTab() {
+function getStoredSystemTab() {
   try {
-    return normalizeAdminManagementTab(sessionStorage.getItem(ADMIN_MANAGEMENT_TAB_STORAGE_KEY));
+    return normalizeSystemTab(sessionStorage.getItem(ADMIN_SYSTEM_TAB_STORAGE_KEY));
   } catch (error) {
     return 'users';
   }
 }
 
-function setStoredAdminManagementTab(tab) {
-  currentAdminManagementTab = normalizeAdminManagementTab(tab);
+function setStoredSystemTab(tab) {
+  currentSystemTab = normalizeSystemTab(tab);
   try {
-    sessionStorage.setItem(ADMIN_MANAGEMENT_TAB_STORAGE_KEY, currentAdminManagementTab);
+    sessionStorage.setItem(ADMIN_SYSTEM_TAB_STORAGE_KEY, currentSystemTab);
   } catch (error) {
     // Ignore storage failures; the visible tab still updates for this page session.
   }
@@ -185,14 +234,14 @@ function setStoredAdminManagementTab(tab) {
 function getStoredAdminAppointmentStatusFilter() {
   try {
     const status = sessionStorage.getItem(ADMIN_APPOINTMENT_STATUS_STORAGE_KEY);
-    return ['all', 'Pending', 'Approved', 'Completed', 'Cancelled'].includes(status) ? status : 'all';
+    return ['all', ...APPOINTMENT_STATUSES].includes(status) ? status : 'all';
   } catch (error) {
     return 'all';
   }
 }
 
 function setStoredAdminAppointmentStatusFilter(status) {
-  const normalizedStatus = ['all', 'Pending', 'Approved', 'Completed', 'Cancelled'].includes(status) ? status : 'all';
+  const normalizedStatus = ['all', ...APPOINTMENT_STATUSES].includes(status) ? status : 'all';
   try {
     sessionStorage.setItem(ADMIN_APPOINTMENT_STATUS_STORAGE_KEY, normalizedStatus);
   } catch (error) {
@@ -200,108 +249,41 @@ function setStoredAdminAppointmentStatusFilter(status) {
   }
 }
 
-function showAdminView(viewName) {
-  const normalizedView = normalizeAdminViewName(viewName);
-  currentAdminView = normalizedView;
+// Shows one of the four sections; options.systemTab opens a System Management tab, options.focusHeading moves keyboard
+// focus to the section's heading (used when the section is chosen from the navigation)
+function showAdminView(viewName, options = {}) {
+  const view = ADMIN_VIEWS.includes(viewName) ? viewName : 'overview';
+  currentAdminView = view;
   const views = {
     overview: document.getElementById('adminViewOverview'),
-    analytics: document.getElementById('adminViewAnalytics'),
-    management: document.getElementById('adminViewManagement'),
-    medicalRecords: document.getElementById('adminViewMedicalRecords'),
-    activityLogs: document.getElementById('adminViewActivityLogs'),
-    messages: document.getElementById('adminViewMessages')
+    appointments: document.getElementById('adminViewAppointments'),
+    records: document.getElementById('adminViewRecords'),
+    system: document.getElementById('adminViewSystem')
   };
 
-  Object.values(views).forEach(view => {
-    if (view) view.classList.add('hidden');
+  Object.entries(views).forEach(([name, element]) => {
+    if (element) element.hidden = name !== view;
   });
 
-  if (views[normalizedView]) {
-    views[normalizedView].classList.remove('hidden');
-  } else if (views.overview) {
-    currentAdminView = 'overview';
-    views.overview.classList.remove('hidden');
-  }
-
-  updateAdminSidebarActiveState(currentAdminView);
+  if (view === 'system' && options.systemTab) setStoredSystemTab(options.systemTab);
+  if (window.PetHubDashboardShell) window.PetHubDashboardShell.setActive(view);
+  updateAdminViewHash(view);
   renderCurrentAdminView();
-  updateAdminViewHash(currentAdminView);
-  resetAdminMobileNavigationState();
+
+  if (options.focusHeading) {
+    const heading = views[view]?.querySelector('h1');
+    if (heading) {
+      heading.focus();
+      window.scrollTo({ top: 0 });
+    }
+  }
 }
 
-function resetAdminMobileNavigationState() {
-  if (typeof window.closeAdminMobileSidebar === 'function') {
-    window.closeAdminMobileSidebar();
-    return;
-  }
-
-  if (!window.matchMedia('(max-width: 767px)').matches) {
-    return;
-  }
-
-  const adminSidebar = document.getElementById('adminSidebar');
-  const sidebarBackdrop = document.getElementById('sidebarBackdrop');
-  const sidebarToggles = document.querySelectorAll('#sidebarToggle, [data-admin-sidebar-toggle]');
-
-  adminSidebar?.classList.remove('is-open');
-  adminSidebar?.setAttribute('aria-hidden', 'true');
-  document.body.classList.remove('admin-sidebar-open');
-  if (sidebarBackdrop) {
-    sidebarBackdrop.classList.add('hidden');
-    sidebarBackdrop.hidden = true;
-    sidebarBackdrop.setAttribute('aria-hidden', 'true');
-  }
-  sidebarToggles.forEach(toggle => {
-    toggle.setAttribute('aria-expanded', 'false');
-    toggle.classList.remove('is-open');
-  });
-}
+window.showAdminView = showAdminView;
 
 function updateAdminViewHash(viewName) {
-  const currentHash = window.location.hash.replace(/^#/, '').trim();
-  if (isAdminViewHashForView(currentHash, viewName)) {
-    return;
-  }
+  if (window.location.hash.replace(/^#/, '') === viewName) return;
   history.replaceState(null, '', `#${viewName}`);
-}
-
-function isAdminViewHashForView(hash, viewName) {
-  const value = String(hash || '').replace(/^#/, '').trim();
-  const knownHashes = [
-    'dashboard',
-    'dashboardOverview',
-    'overview',
-    'analytics',
-    'analyticsSummary',
-    'management',
-    'medicalRecords',
-    'medicalRecordsSection',
-    'activityLogs',
-    'systemLogs',
-    'messages'
-  ];
-  return knownHashes.includes(value) && normalizeAdminViewName(value) === viewName;
-}
-
-function updateAdminSidebarActiveState(activeView) {
-  const sidebarLinks = document.querySelectorAll('a[data-admin-view]');
-  sidebarLinks.forEach(link => {
-    const view = link.getAttribute('data-admin-view');
-    const isActive = view === activeView;
-    link.classList.remove('is-activating');
-    link.classList.toggle('is-active', isActive);
-    link.classList.toggle('bg-orange-500', isActive);
-    link.classList.toggle('text-white', isActive);
-    link.classList.toggle('shadow-sm', isActive);
-    link.classList.toggle('text-slate-600', !isActive);
-    link.classList.toggle('hover:bg-orange-50', !isActive);
-    link.classList.toggle('hover:text-orange-600', !isActive);
-    if (isActive) {
-      link.setAttribute('aria-current', 'page');
-    } else {
-      link.removeAttribute('aria-current');
-    }
-  });
 }
 
 function markInteractionFeedback(element) {
@@ -320,9 +302,18 @@ function getFriendlyAdminErrorMessage(sectionName) {
 
 function getAdminErrorBlock(title, sectionName) {
   return `
-    <div class="rounded-2xl border border-red-200 bg-red-50 p-6 text-center text-red-700">
-      <p class="font-semibold">${escapeHtml(title)}</p>
-      <p class="mt-1 text-sm">${escapeHtml(getFriendlyAdminErrorMessage(sectionName))}</p>
+    <div class="ph-dash-error" role="alert">
+      <p class="ph-dash-error-title">${escapeHtml(title)}</p>
+      <p class="ph-dash-error-text">${escapeHtml(getFriendlyAdminErrorMessage(sectionName))}</p>
+    </div>
+  `;
+}
+
+function getAdminEmptyBlock(title, text) {
+  return `
+    <div class="ph-dash-empty">
+      <p class="ph-dash-empty-title">${escapeHtml(title)}</p>
+      ${text ? `<p class="ph-dash-empty-text">${escapeHtml(text)}</p>` : ''}
     </div>
   `;
 }
@@ -330,10 +321,15 @@ function getAdminErrorBlock(title, sectionName) {
 function getAdminTableErrorRow(colspan, title, sectionName) {
   return `
     <tr>
-      <td colspan="${colspan}" class="px-4 py-8 text-center text-red-700">
-        <p class="font-semibold">${escapeHtml(title)}</p>
-        <p class="mt-1 text-sm">${escapeHtml(getFriendlyAdminErrorMessage(sectionName))}</p>
-      </td>
+      <td colspan="${colspan}">${getAdminErrorBlock(title, sectionName)}</td>
+    </tr>
+  `;
+}
+
+function getAdminTableEmptyRow(colspan, title, text) {
+  return `
+    <tr>
+      <td colspan="${colspan}">${getAdminEmptyBlock(title, text)}</td>
     </tr>
   `;
 }
@@ -409,81 +405,92 @@ function showAdminAnalyticsLoadingStates() {
 
 function showAdminDashboardLoadingStates() {
   [
-    'analyticsTotalUsers',
-    'analyticsTotalPets',
-    'analyticsTotalAppointments',
-    'analyticsPendingAppointments',
+    'statPetOwners',
+    'statPets',
+    'statAppointments',
+    'statPending',
     'alertPendingAppointments',
     'alertUnreadMessages',
     'alertNewUsers',
-    'sidebarTotalUsers',
-    'sidebarTotalPets',
-    'sidebarPendingAppointments',
-    'sidebarContactMessages',
-    'sidebarVerifiedUsers',
-    'sidebarMedicalRecords'
+    'alertMedicalRecords'
   ].forEach(id => setElementLoading(id, 'Loading'));
+
+  ['overviewPendingList', 'overviewUpcomingList', 'overviewAdminActivity'].forEach(id => {
+    const element = document.getElementById(id);
+    if (element) element.innerHTML = getDashboardSectionLoadingHtml('records', 1);
+  });
 
   showAdminAnalyticsLoadingStates();
 }
 
-window.showAdminView = showAdminView;
-
 function renderCurrentAdminView() {
-  if (currentAdminView === 'overview') return renderOverview();
-  if (currentAdminView === 'analytics') return renderAnalytics();
-  if (currentAdminView === 'management') return renderManagement();
-  if (currentAdminView === 'medicalRecords') return renderMedicalRecords();
-  if (currentAdminView === 'activityLogs') return renderActivityLogs();
-  if (currentAdminView === 'messages') return renderMessages();
-  renderOverview();
+  if (currentAdminView === 'appointments') return renderAppointmentsView();
+  if (currentAdminView === 'records') return renderRecordsView();
+  if (currentAdminView === 'system') return renderSystemView();
+  return renderOverview();
+}
+
+function isOverviewLoading() {
+  return adminDashboardData.isLoading && !adminDashboardData.isLoaded;
 }
 
 function renderOverview() {
-  if (adminDashboardData.isLoading && !adminDashboardData.isLoaded) {
+  if (isOverviewLoading()) {
     showAdminDashboardLoadingStates();
     return;
   }
-  displayAnalyticsSummary(adminDashboardData.summary || {});
-  displayAnalyticsExtras();
-}
-
-function renderAnalytics() {
-  if (adminDashboardData.isLoading && !adminDashboardData.isLoaded) {
-    showAdminDashboardLoadingStates();
-    return;
-  }
-  displayAnalyticsSummary(adminDashboardData.summary || {});
-  displayAnalyticsExtras();
+  displayOverviewStats(adminDashboardData.summary || {});
+  displayDashboardAlerts(adminDashboardData.summary || {});
+  renderOverviewPendingList();
+  renderOverviewUpcomingList();
+  renderOverviewAdminActivity();
   displayAnalyticsInsights();
+  // Charts are drawn while the Overview is visible so Chart.js can measure the canvases
   renderPetTypeChart(adminDashboardData.petTypes.labels, adminDashboardData.petTypes.values);
-  renderServiceUsageChart(adminDashboardData.services.labels, adminDashboardData.services.values);
+  renderServiceUsageChart(adminDashboardData.serviceUsage.labels, adminDashboardData.serviceUsage.values);
   renderAppointmentTrendChart(adminDashboardData.appointmentsTrend.labels, adminDashboardData.appointmentsTrend.values);
 }
 
-function renderManagement() {
-  if (adminDashboardData.isLoading && !adminDashboardData.isLoaded) {
-    showManagementLoadingStates();
+function renderAppointmentsView() {
+  const statusSelect = document.getElementById('appointmentStatusFilter');
+  if (statusSelect && !statusSelect.dataset.ready) {
+    statusSelect.value = getStoredAdminAppointmentStatusFilter();
+    statusSelect.dataset.ready = 'true';
+  }
+  if (isOverviewLoading()) {
+    const table = document.getElementById('appointmentsTable');
+    if (table) table.innerHTML = getAdminTableLoadingRow(9, 'appointments');
     return;
   }
-  displayUsersTable(adminDashboardData.users);
-  displayPetsTable(adminDashboardData.pets);
-  displayAppointmentsTable(adminDashboardData.appointments);
+  populateAppointmentServiceFilter();
+  applyAppointmentFilters();
 }
 
-function renderMedicalRecords() {
-  if (adminDashboardData.isLoading && !adminDashboardData.isLoaded) {
+function renderRecordsView() {
+  if (isOverviewLoading()) {
+    const petsTable = document.getElementById('petsTable');
     const recordsContainer = document.getElementById('recentMedicalRecordsContainer');
-    if (recordsContainer) {
-      recordsContainer.innerHTML = getDashboardSectionLoadingHtml('medical records', 2);
-    }
+    if (petsTable) petsTable.innerHTML = getAdminTableLoadingRow(7, 'pets');
+    if (recordsContainer) recordsContainer.innerHTML = getDashboardSectionLoadingHtml('medical records', 2);
     return;
   }
+  applyPetSearch();
   displayMedicalRecordsSection(adminDashboardData.medicalRecords);
+  renderAdminPetDetail();
 }
 
-function renderActivityLogs() {
+function renderSystemView() {
+  switchSystemTab(currentSystemTab, { render: false });
+  if (isOverviewLoading()) {
+    const usersTable = document.getElementById('usersTable');
+    if (usersTable) usersTable.innerHTML = getAdminTableLoadingRow(5, 'users');
+  } else {
+    applyUserSearch();
+  }
+  renderMessages();
   renderSystemLogs();
+  renderServiceCatalog();
+  updateUnreadMessagesCount();
 }
 
 /**
@@ -549,14 +556,13 @@ function getCurrentAdminUserId() {
 }
 
 function getAdminActionButtonClass(type) {
-  const baseClasses = 'inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition';
   const classes = {
-    danger: 'bg-red-50 text-red-700 hover:bg-red-100',
-    success: 'bg-green-50 text-green-700 hover:bg-green-100',
-    neutral: 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+    danger: 'ph-btn ph-btn-ghost ph-btn-sm',
+    success: 'ph-btn ph-btn-primary ph-btn-sm',
+    neutral: 'ph-btn ph-btn-secondary ph-btn-sm'
   };
 
-  return `${baseClasses} ${classes[type] || classes.neutral}`;
+  return classes[type] || classes.neutral;
 }
 
 function setActionButtonGroupLoading(button, isLoading, loadingText, defaultText) {
@@ -588,7 +594,7 @@ async function loadSystemLogs(shouldRender = true) {
   }
 
   try {
-    const response = await fetchWithRetry(() => fetch(`${window.API_BASE_URL}/admin/system-logs${getAdminUserIdQuery()}`));
+    const response = await fetchWithRetry(() => fetch(`${window.API_BASE_URL}/admin/system-logs${getAdminUserIdQuery()}&limit=${SYSTEM_LOG_LIMIT}`));
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: response.statusText }));
       throw new Error(errorData.error || `Failed to load system logs (${response.status})`);
@@ -611,6 +617,28 @@ async function loadSystemLogs(shouldRender = true) {
     return [];
   } finally {
     adminDashboardData.activityLogsLoading = false;
+  }
+}
+
+// The clinic's service catalog for System Management, the service filter and the "earlier service" labels
+async function loadServiceCatalog() {
+  adminDashboardData.serviceCatalogLoaded = false;
+  adminDashboardData.serviceCatalogError = '';
+  try {
+    const response = await fetchWithRetry(() => fetch(`${window.API_BASE_URL}/appointments/services`));
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.success === false || !Array.isArray(data.services)) {
+      throw new Error(data.error || `Failed to load services (${response.status})`);
+    }
+    adminDashboardData.serviceCatalog = data.services;
+  } catch (error) {
+    console.error('Error loading the service catalog:', error);
+    adminDashboardData.serviceCatalog = [];
+    adminDashboardData.serviceCatalogError = error.message || 'Unable to load services.';
+  } finally {
+    adminDashboardData.serviceCatalogLoaded = true;
+    renderServiceCatalog();
+    if (currentAdminView === 'appointments' && adminDashboardData.isLoaded) renderAppointmentsView();
   }
 }
 
@@ -666,17 +694,28 @@ function getAppointmentPetLabel(appointment) {
   return 'Pet not listed';
 }
 
+function getAppointmentOwnerLabel(appointment) {
+  if (hasRecordedValue(appointment?.owner_fullname) && appointment.owner_fullname !== 'Unknown') return String(appointment.owner_fullname);
+  return getUserNameById(appointment?.user_id) || 'Owner not recorded';
+}
+
+// Same short reference the owner sees (the stored appointment_reference is empty)
+function getAppointmentReference(appointment) {
+  const compactId = String(appointment?.id || '').replace(/[^A-Za-z0-9]/g, '');
+  return compactId ? `PH-${compactId.slice(0, 8).toUpperCase()}` : 'N/A';
+}
+
 function getRecordDateTime(record) {
   const date = new Date(record?.record_date || record?.created_at || 0);
   return Number.isNaN(date.getTime()) ? 0 : date.getTime();
 }
 
-function getLatestMedicalRecordForPet(petId) {
-  if (!hasRecordedValue(petId)) return null;
+function getMedicalRecordsForPet(petId) {
+  if (!hasRecordedValue(petId)) return [];
   const id = String(petId);
   return asArray(adminDashboardData.medicalRecords)
     .filter(record => String(record.pet_id) === id)
-    .sort((a, b) => getRecordDateTime(b) - getRecordDateTime(a))[0] || null;
+    .sort((a, b) => getRecordDateTime(b) - getRecordDateTime(a));
 }
 
 function getMedicalRecordPetLabel(record) {
@@ -710,6 +749,11 @@ function getTodayDateKey() {
   return new Date(now.getTime() - timezoneOffsetMs).toISOString().slice(0, 10);
 }
 
+// Sort key for date and time: "2026-10-21 10:00"
+function getAppointmentSortKey(appointment) {
+  return `${normalizeDashboardDateValue(appointment?.appointment_date) || '9999-12-31'} ${String(appointment?.appointment_time || '').slice(0, 8)}`;
+}
+
 function countAppointmentsByStatus(status) {
   return asArray(adminDashboardData.appointments)
     .filter(appointment => getAppointmentStatus(appointment.status) === status)
@@ -741,6 +785,13 @@ function countVerifiedUsersFromRecords() {
   return asArray(adminDashboardData.users).filter(user => isVerifiedValue(user.is_verified)).length;
 }
 
+// Pet owners are customer accounts: role "user" (accounts without a role are treated as customers everywhere in PetHub)
+function countPetOwners() {
+  return asArray(adminDashboardData.users)
+    .filter(user => String(user.role || 'user').trim().toLowerCase() === 'user')
+    .length;
+}
+
 function buildRealDashboardSummary(summary = {}) {
   if (adminDashboardData.overviewError) {
     return summary || {};
@@ -761,6 +812,7 @@ function buildRealDashboardSummary(summary = {}) {
   return {
     ...summary,
     totalUsers: users.length,
+    petOwners: countPetOwners(),
     totalPets: pets.length,
     totalAppointments,
     pendingAppointments: countAppointmentsByStatus('Pending'),
@@ -845,67 +897,30 @@ function buildAppointmentTrendDataset() {
 function refreshDerivedDashboardData(rawSummary = adminDashboardData.summary || {}) {
   adminDashboardData.summary = buildRealDashboardSummary(rawSummary);
   adminDashboardData.petTypes = buildPetTypeDataset();
-  adminDashboardData.services = buildServiceUsageDataset();
+  adminDashboardData.serviceUsage = buildServiceUsageDataset();
   adminDashboardData.appointmentsTrend = buildAppointmentTrendDataset();
 }
 
-function displayAnalyticsSummary(summary) {
-  const totalUsers = document.getElementById('analyticsTotalUsers');
-  const totalPets = document.getElementById('analyticsTotalPets');
-  const totalAppointments = document.getElementById('analyticsTotalAppointments');
-  const pendingAppointments = document.getElementById('analyticsPendingAppointments');
-  const verifiedUsers = document.getElementById('analyticsVerifiedUsers');
-  const activityLogs = document.getElementById('analyticsActivityLogs');
-  const completedAppointments = document.getElementById('analyticsCompletedAppointments');
-  const upcomingCheckups = document.getElementById('analyticsUpcomingCheckups');
-  const medicalRecords = document.getElementById('analyticsMedicalRecords');
-
-  const summaryData = buildRealDashboardSummary(summary || {});
-  const medicalRecordsCount = summaryData.totalMedicalRecords;
-  const unavailable = Boolean(adminDashboardData.overviewError);
-
-  if (totalUsers) totalUsers.textContent = formatDashboardDataValue(summaryData.totalUsers, unavailable);
-  if (totalPets) totalPets.textContent = formatDashboardDataValue(summaryData.totalPets, unavailable);
-  if (totalAppointments) totalAppointments.textContent = formatDashboardDataValue(summaryData.totalAppointments, unavailable);
-  if (pendingAppointments) pendingAppointments.textContent = formatDashboardDataValue(summaryData.pendingAppointments, unavailable);
-  if (verifiedUsers) verifiedUsers.textContent = formatDashboardDataValue(summaryData.verifiedUsers, unavailable);
-  if (activityLogs) activityLogs.textContent = formatDashboardDataValue(summaryData.activityLogCount, unavailable);
-  if (completedAppointments) completedAppointments.textContent = formatDashboardDataValue(summaryData.completedAppointments, unavailable);
-  if (upcomingCheckups) upcomingCheckups.textContent = formatDashboardDataValue(summaryData.upcomingCheckups, unavailable);
-  if (medicalRecords) {
-    const displayValue = formatDashboardDataValue(medicalRecordsCount, unavailable);
-    medicalRecords.textContent = displayValue;
-  }
-
-  adminDashboardData.summary = summaryData;
-  displaySidebarStats(summaryData);
-  displayDashboardAlerts(summaryData);
+// A figure on the Overview: the count, or "Unavailable" (muted) when the overview could not be loaded
+function setOverviewFigure(elementId, value, unavailable) {
+  const element = document.getElementById(elementId);
+  if (!element) return;
+  const text = formatDashboardDataValue(value, unavailable);
+  element.textContent = text;
+  element.classList.toggle('is-muted', text === 'Unavailable' || text === '-');
 }
 
-function displaySidebarStats(summary) {
-  const sidebarTotalUsers = document.getElementById('sidebarTotalUsers');
-  const sidebarTotalPets = document.getElementById('sidebarTotalPets');
-  const sidebarPendingAppointments = document.getElementById('sidebarPendingAppointments');
-  const sidebarMedicalRecords = document.getElementById('sidebarMedicalRecords');
-
+function displayOverviewStats(summary) {
+  const summaryData = buildRealDashboardSummary(summary || {});
   const unavailable = Boolean(adminDashboardData.overviewError);
 
-  if (sidebarTotalUsers) sidebarTotalUsers.textContent = formatDashboardDataValue(summary.totalUsers, unavailable);
-  if (sidebarTotalPets) sidebarTotalPets.textContent = formatDashboardDataValue(summary.totalPets, unavailable);
-  if (sidebarPendingAppointments) sidebarPendingAppointments.textContent = formatDashboardDataValue(summary.pendingAppointments, unavailable);
-  if (sidebarMedicalRecords) sidebarMedicalRecords.textContent = formatDashboardDataValue(summary.totalMedicalRecords, unavailable);
-  const sidebarContactMessages = document.getElementById('sidebarContactMessages');
-  if (sidebarContactMessages) {
-    if (adminDashboardData.messagesLoading && !adminDashboardData.messagesLoaded) {
-      sidebarContactMessages.innerHTML = getDashboardInlineLoadingHtml('Loading');
-    } else if (adminDashboardData.messagesError) {
-      sidebarContactMessages.textContent = '-';
-    } else {
-      sidebarContactMessages.textContent = formatDashboardValue(adminDashboardData.messages.length);
-    }
-  }
-  const sidebarVerifiedUsers = document.getElementById('sidebarVerifiedUsers');
-  if (sidebarVerifiedUsers) sidebarVerifiedUsers.textContent = formatDashboardDataValue(summary.verifiedUsers, unavailable);
+  setOverviewFigure('statPetOwners', summaryData.petOwners, unavailable);
+  setOverviewFigure('statPets', summaryData.totalPets, unavailable);
+  setOverviewFigure('statAppointments', summaryData.totalAppointments, unavailable);
+  setOverviewFigure('statPending', summaryData.pendingAppointments, unavailable);
+  setOverviewFigure('analyticsUpcomingCheckups', summaryData.upcomingCheckups, unavailable);
+
+  adminDashboardData.summary = summaryData;
 }
 
 function getDashboardCount(value) {
@@ -914,9 +929,9 @@ function getDashboardCount(value) {
 }
 
 function getPendingAppointmentsAlertCount(summary) {
+  if (adminDashboardData.overviewError) return 'Unavailable';
   const summaryCount = getDashboardCount(summary?.pendingAppointments);
   if (summaryCount !== null) return summaryCount;
-  if (adminDashboardData.overviewError && !adminDashboardData.appointments.length) return 'Unavailable';
   return adminDashboardData.appointments.filter(appointment => getAppointmentStatus(appointment.status) === 'Pending').length;
 }
 
@@ -930,7 +945,7 @@ function getUnreadMessagesAlertValue() {
 
 function getNewUsersAlertValue() {
   const users = Array.isArray(adminDashboardData.users) ? adminDashboardData.users : [];
-  if (adminDashboardData.overviewError && !users.length) return 'Unavailable';
+  if (adminDashboardData.overviewError) return 'Unavailable';
   const now = Date.now();
   const cutoff = now - (NEW_USER_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
@@ -940,21 +955,11 @@ function getNewUsersAlertValue() {
   }).length;
 }
 
-function getRecentActivityAlertValue(summary) {
-  if (!adminDashboardData.activityLogsLoaded && adminDashboardData.activityLogsLoading) return 'Loading...';
-
-  if (adminDashboardData.activityLogsLoaded && !adminDashboardData.activityLogsError) {
-    return Array.isArray(adminDashboardData.activityLogs) ? String(adminDashboardData.activityLogs.length) : '0';
-  }
-
-  const summaryCount = getDashboardCount(summary?.activityLogCount);
-  return summaryCount !== null ? String(summaryCount) : 'Unavailable';
-}
-
 function displayDashboardAlerts(summary = adminDashboardData.summary || {}) {
   const pendingAppointments = document.getElementById('alertPendingAppointments');
   const unreadMessages = document.getElementById('alertUnreadMessages');
   const newUsers = document.getElementById('alertNewUsers');
+  const medicalRecords = document.getElementById('alertMedicalRecords');
 
   if (pendingAppointments) pendingAppointments.textContent = String(getPendingAppointmentsAlertCount(summary));
   if (unreadMessages) {
@@ -966,140 +971,160 @@ function displayDashboardAlerts(summary = adminDashboardData.summary || {}) {
     }
   }
   if (newUsers) newUsers.textContent = String(getNewUsersAlertValue());
+  if (medicalRecords) {
+    medicalRecords.textContent = adminDashboardData.overviewError
+      ? 'Unavailable'
+      : String(asArray(adminDashboardData.medicalRecords).length);
+  }
+  updateUnreadMessagesCount();
 }
 
-function bindDashboardCardAction(elementId, handler) {
-  const element = document.getElementById(elementId);
-  if (!element) return;
-
-  element.setAttribute('role', 'button');
-  element.setAttribute('tabindex', '0');
-  element.addEventListener('click', () => {
-    markInteractionFeedback(element);
-    handler();
-  });
-  element.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      markInteractionFeedback(element);
-      handler();
-    }
-  });
+function updateUnreadMessagesCount() {
+  const badge = document.getElementById('systemUnreadCount');
+  if (!badge) return;
+  const unread = getUnreadMessagesAlertValue();
+  badge.hidden = !(Number.isInteger(unread) && unread > 0);
+  badge.textContent = Number.isInteger(unread) ? String(unread) : '';
+  badge.setAttribute('aria-label', `${unread} unread`);
 }
 
-function openAdminManagementTab(tab, statusFilter = null, message = '') {
-  if (tab === 'users') {
-    const userSearchInput = document.getElementById('userSearchInput');
-    if (userSearchInput) userSearchInput.value = '';
+// ==================== OVERVIEW LISTS ====================
+
+function getAppointmentListItemHtml(appointment, { showStatus = true, note = '' } = {}) {
+  const status = getAppointmentStatus(appointment.status);
+  return `
+    <li class="ph-dash-list-item">
+      <div class="ph-dash-list-main">
+        <p class="ph-dash-list-title">${escapeHtml(getAppointmentPetLabel(appointment))} &middot; ${escapeHtml(displayValue(appointment.service_type, 'Service not recorded'))}</p>
+        <p class="ph-dash-list-meta">${escapeHtml(formatTableDate(appointment.appointment_date, 'Date not set'))}, ${escapeHtml(getAppointmentTimeDisplay(appointment))} &middot; ${escapeHtml(getAppointmentOwnerLabel(appointment))}</p>
+        ${note ? `<p class="ph-dash-list-meta">${escapeHtml(note)}</p>` : ''}
+      </div>
+      ${showStatus ? `<span class="${getStatusBadgeClass(status)}">${escapeHtml(status)}</span>` : ''}
+    </li>
+  `;
+}
+
+// Pending requests, soonest first (the ones to review first)
+function renderOverviewPendingList() {
+  const container = document.getElementById('overviewPendingList');
+  if (!container) return;
+  if (adminDashboardData.overviewError) {
+    container.innerHTML = getAdminErrorBlock('Unable to load pending requests', 'appointments');
+    return;
   }
 
-  if (tab === 'pets') {
-    const petSearchInput = document.getElementById('petSearchInput');
-    if (petSearchInput) petSearchInput.value = '';
+  const today = getTodayDateKey();
+  const pending = asArray(adminDashboardData.appointments)
+    .filter(appointment => getAppointmentStatus(appointment.status) === 'Pending')
+    .sort((a, b) => getAppointmentSortKey(a).localeCompare(getAppointmentSortKey(b)));
+
+  if (!pending.length) {
+    container.innerHTML = getAdminEmptyBlock('No pending requests', 'New bookings from pet owners appear here until they are approved or cancelled.');
+    return;
   }
 
-  if (tab === 'appointments') {
-    const appointmentSearchInput = document.getElementById('appointmentSearchInput');
-    if (appointmentSearchInput) appointmentSearchInput.value = '';
+  container.innerHTML = `
+    <ul class="ph-dash-list">
+      ${pending.slice(0, OVERVIEW_LIST_LIMIT).map(appointment => getAppointmentListItemHtml(appointment, {
+        showStatus: false,
+        note: normalizeDashboardDateValue(appointment.appointment_date) < today ? 'This date has passed.' : ''
+      })).join('')}
+    </ul>
+    ${pending.length > OVERVIEW_LIST_LIMIT ? `<p class="ph-dash-note mt-3">${pending.length - OVERVIEW_LIST_LIMIT} more in Appointment Management.</p>` : ''}
+  `;
+}
+
+// Approved appointments from today on, soonest first
+function renderOverviewUpcomingList() {
+  const container = document.getElementById('overviewUpcomingList');
+  if (!container) return;
+  if (adminDashboardData.overviewError) {
+    container.innerHTML = getAdminErrorBlock('Unable to load upcoming appointments', 'appointments');
+    return;
   }
 
-  showAdminView('management');
-  switchAdminTab(tab, statusFilter);
-  if (message) showAdminStatus('success', message);
-}
+  const today = getTodayDateKey();
+  const upcoming = asArray(adminDashboardData.appointments)
+    .filter(appointment => getAppointmentStatus(appointment.status) === 'Approved' && normalizeDashboardDateValue(appointment.appointment_date) >= today)
+    .sort((a, b) => getAppointmentSortKey(a).localeCompare(getAppointmentSortKey(b)));
+  const todayCount = upcoming.filter(appointment => normalizeDashboardDateValue(appointment.appointment_date) === today).length;
 
-function bindDashboardButtonAction(elementId, handler) {
-  const button = document.getElementById(elementId);
-  if (!button) return;
-
-  button.addEventListener('click', () => {
-    markInteractionFeedback(button);
-    handler();
-  });
-}
-
-function setupAdminDashboardActions() {
-  if (adminDashboardActionsBound) return;
-  adminDashboardActionsBound = true;
-
-  bindDashboardCardAction('cardTotalUsers', () => {
-    openAdminManagementTab('users', null, 'Viewing user accounts');
-  });
-
-  bindDashboardCardAction('cardTotalPets', () => {
-    openAdminManagementTab('pets', null, 'Viewing pet profiles');
-  });
-
-  bindDashboardCardAction('cardTotalAppointments', () => {
-    openAdminManagementTab('appointments', null, 'Viewing all appointments');
-  });
-
-  bindDashboardCardAction('cardPendingAppointments', () => {
-    openAdminManagementTab('appointments', 'Pending', 'Viewing pending appointment queue');
-  });
-
-  bindDashboardButtonAction('queuePendingAppointments', () => {
-    openAdminManagementTab('appointments', 'Pending', 'Viewing pending appointment queue');
-  });
-
-  bindDashboardButtonAction('queueUnreadMessages', () => {
-    showAdminView('messages');
-    showAdminStatus('success', 'Viewing contact messages');
-  });
-
-  bindDashboardButtonAction('queueNewUsers', () => {
-    openAdminManagementTab('users', null, 'Viewing user accounts');
-  });
-
-  bindDashboardButtonAction('queueMedicalRecords', () => {
-    showAdminView('medicalRecords');
-    showAdminStatus('success', 'Viewing medical records');
-  });
-
-}
-
-function switchAdminTab(tab, statusFilter = null) {
-  const activeTab = normalizeAdminManagementTab(tab);
-  setStoredAdminManagementTab(activeTab);
-
-  const panels = ['users', 'pets', 'appointments'];
-  panels.forEach(name => {
-    const panel = document.getElementById(`${name}TabPanel`);
-    const button = document.getElementById(`tab${name.charAt(0).toUpperCase() + name.slice(1)}`);
-    const isActive = name === activeTab;
-
-    if (panel) {
-      panel.classList.add('admin-tab-panel');
-      if (isActive) {
-        panel.classList.remove('hidden');
-        window.requestAnimationFrame(() => panel.classList.add('is-active'));
-      } else {
-        panel.classList.remove('is-active');
-        panel.classList.add('hidden');
-      }
-    }
-    if (button) {
-      button.classList.toggle('is-active', isActive);
-      button.classList.toggle('bg-orange-500', isActive);
-      button.classList.toggle('text-white', isActive);
-      button.classList.toggle('bg-slate-100', !isActive);
-      button.classList.toggle('text-slate-700', !isActive);
-      button.setAttribute('aria-pressed', String(isActive));
-      button.setAttribute('aria-selected', String(isActive));
-    }
-  });
-
-  if (activeTab === 'appointments') {
-    const statusSelect = document.getElementById('appointmentStatusFilter');
-    if (statusSelect) {
-      statusSelect.value = statusFilter || getStoredAdminAppointmentStatusFilter();
-      setStoredAdminAppointmentStatusFilter(statusSelect.value);
-    }
-    if (adminDashboardData.isLoading && !adminDashboardData.isLoaded) {
-      return;
-    }
-    applyAppointmentSearchFilter();
+  if (!upcoming.length) {
+    container.innerHTML = getAdminEmptyBlock('No approved appointments from today on', 'Approved appointments appear here, soonest first.');
+    return;
   }
+
+  container.innerHTML = `
+    <p class="ph-dash-note mb-3">${todayCount} today &middot; ${upcoming.length} approved from today on</p>
+    <ul class="ph-dash-list">
+      ${upcoming.slice(0, OVERVIEW_LIST_LIMIT).map(appointment => getAppointmentListItemHtml(appointment, {
+        note: normalizeDashboardDateValue(appointment.appointment_date) === today ? 'Today' : ''
+      })).join('')}
+    </ul>
+  `;
+}
+
+// Administrative activity: log entries made by an admin (they carry actor_id), newest first
+function renderOverviewAdminActivity() {
+  const container = document.getElementById('overviewAdminActivity');
+  if (!container) return;
+  if (adminDashboardData.activityLogsLoading && !adminDashboardData.activityLogsLoaded) {
+    container.innerHTML = getDashboardSectionLoadingHtml('activity', 1);
+    return;
+  }
+  if (adminDashboardData.activityLogsError) {
+    container.innerHTML = getAdminErrorBlock('Unable to load activity', 'activity logs');
+    return;
+  }
+
+  const adminLogs = asArray(adminDashboardData.activityLogs)
+    .filter(log => hasRecordedValue(log.actor_id))
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, OVERVIEW_LIST_LIMIT);
+
+  if (!adminLogs.length) {
+    container.innerHTML = getAdminEmptyBlock('No administrative actions yet', 'Approvals, cancellations, records, role changes and messages marked as read appear here.');
+    return;
+  }
+
+  container.innerHTML = `
+    <ul class="ph-dash-list">
+      ${adminLogs.map(log => `
+        <li class="ph-dash-list-item">
+          <div class="ph-dash-list-main">
+            <p class="ph-dash-list-title">${escapeHtml(log.display_text || formatActivityMessage(log.action, log.details))}</p>
+            <p class="ph-dash-list-meta">${escapeHtml(formatLogTimestamp(log.created_at))}</p>
+          </div>
+        </li>
+      `).join('')}
+    </ul>
+  `;
+}
+
+function formatLogTimestamp(value) {
+  return value
+    ? new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : 'Time not recorded';
+}
+
+// Shortcut buttons and figures with data-admin-go="view" or "view:filter" (appointments:Pending, system:messages)
+function goToAdminSection(target) {
+  const [view, detail] = String(target || '').split(':');
+  if (view === 'appointments') {
+    const search = document.getElementById('appointmentSearchInput');
+    const service = document.getElementById('appointmentServiceFilter');
+    const date = document.getElementById('appointmentDateFilter');
+    const status = document.getElementById('appointmentStatusFilter');
+    if (search) search.value = '';
+    if (service) service.value = 'all';
+    if (date) date.value = '';
+    if (status) {
+      status.value = APPOINTMENT_STATUSES.includes(detail) ? detail : 'all';
+      status.dataset.ready = 'true';
+      setStoredAdminAppointmentStatusFilter(status.value);
+    }
+  }
+  showAdminView(view, { systemTab: view === 'system' ? detail : undefined, focusHeading: true });
 }
 
 function showAdminStatus(type, message) {
@@ -1148,27 +1173,9 @@ function clearAdminStatus() {
   statusElement.textContent = '';
 }
 
-function displayAnalyticsExtras() {
-  const topUserEl = document.getElementById('analyticsTopUser');
-  const topServiceEl = document.getElementById('analyticsTopService');
-  const peakDayEl = document.getElementById('analyticsPeakDay');
-
-  if (adminDashboardData.overviewError) {
-    if (topUserEl) topUserEl.textContent = 'Unavailable';
-    if (topServiceEl) topServiceEl.textContent = 'Unavailable';
-    if (peakDayEl) peakDayEl.textContent = 'Unavailable';
-    return;
-  }
-
-  if (topUserEl) topUserEl.textContent = getTopActiveUser() || 'No data available';
-  if (topServiceEl) topServiceEl.textContent = getMostRequestedService() || 'No data available';
-  if (peakDayEl) peakDayEl.textContent = getPeakBookingDay() || 'No data available';
-}
-
 function displayMedicalRecordsSection(records) {
   const recordsList = Array.isArray(records) ? [...records] : [];
-  const getRecordTime = getRecordDateTime;
-  const sortedRecords = recordsList.sort((a, b) => getRecordTime(b) - getRecordTime(a));
+  const sortedRecords = recordsList.sort((a, b) => getRecordDateTime(b) - getRecordDateTime(a));
   const summaryEl = document.getElementById('medicalRecordsSummary');
   const recordsContainer = document.getElementById('recentMedicalRecordsContainer');
 
@@ -1186,12 +1193,7 @@ function displayMedicalRecordsSection(records) {
   }
 
   if (!sortedRecords.length) {
-    recordsContainer.innerHTML = `
-      <div class="rounded-2xl border border-gray-200 bg-white p-6 text-center text-slate-500">
-        <p class="font-semibold text-slate-700">No medical records yet.</p>
-        <p class="mt-1 text-sm text-slate-500">Official records will appear here after staff records completed pet services.</p>
-      </div>
-    `;
+    recordsContainer.innerHTML = getAdminEmptyBlock('No medical records yet.', 'Official records will appear here after an administrator adds one for a completed appointment.');
     return;
   }
 
@@ -1209,86 +1211,37 @@ function displayMedicalRecordsSection(records) {
 
     return `
       <tr>
-        <td class="px-4 py-4 align-top font-semibold text-slate-900">${escapeHtml(getMedicalRecordPetLabel(record))}</td>
-        <td class="px-4 py-4 align-top text-slate-600">${escapeHtml(recordDate)}</td>
-        <td class="px-4 py-4 align-top text-slate-700">${escapeHtml(weightDisplay)}</td>
-        <td class="px-4 py-4 align-top text-slate-700">${escapeHtml(valueOrFallback(record.vaccination_status))}</td>
-        <td class="max-w-xs break-words px-4 py-4 align-top text-slate-700">${escapeHtml(valueOrFallback(record.treatment))}</td>
-        <td class="max-w-sm break-words px-4 py-4 align-top text-slate-700">${escapeHtml(valueOrFallback(record.medical_notes))}</td>
-        <td class="px-4 py-4 align-top text-slate-700">${escapeHtml(recordedBy)}</td>
+        <td><strong>${escapeHtml(getMedicalRecordPetLabel(record))}</strong></td>
+        <td>${escapeHtml(recordDate)}</td>
+        <td>${escapeHtml(weightDisplay)}</td>
+        <td>${escapeHtml(valueOrFallback(record.vaccination_status))}</td>
+        <td class="ph-dash-wrap">${escapeHtml(valueOrFallback(record.treatment))}</td>
+        <td class="ph-dash-wrap">${escapeHtml(valueOrFallback(record.medical_notes))}</td>
+        <td>${escapeHtml(recordedBy)}</td>
       </tr>
     `;
   }).join('');
 
   recordsContainer.innerHTML = `
-    <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
-      <table class="min-w-full text-left text-sm">
-        <thead class="border-b border-gray-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
+    <div class="ph-dash-table-wrap">
+      <table class="ph-dash-table">
+        <thead>
           <tr>
-            <th class="px-4 py-3 font-semibold">Pet Name</th>
-            <th class="px-4 py-3 font-semibold">Record Date</th>
-            <th class="px-4 py-3 font-semibold">Weight</th>
-            <th class="px-4 py-3 font-semibold">Vaccination Status</th>
-            <th class="px-4 py-3 font-semibold">Treatment</th>
-            <th class="px-4 py-3 font-semibold">Notes</th>
-            <th class="px-4 py-3 font-semibold">Recorded By</th>
+            <th scope="col">Pet</th>
+            <th scope="col">Record date</th>
+            <th scope="col">Weight</th>
+            <th scope="col">Vaccination status</th>
+            <th scope="col">Treatment</th>
+            <th scope="col">Medical notes</th>
+            <th scope="col">Recorded by</th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-gray-100">
+        <tbody>
           ${rows}
         </tbody>
       </table>
     </div>
   `;
-}
-
-function getTopActiveUser() {
-  const counts = {};
-
-  if (adminDashboardData.appointments.length > 0) {
-    adminDashboardData.appointments.forEach(apt => {
-      const name = getUserNameById(apt.user_id).trim();
-      if (name) counts[name] = (counts[name] || 0) + 1;
-    });
-  } else if (adminDashboardData.pets.length > 0) {
-    adminDashboardData.pets.forEach(pet => {
-      const owner = getUserNameById(pet.user_id).trim();
-      if (owner) counts[owner] = (counts[owner] || 0) + 1;
-    });
-  }
-
-  return getHighestLabel(counts);
-}
-
-function getMostRequestedService() {
-  const counts = {};
-  adminDashboardData.appointments.forEach(apt => {
-    const service = (apt.service_type || '').trim();
-    if (service) counts[service] = (counts[service] || 0) + 1;
-  });
-  return getHighestLabel(counts);
-}
-
-function getPeakBookingDay() {
-  const counts = {};
-  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
-  adminDashboardData.appointments.forEach(apt => {
-    if (!apt.appointment_date) return;
-    const date = new Date(apt.appointment_date);
-    if (Number.isNaN(date.getTime())) return;
-    const day = dayNames[date.getDay()];
-    counts[day] = (counts[day] || 0) + 1;
-  });
-
-  return getHighestLabel(counts);
-}
-
-function getHighestLabel(counts) {
-  const entries = Object.entries(counts).filter(([, value]) => value > 0);
-  if (!entries.length) return null;
-  entries.sort((a, b) => b[1] - a[1]);
-  return entries[0][0];
 }
 
 function setupAdminDashboardInteractions() {
@@ -1303,7 +1256,7 @@ function setupAdminDashboardInteractions() {
       dashboardRefreshInProgress = true;
       updateButtonState(refreshButton, true, 'Refreshing...', 'Refresh');
       try {
-        await loadDashboardOverview();
+        await Promise.all([loadDashboardOverview(), loadServiceCatalog()]);
       } finally {
         dashboardRefreshInProgress = false;
         updateButtonState(refreshButton, false, 'Refreshing...', 'Refresh');
@@ -1311,24 +1264,103 @@ function setupAdminDashboardInteractions() {
     });
   }
 
+  // Shortcuts and figures that open a section
+  document.addEventListener('click', event => {
+    const shortcut = event.target.closest('[data-admin-go]');
+    if (!shortcut) return;
+    markInteractionFeedback(shortcut);
+    goToAdminSection(shortcut.dataset.adminGo);
+  });
+
   const userSearchInput = document.getElementById('userSearchInput');
   const petSearchInput = document.getElementById('petSearchInput');
-  const appointmentSearchInput = document.getElementById('appointmentSearchInput');
-  const appointmentStatusFilter = document.getElementById('appointmentStatusFilter');
-  const tabUsersButton = document.getElementById('tabUsers');
-  const tabPetsButton = document.getElementById('tabPets');
-  const tabAppointmentsButton = document.getElementById('tabAppointments');
-
   if (userSearchInput) userSearchInput.addEventListener('input', debounce(applyUserSearch, 180));
   if (petSearchInput) petSearchInput.addEventListener('input', debounce(applyPetSearch, 180));
-  if (appointmentSearchInput) appointmentSearchInput.addEventListener('input', debounce(applyAppointmentSearchFilter, 180));
-  if (appointmentStatusFilter) appointmentStatusFilter.addEventListener('change', applyAppointmentSearchFilter);
 
-  if (tabUsersButton) tabUsersButton.addEventListener('click', () => switchAdminTab('users'));
-  if (tabPetsButton) tabPetsButton.addEventListener('click', () => switchAdminTab('pets'));
-  if (tabAppointmentsButton) tabAppointmentsButton.addEventListener('click', () => switchAdminTab('appointments'));
+  const appointmentSearchInput = document.getElementById('appointmentSearchInput');
+  if (appointmentSearchInput) appointmentSearchInput.addEventListener('input', debounce(applyAppointmentFilters, 180));
+  ['appointmentStatusFilter', 'appointmentServiceFilter', 'appointmentDateFilter'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', applyAppointmentFilters);
+  });
+  document.getElementById('appointmentFiltersClear')?.addEventListener('click', () => {
+    ['appointmentSearchInput', 'appointmentDateFilter'].forEach(id => {
+      const input = document.getElementById(id);
+      if (input) input.value = '';
+    });
+    ['appointmentStatusFilter', 'appointmentServiceFilter'].forEach(id => {
+      const select = document.getElementById(id);
+      if (select) select.value = 'all';
+    });
+    applyAppointmentFilters();
+  });
 
-  switchAdminTab(getStoredAdminManagementTab(), getStoredAdminAppointmentStatusFilter());
+  // Row actions (event delegation: rows are re-rendered after every change)
+  document.getElementById('appointmentsTable')?.addEventListener('click', event => {
+    const statusButton = event.target.closest('[data-appointment-action]');
+    if (statusButton) {
+      updateAppointmentStatus(statusButton, statusButton.dataset.appointmentId, statusButton.dataset.appointmentAction);
+      return;
+    }
+    const recordButton = event.target.closest('[data-record-appointment]');
+    if (recordButton) openMedicalRecordForm(recordButton, recordButton.dataset.recordAppointment);
+  });
+  document.getElementById('petsTable')?.addEventListener('click', event => {
+    const viewButton = event.target.closest('[data-pet-view]');
+    if (viewButton) openAdminPetDetail(viewButton.dataset.petView);
+  });
+  document.getElementById('adminPetDetailContent')?.addEventListener('click', event => {
+    const addButton = event.target.closest('[data-add-record]');
+    if (!addButton) return;
+    const select = document.getElementById('adminPetRecordAppointment');
+    if (select && select.value) openMedicalRecordForm(addButton, select.value);
+  });
+  document.getElementById('adminPetDetailClose')?.addEventListener('click', () => {
+    const petId = selectedAdminPetId;
+    closeAdminPetDetail();
+    document.querySelector(`#petsTable [data-pet-view="${CSS.escape(petId)}"]`)?.focus();
+  });
+  document.getElementById('usersTable')?.addEventListener('change', event => {
+    const select = event.target.closest('select[data-user-id]');
+    if (select) handleUserRoleChange(select);
+  });
+  document.getElementById('contactMessagesTable')?.addEventListener('click', event => {
+    const button = event.target.closest('[data-message-id]');
+    if (button) toggleContactMessageStatus(button, button.dataset.messageId, CONTACT_MESSAGE_READ_STATUS);
+  });
+
+  // System Management tabs: click, and arrow keys between tabs
+  const tabs = Array.from(document.querySelectorAll('[data-system-tab]'));
+  tabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => switchSystemTab(tab.dataset.systemTab, { focus: false }));
+    tab.addEventListener('keydown', event => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      let nextIndex = index;
+      if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
+      if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length;
+      if (event.key === 'Home') nextIndex = 0;
+      if (event.key === 'End') nextIndex = tabs.length - 1;
+      switchSystemTab(tabs[nextIndex].dataset.systemTab, { focus: true });
+    });
+  });
+}
+
+function switchSystemTab(tab, { focus = false, render = true } = {}) {
+  setStoredSystemTab(tab);
+  document.querySelectorAll('[data-system-tab]').forEach(button => {
+    const isActive = button.dataset.systemTab === currentSystemTab;
+    button.setAttribute('aria-selected', String(isActive));
+    button.tabIndex = isActive ? 0 : -1;
+    const panel = document.getElementById(button.getAttribute('aria-controls'));
+    if (panel) panel.hidden = !isActive;
+    if (isActive && focus) button.focus();
+  });
+  if (render && currentAdminView === 'system') {
+    if (currentSystemTab === 'users' && !isOverviewLoading()) applyUserSearch();
+    if (currentSystemTab === 'messages') renderMessages();
+    if (currentSystemTab === 'activity') renderSystemLogs();
+    if (currentSystemTab === 'services') renderServiceCatalog();
+  }
 }
 
 function debounce(fn, delay = 200) {
@@ -1364,52 +1396,77 @@ function applyPetSearch() {
   displayPetsTable(filtered);
 }
 
-function applyAppointmentSearchFilter() {
+// Service names for the filter: the catalog's nine services, then any other name found on appointments (earlier
+// services such as "Checkup", kept with their saved duration)
+function populateAppointmentServiceFilter() {
+  const select = document.getElementById('appointmentServiceFilter');
+  if (!select) return;
+  const catalogNames = asArray(adminDashboardData.serviceCatalog).map(service => String(service.name || '')).filter(Boolean);
+  const earlierNames = [...new Set(asArray(adminDashboardData.appointments)
+    .map(appointment => String(appointment.service_type || '').trim())
+    .filter(name => name && !catalogNames.includes(name)))].sort();
+  const previous = select.value || 'all';
+  select.innerHTML = [
+    '<option value="all">All services</option>',
+    ...catalogNames.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`),
+    ...earlierNames.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)} (earlier service)</option>`)
+  ].join('');
+  select.value = [...select.options].some(option => option.value === previous) ? previous : 'all';
+}
+
+function isEarlierService(serviceType) {
+  const catalog = asArray(adminDashboardData.serviceCatalog);
+  if (!catalog.length || !hasRecordedValue(serviceType)) return false;
+  return !catalog.some(service => service.name === String(serviceType).trim());
+}
+
+function applyAppointmentFilters() {
   const query = document.getElementById('appointmentSearchInput')?.value.trim().toLowerCase() || '';
   const status = document.getElementById('appointmentStatusFilter')?.value || 'all';
+  const service = document.getElementById('appointmentServiceFilter')?.value || 'all';
+  const date = document.getElementById('appointmentDateFilter')?.value || '';
   setStoredAdminAppointmentStatusFilter(status);
-  const filtered = adminDashboardData.appointments.filter(apt => {
-    const petName = getAppointmentPetLabel(apt).toLowerCase();
-    const service = (apt.service_type || '').toLowerCase();
-    const appointmentDate = (apt.appointment_date || '').toLowerCase();
-    const appointmentStatus = getAppointmentStatus(apt.status).toLowerCase();
-    const matchesSearch = petName.includes(query) || service.includes(query) || appointmentDate.includes(query) || appointmentStatus.includes(query);
-    const matchesStatus = status === 'all' || appointmentStatus === status.toLowerCase();
-    return matchesSearch && matchesStatus;
+
+  const all = asArray(adminDashboardData.appointments);
+  const filtered = all.filter(apt => {
+    const text = [getAppointmentPetLabel(apt), getAppointmentOwnerLabel(apt), getAppointmentReference(apt), apt.service_type]
+      .join(' ')
+      .toLowerCase();
+    return (!query || text.includes(query))
+      && (status === 'all' || getAppointmentStatus(apt.status) === status)
+      && (service === 'all' || String(apt.service_type || '').trim() === service)
+      && (!date || normalizeDashboardDateValue(apt.appointment_date) === date);
   });
+
+  const summary = document.getElementById('appointmentFilterSummary');
+  if (summary) {
+    summary.textContent = adminDashboardData.overviewError
+      ? ''
+      : `Showing ${filtered.length} of ${all.length} appointment${all.length === 1 ? '' : 's'}.`;
+  }
   displayAppointmentsTable(filtered);
 }
 
 function showManagementLoadingStates() {
-  const usersTable = document.getElementById('usersTable');
-  const petsTable = document.getElementById('petsTable');
-  const appointmentsTable = document.getElementById('appointmentsTable');
+  const loaders = [
+    ['usersTable', 5, 'users'],
+    ['petsTable', 7, 'pets'],
+    ['appointmentsTable', 9, 'appointments'],
+    ['contactMessagesTable', 6, 'messages']
+  ];
+  loaders.forEach(([id, colspan, name]) => {
+    const element = document.getElementById(id);
+    if (element) element.innerHTML = getAdminTableLoadingRow(colspan, name);
+  });
   const medicalRecordsContainer = document.getElementById('recentMedicalRecordsContainer');
-  const messagesTable = document.getElementById('contactMessagesTable');
+  if (medicalRecordsContainer) medicalRecordsContainer.innerHTML = getDashboardSectionLoadingHtml('medical records', 2);
   const logsContainer = document.getElementById('systemLogsContainer');
-
-  if (usersTable) {
-    usersTable.innerHTML = getAdminTableLoadingRow(5, 'users');
-  }
-  if (petsTable) {
-    petsTable.innerHTML = getAdminTableLoadingRow(7, 'pets');
-  }
-  if (appointmentsTable) {
-    appointmentsTable.innerHTML = getAdminTableLoadingRow(8, 'appointments');
-  }
-  if (medicalRecordsContainer) {
-    medicalRecordsContainer.innerHTML = getDashboardSectionLoadingHtml('medical records', 2);
-  }
-  if (messagesTable) {
-    messagesTable.innerHTML = getAdminTableLoadingRow(6, 'messages');
-  }
-  if (logsContainer) {
-    logsContainer.innerHTML = getDashboardSectionLoadingHtml('activity logs', 2);
-  }
+  if (logsContainer) logsContainer.innerHTML = getDashboardSectionLoadingHtml('activity logs', 2);
 }
 
 function renderSystemLogs() {
   const logsContainer = document.getElementById('systemLogsContainer');
+  renderOverviewAdminActivity();
   if (!logsContainer) return;
 
   if (adminDashboardData.activityLogsLoading || (!adminDashboardData.activityLogsLoaded && adminDashboardData.isLoading)) {
@@ -1423,56 +1480,42 @@ function renderSystemLogs() {
   }
 
   if (!Array.isArray(adminDashboardData.activityLogs) || !adminDashboardData.activityLogs.length) {
-    logsContainer.innerHTML = `
-      <div class="rounded-2xl border border-gray-200 bg-white p-6 text-center text-slate-500">
-        <p class="font-semibold text-slate-700">No activity logs yet.</p>
-        <p class="mt-1 text-sm text-slate-500">System actions will appear here after users or admins make changes.</p>
-      </div>
-    `;
+    logsContainer.innerHTML = getAdminEmptyBlock('No activity logs yet.', 'System actions will appear here after users or admins make changes.');
     return;
   }
 
   const latestLogs = [...adminDashboardData.activityLogs]
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-    .slice(0, 10);
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-  logsContainer.innerHTML = latestLogs.map(log => {
-    const action = log.action || (log.text ? String(log.text).split(' - ')[0] : '');
-    const details = log.details || (log.text ? String(log.text).split(' - ').slice(1).join(' - ') : '');
-    const detailsPart = details ? escapeHtml(details) : '';
-    const icon = getActivityIcon(action);
-    const message = log.display_text || formatActivityMessage(action, details);
-    const metaItems = [];
-    if (log.actor_name && !String(message).includes(log.actor_name)) {
-      metaItems.push(`Actor: ${log.actor_name}`);
-    }
-    if (log.affected_user_name && log.affected_user_name !== log.actor_name && !String(message).includes(log.affected_user_name)) {
-      metaItems.push(`User: ${log.affected_user_name}`);
-    }
-    const metaPart = metaItems.length ? escapeHtml(metaItems.join(' | ')) : '';
-    const timestamp = log.created_at
-      ? new Date(log.created_at).toLocaleString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit'
-        })
-      : 'Time not recorded';
+  logsContainer.innerHTML = `
+    <p class="ph-dash-note">The ${latestLogs.length} most recent entries.</p>
+    <ul class="ph-dash-list">
+      ${latestLogs.map(log => {
+        const action = log.action || (log.text ? String(log.text).split(' - ')[0] : '');
+        const details = log.details || (log.text ? String(log.text).split(' - ').slice(1).join(' - ') : '');
+        const message = log.display_text || formatActivityMessage(action, details);
+        const metaItems = [];
+        if (log.actor_name && !String(message).includes(log.actor_name)) {
+          metaItems.push(`Actor: ${log.actor_name}`);
+        }
+        if (log.affected_user_name && log.affected_user_name !== log.actor_name && !String(message).includes(log.affected_user_name)) {
+          metaItems.push(`User: ${log.affected_user_name}`);
+        }
 
-    return `
-      <div class="flex items-start gap-4 rounded-xl bg-gray-50 p-4 border border-gray-100 hover:border-gray-200 transition-all">
-        <div class="flex-shrink-0 rounded-lg bg-white p-3 border border-gray-100">
-          <i class="${icon} text-xl"></i>
-        </div>
-        <div class="flex-1 min-w-0">
-          <p class="text-gray-900 font-medium">${escapeHtml(message)}</p>
-          ${metaPart ? `<p class="text-sm text-slate-500 mt-1">${metaPart}</p>` : ''}
-          ${detailsPart ? `<p class="text-sm text-gray-500 mt-1">${detailsPart}</p>` : ''}
-          <p class="text-xs text-gray-400 mt-2">${timestamp}</p>
-        </div>
-      </div>
-    `;
-  }).join('');
+        return `
+          <li class="ph-dash-list-item">
+            <span class="ph-dash-stat-icon"><i class="${getActivityIcon(action).split(' ')[0]}" aria-hidden="true"></i></span>
+            <div class="ph-dash-list-main">
+              <p class="ph-dash-list-title">${escapeHtml(message)}</p>
+              ${metaItems.length ? `<p class="ph-dash-list-meta">${escapeHtml(metaItems.join(' | '))}</p>` : ''}
+              ${details ? `<p class="ph-dash-list-meta">${escapeHtml(details)}</p>` : ''}
+              <p class="ph-dash-list-meta">${escapeHtml(formatLogTimestamp(log.created_at))}</p>
+            </div>
+          </li>
+        `;
+      }).join('')}
+    </ul>
+  `;
 }
 
 function asArray(value) {
@@ -1517,7 +1560,7 @@ function clearDashboardData() {
   adminDashboardData.stats = {};
   adminDashboardData.summary = {};
   adminDashboardData.petTypes = { labels: [], values: [] };
-  adminDashboardData.services = { labels: [], values: [] };
+  adminDashboardData.serviceUsage = { labels: [], values: [] };
   adminDashboardData.appointmentsTrend = { labels: [], values: [] };
 }
 
@@ -1553,7 +1596,7 @@ async function performDashboardOverviewLoad() {
     if (!userQuery) {
       throw new Error('Admin user ID not found. Please log in again.');
     }
-    
+
     const endpoint = `${window.API_BASE_URL}/admin/dashboard/overview${userQuery}`;
     const response = await fetchWithRetry(() => fetch(endpoint));
     if (!response.ok) {
@@ -1562,7 +1605,7 @@ async function performDashboardOverviewLoad() {
     }
 
     const data = await response.json();
-    
+
     if (data.success === false) {
       throw new Error(data.error || 'Failed to load dashboard overview');
     }
@@ -1593,15 +1636,10 @@ async function performDashboardOverviewLoad() {
     adminDashboardData.isLoading = false;
     adminDashboardData.isLoaded = true;
 
-    displayAnalyticsSummary(adminDashboardData.summary);
-    renderPetTypeChart(adminDashboardData.petTypes.labels, adminDashboardData.petTypes.values);
-    renderServiceUsageChart(adminDashboardData.services.labels, adminDashboardData.services.values);
-    renderAppointmentTrendChart(adminDashboardData.appointmentsTrend.labels, adminDashboardData.appointmentsTrend.values);
-    displayAnalyticsInsights();
-    displayAnalyticsExtras();
-    displayMedicalRecordsSection(adminDashboardData.medicalRecords);
     renderCurrentAdminView();
-    
+    displayOverviewStats(adminDashboardData.summary);
+    displayDashboardAlerts(adminDashboardData.summary);
+
     clearAdminStatus();
     return true;
   } catch (error) {
@@ -1619,14 +1657,9 @@ async function performDashboardOverviewLoad() {
     adminDashboardData.isLoading = false;
     adminDashboardData.isLoaded = true;
 
-    displayAnalyticsSummary(adminDashboardData.summary);
-    renderPetTypeChart(adminDashboardData.petTypes.labels, adminDashboardData.petTypes.values);
-    renderServiceUsageChart(adminDashboardData.services.labels, adminDashboardData.services.values);
-    renderAppointmentTrendChart(adminDashboardData.appointmentsTrend.labels, adminDashboardData.appointmentsTrend.values);
-    displayAnalyticsInsights();
-    displayAnalyticsExtras();
-    displayMedicalRecordsSection(adminDashboardData.medicalRecords);
     renderCurrentAdminView();
+    displayOverviewStats(adminDashboardData.summary);
+    displayDashboardAlerts(adminDashboardData.summary);
     return false;
   }
 }
@@ -1664,7 +1697,7 @@ function renderPetTypeChart(labels, values) {
       plugins: {
         legend: {
           position: 'bottom',
-          labels: { color: '#4b5563' }
+          labels: { color: getChartTextColor() }
         }
       }
     }
@@ -1707,8 +1740,8 @@ function renderServiceUsageChart(labels, values) {
         legend: { display: false }
       },
       scales: {
-        x: { ticks: { color: '#6b7280' }, grid: { display: false } },
-        y: { ticks: { color: '#6b7280' }, grid: { color: 'rgba(229,231,235,0.8)' }, beginAtZero: true }
+        x: { ticks: { color: getChartTextColor() }, grid: { display: false } },
+        y: { ticks: { color: getChartTextColor(), precision: 0 }, grid: { color: 'rgba(229,231,235,0.8)' }, beginAtZero: true }
       }
     }
   });
@@ -1753,11 +1786,16 @@ function renderAppointmentTrendChart(labels, values) {
         legend: { display: false }
       },
       scales: {
-        x: { ticks: { color: '#6b7280' }, grid: { display: false } },
-        y: { ticks: { color: '#6b7280' }, grid: { color: 'rgba(229,231,235,0.8)' }, beginAtZero: true }
+        x: { ticks: { color: getChartTextColor() }, grid: { display: false } },
+        y: { ticks: { color: getChartTextColor(), precision: 0 }, grid: { color: 'rgba(229,231,235,0.8)' }, beginAtZero: true }
       }
     }
   });
+}
+
+// Chart labels follow the theme (checked when a chart is drawn)
+function getChartTextColor() {
+  return document.body.classList.contains('dark-mode') ? '#d1d5db' : '#4b5563';
 }
 
 function displayAnalyticsInsights() {
@@ -1765,25 +1803,27 @@ function displayAnalyticsInsights() {
   const serviceEl = document.getElementById('insightService');
   const bookingsEl = document.getElementById('insightBookings');
   const completionEl = document.getElementById('insightCompletion');
+  const setText = (element, text, isNumber) => {
+    if (!element) return;
+    element.textContent = text;
+    element.classList.toggle('is-muted', !isNumber);
+  };
 
   if (adminDashboardData.overviewError) {
-    if (petTypeEl) petTypeEl.textContent = 'Unavailable';
-    if (serviceEl) serviceEl.textContent = 'Unavailable';
-    if (bookingsEl) bookingsEl.textContent = 'Unavailable';
-    if (completionEl) completionEl.textContent = 'Unavailable';
+    [petTypeEl, serviceEl, bookingsEl, completionEl].forEach(element => setText(element, 'Unavailable', false));
     return;
   }
 
   const petType = getTopLabel(adminDashboardData.petTypes);
-  const service = getTopLabel(adminDashboardData.services);
+  const service = getTopLabel(adminDashboardData.serviceUsage);
   const summary = buildRealDashboardSummary(adminDashboardData.summary || {});
   const bookings = summary.upcomingBookings;
   const completion = summary.totalAppointments > 0 ? summary.completedAppointmentPercentage : null;
 
-  if (petTypeEl) petTypeEl.textContent = petType || 'No data';
-  if (serviceEl) serviceEl.textContent = service || 'No data';
-  if (bookingsEl) bookingsEl.textContent = bookings !== undefined && bookings !== null ? String(bookings) : 'No data';
-  if (completionEl) completionEl.textContent = completion !== undefined && completion !== null ? `${completion}%` : 'No data';
+  setText(petTypeEl, petType || 'No data', false);
+  setText(serviceEl, service || 'No data', false);
+  setText(bookingsEl, bookings !== undefined && bookings !== null ? String(bookings) : 'No data', bookings !== undefined && bookings !== null);
+  setText(completionEl, completion !== undefined && completion !== null ? `${completion}%` : 'No data', completion !== undefined && completion !== null);
 }
 
 function getTopLabel(dataset) {
@@ -1813,17 +1853,9 @@ function showChartToggle(chartId, messageId, hasData, message) {
   if (messageEl) {
     messageEl.classList.toggle('hidden', hasData);
     if (message) {
-      messageEl.innerHTML = `<div class="flex h-full items-center justify-center">${escapeHtml(message)}</div>`;
+      messageEl.innerHTML = `<div class="flex h-full items-center justify-center text-center">${escapeHtml(message)}</div>`;
     }
   }
-}
-
-function escapeInlineHandlerValue(value) {
-  return escapeHtml(String(value ?? '')
-    .replace(/\\/g, '\\\\')
-    .replace(/'/g, "\\'")
-    .replace(/\r/g, '\\r')
-    .replace(/\n/g, '\\n'));
 }
 
 function displayValue(value, fallback = 'Not recorded') {
@@ -1864,6 +1896,7 @@ function formatPetAge(age) {
 }
 
 function formatOwnerLabel(pet) {
+  if (hasRecordedValue(pet?.owner_name) && pet.owner_name !== 'Unknown') return String(pet.owner_name);
   const ownerName = getUserNameById(pet?.user_id);
   if (ownerName) return ownerName;
   if (pet?.user_id) return `User ID: ${pet.user_id}`;
@@ -1887,15 +1920,16 @@ function getUserVerificationBadgeClass(status) {
 function renderUserRoleCell(user) {
   const role = String(user?.role || '').toLowerCase();
   if (!user?.id || !isSupportedUserRole(role)) {
-    return `<span class="text-slate-700">${escapeHtml(formatRoleLabel(user?.role))}</span>`;
+    return `<span>${escapeHtml(formatRoleLabel(user?.role))}</span>`;
   }
 
   return `
+    <label class="sr-only" for="role-${escapeHtml(String(user.id))}">Role for ${escapeHtml(displayValue(user.fullname, 'this user'))}</label>
     <select
+      id="role-${escapeHtml(String(user.id))}"
       data-user-id="${escapeHtml(String(user.id))}"
       data-old-role="${escapeHtml(role)}"
-      onchange="handleUserRoleChange(this)"
-      class="w-full rounded-full border border-gray-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-orange-500 focus:outline-none dark-safe-select"
+      class="ph-input"
     >
       <option value="user"${role === 'user' ? ' selected' : ''}>User</option>
       <option value="admin"${role === 'admin' ? ' selected' : ''}>Admin</option>
@@ -1919,32 +1953,27 @@ function displayUsersTable(users) {
   }
 
   if (!users || users.length === 0) {
-    usersTable.innerHTML = `
-      <tr>
-        <td colspan="5" class="px-4 py-8 text-center text-gray-500">
-          <p class="font-semibold text-slate-700">${showMatchingMessage ? 'No matching users found.' : 'No user accounts found.'}</p>
-          <p class="mt-1 text-sm text-slate-500">${showMatchingMessage ? 'Adjust the search term to review more accounts.' : 'Registered PetHub accounts will appear here after users sign up.'}</p>
-        </td>
-      </tr>
-    `;
+    usersTable.innerHTML = getAdminTableEmptyRow(
+      5,
+      showMatchingMessage ? 'No matching users found.' : 'No user accounts found.',
+      showMatchingMessage ? 'Adjust the search term to review more accounts.' : 'Registered PetHub accounts will appear here after users sign up.'
+    );
     return;
   }
 
   usersTable.innerHTML = users.map(user => {
     const verificationStatus = getUserVerificationStatus(user);
     return `
-      <tr class="hover:bg-gray-50">
-        <td class="px-4 py-3 text-sm text-gray-900">${escapeHtml(displayValue(user.fullname, 'Name not provided'))}</td>
-        <td class="px-4 py-3 text-sm text-gray-600">${escapeHtml(displayValue(user.email, 'Email not provided'))}</td>
-        <td class="px-4 py-3 text-sm">
-          ${renderUserRoleCell(user)}
-        </td>
-        <td class="px-4 py-3 text-sm">
+      <tr>
+        <td>${escapeHtml(displayValue(user.fullname, 'Name not provided'))}</td>
+        <td>${escapeHtml(displayValue(user.email, 'Email not provided'))}</td>
+        <td>${renderUserRoleCell(user)}</td>
+        <td>
           <span class="admin-status-badge ${getUserVerificationBadgeClass(verificationStatus)}">
             ${escapeHtml(verificationStatus)}
           </span>
         </td>
-        <td class="px-4 py-3 text-sm text-gray-600">${escapeHtml(formatTableDate(user.created_at))}</td>
+        <td>${escapeHtml(formatTableDate(user.created_at))}</td>
       </tr>
     `;
   }).join('');
@@ -1966,10 +1995,10 @@ function clearRoleChangeConfirmation(select) {
 function getRoleChangeConfirmationMessage(userId, oldRole, newRole) {
   const currentUser = getUser();
   if (currentUser && String(currentUser.id) === String(userId) && oldRole === 'admin' && newRole === 'user') {
-    return 'Click again to confirm changing your own role to user.';
+    return 'Choose the role again to confirm changing your own role to user.';
   }
 
-  return 'Click again to confirm';
+  return 'Choose the role again to confirm.';
 }
 
 function shouldWaitForRoleChangeConfirmation(select, userId, newRole, oldRole) {
@@ -1997,6 +2026,8 @@ function shouldWaitForRoleChangeConfirmation(select, userId, newRole, oldRole) {
   return true;
 }
 
+// Role change: two selections -> PUT /admin/dashboard/user-role -> the server allows only "user" or "admin" and logs
+// the change -> the dashboard reloads from the server before saying it worked
 async function handleUserRoleChange(select) {
   if (!select || !select.dataset) return;
 
@@ -2076,49 +2107,144 @@ function displayPetsTable(pets) {
   }
 
   if (!pets || pets.length === 0) {
-    petsTable.innerHTML = `
-      <tr>
-        <td colspan="7" class="px-4 py-8 text-center text-gray-500">
-          <p class="font-semibold text-slate-700">${showMatchingMessage ? 'No matching pets found.' : 'No pet profiles found.'}</p>
-          <p class="mt-1 text-sm text-slate-500">${showMatchingMessage ? 'Adjust the search term to review more pet profiles.' : 'User-created pet profiles will appear here once they are added.'}</p>
-        </td>
-      </tr>
-    `;
+    petsTable.innerHTML = getAdminTableEmptyRow(
+      7,
+      showMatchingMessage ? 'No matching pets found.' : 'No pet profiles found.',
+      showMatchingMessage ? 'Adjust the search term to review more pet profiles.' : 'Pet profiles appear here once owners add them.'
+    );
     return;
   }
 
   petsTable.innerHTML = pets.map(pet => {
-    const latestRecord = getLatestMedicalRecordText(pet);
-    const latestRecordData = getLatestMedicalRecordForPet(pet?.id);
-    const latestRecordDateRaw = latestRecordData?.record_date || latestRecordData?.created_at || '';
-    const latestRecordDate = latestRecordDateRaw ? formatDate(latestRecordDateRaw) : '';
+    const records = getMedicalRecordsForPet(pet?.id);
+    const latestRecordDateRaw = records[0]?.record_date || records[0]?.created_at || '';
+    const id = escapeHtml(String(pet.id || ''));
     return `
-    <tr class="hover:bg-gray-50">
-      <td class="px-4 py-3 text-sm text-gray-900">${escapeHtml(displayValue(pet.name, 'Unnamed pet'))}</td>
-      <td class="px-4 py-3 text-sm text-gray-600">${escapeHtml(displayValue(pet.species))}</td>
-      <td class="px-4 py-3 text-sm text-gray-600">${escapeHtml(displayValue(pet.breed))}</td>
-      <td class="px-4 py-3 text-sm text-gray-600">${escapeHtml(formatPetAge(pet.age))}</td>
-      <td class="px-4 py-3 text-sm text-gray-600">${escapeHtml(formatOwnerLabel(pet))}</td>
-      <td class="px-4 py-3 text-sm text-gray-600">
-        <p class="max-w-xs whitespace-normal break-words">${escapeHtml(latestRecord)}</p>
-        ${latestRecordDate ? `<p class="mt-1 text-xs text-gray-500">${escapeHtml(latestRecordDate)}</p>` : ''}
+    <tr>
+      <td><strong>${escapeHtml(displayValue(pet.name, 'Unnamed pet'))}</strong></td>
+      <td>${escapeHtml(displayValue(pet.species))}</td>
+      <td>${escapeHtml(displayValue(pet.breed))}</td>
+      <td>${escapeHtml(formatPetAge(pet.age))}</td>
+      <td>${escapeHtml(formatOwnerLabel(pet))}</td>
+      <td>
+        ${records.length} record${records.length === 1 ? '' : 's'}
+        ${latestRecordDateRaw ? `<p class="ph-dash-muted">Latest ${escapeHtml(formatDate(latestRecordDateRaw))}</p>` : ''}
       </td>
-      <td class="px-4 py-3 text-sm text-gray-600">${escapeHtml(formatTableDate(pet.created_at))}</td>
+      <td>
+        <button type="button" class="ph-btn ph-btn-secondary ph-btn-sm" data-pet-view="${id}" aria-controls="adminPetDetail">
+          View records<span class="sr-only"> for ${escapeHtml(displayValue(pet.name, 'this pet'))}</span>
+        </button>
+      </td>
     </tr>
   `;
   }).join('');
 }
 
-function getLatestMedicalRecordText(pet) {
-  const latestRecord = getLatestMedicalRecordForPet(pet?.id);
-  if (!latestRecord) return 'No medical records yet';
+// ==================== ONE PET: PROFILE, OFFICIAL RECORDS, ADDING A RECORD ====================
 
-  if (hasRecordedValue(latestRecord.medical_notes)) return String(latestRecord.medical_notes);
-  if (hasRecordedValue(latestRecord.treatment)) return `Treatment: ${latestRecord.treatment}`;
-  if (hasRecordedValue(latestRecord.vaccination_status)) return `Vaccination: ${latestRecord.vaccination_status}`;
-  return 'Medical record details not recorded';
+function openAdminPetDetail(petId) {
+  if (!getPetById(petId)) return;
+  selectedAdminPetId = String(petId);
+  renderAdminPetDetail();
+  const panel = document.getElementById('adminPetDetail');
+  if (panel) {
+    panel.hidden = false;
+    panel.scrollIntoView({ block: 'start' });
+  }
+  document.getElementById('adminPetDetailTitle')?.focus();
 }
 
+function closeAdminPetDetail() {
+  selectedAdminPetId = '';
+  const panel = document.getElementById('adminPetDetail');
+  if (panel) panel.hidden = true;
+}
+
+// Completed appointments of this pet that have no record yet: the only ones a record can be added for
+function getRecordableAppointmentsForPet(petId) {
+  return asArray(adminDashboardData.appointments)
+    .filter(appointment => String(appointment.pet_id) === String(petId)
+      && getAppointmentStatus(appointment.status) === 'Completed'
+      && !appointmentHasMedicalRecord(appointment))
+    .sort((a, b) => getAppointmentSortKey(b).localeCompare(getAppointmentSortKey(a)));
+}
+
+function renderAdminPetDetail() {
+  const panel = document.getElementById('adminPetDetail');
+  const content = document.getElementById('adminPetDetailContent');
+  const pet = getPetById(selectedAdminPetId);
+  if (!panel || !content) return;
+  if (!pet) {
+    if (selectedAdminPetId) closeAdminPetDetail();
+    return;
+  }
+
+  const nameElement = document.getElementById('adminPetDetailName');
+  if (nameElement) nameElement.textContent = displayValue(pet.name, 'Unnamed pet');
+
+  const records = getMedicalRecordsForPet(pet.id);
+  const recordable = getRecordableAppointmentsForPet(pet.id);
+  const recordCards = records.length
+    ? records.map(record => {
+        const weight = hasRecordedValue(record.weight) ? `${record.weight} kg` : 'Not recorded';
+        return `
+          <article class="ph-dash-card">
+            <div class="ph-dash-card-head">
+              <p class="ph-dash-card-title">${escapeHtml(formatTableDate(record.record_date || record.created_at))}</p>
+              <span class="ph-badge ph-badge-official">Official record</span>
+            </div>
+            <dl class="ph-dash-facts">
+              <div><dt>Weight</dt> <dd>${escapeHtml(weight)}</dd></div>
+              <div><dt>Vaccination status</dt> <dd>${escapeHtml(displayValue(record.vaccination_status))}</dd></div>
+              <div><dt>Treatment</dt> <dd>${escapeHtml(displayValue(record.treatment))}</dd></div>
+              <div><dt>Recorded by</dt> <dd>${escapeHtml(getMedicalRecordRecorderLabel(record))}</dd></div>
+              <div class="is-wide"><dt>Medical notes</dt> <dd>${escapeHtml(displayValue(record.medical_notes))}</dd></div>
+              <div class="is-wide"><dt>Saved</dt> <dd>${escapeHtml(record.created_at ? formatDateTime(record.created_at) : 'Not recorded')}</dd></div>
+            </dl>
+          </article>
+        `;
+      }).join('')
+    : getAdminEmptyBlock('No medical records yet', 'Records for this pet appear here once an administrator adds one.');
+
+  const addRecordHtml = recordable.length
+    ? `
+      <div class="ph-field">
+        <label for="adminPetRecordAppointment" class="ph-label">Completed appointment</label>
+        <select id="adminPetRecordAppointment" class="ph-input">
+          ${recordable.map(appointment => `<option value="${escapeHtml(String(appointment.id))}">${escapeHtml(`${formatTableDate(appointment.appointment_date, 'Date not set')} - ${displayValue(appointment.service_type, 'Service not recorded')} - ${getAppointmentReference(appointment)}`)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="ph-dash-card-actions">
+        <button type="button" class="ph-btn ph-btn-primary ph-btn-sm" data-add-record><i class="ri-add-line" aria-hidden="true"></i>Add medical record</button>
+      </div>
+    `
+    : '<p class="ph-dash-note">A record is added for a completed appointment. This pet has no completed appointment without a record.</p>';
+
+  content.innerHTML = `
+    <div class="ph-dash-grid-side">
+      <div>
+        <h3 class="ph-dash-card-title">Pet profile</h3>
+        <p class="ph-dash-note">Entered by the owner.</p>
+        <dl class="ph-dash-facts">
+          <div><dt>Owner</dt> <dd>${escapeHtml(formatOwnerLabel(pet))}</dd></div>
+          <div><dt>Species</dt> <dd>${escapeHtml(displayValue(pet.species))}</dd></div>
+          <div><dt>Breed</dt> <dd>${escapeHtml(displayValue(pet.breed))}</dd></div>
+          <div><dt>Age</dt> <dd>${escapeHtml(formatPetAge(pet.age))}</dd></div>
+          <div class="is-wide"><dt>Profile added</dt> <dd>${escapeHtml(formatTableDate(pet.created_at))}</dd></div>
+        </dl>
+        <h3 class="ph-dash-card-title mt-5">Add an official record</h3>
+        ${addRecordHtml}
+      </div>
+      <div>
+        <div class="ph-dash-card-head">
+          <h3 class="ph-dash-card-title">Official medical records (${records.length})</h3>
+          <span class="ph-badge ph-badge-official"><i class="ri-shield-check-line" aria-hidden="true"></i>Entered by administrators</span>
+        </div>
+        <div class="ph-dash-stack mt-3">${recordCards}</div>
+      </div>
+    </div>
+  `;
+}
 
 /**
  * Display appointments table with action buttons
@@ -2127,49 +2253,45 @@ function displayAppointmentsTable(appointments) {
   const appointmentsTable = document.getElementById('appointmentsTable');
   if (!appointmentsTable) return;
 
-  const query = document.getElementById('appointmentSearchInput')?.value.trim();
-  const statusFilter = document.getElementById('appointmentStatusFilter')?.value || 'all';
-  const activeFilter = Boolean(query) || statusFilter !== 'all';
+  const activeFilter = ['appointmentSearchInput', 'appointmentDateFilter'].some(id => document.getElementById(id)?.value.trim())
+    || ['appointmentStatusFilter', 'appointmentServiceFilter'].some(id => (document.getElementById(id)?.value || 'all') !== 'all');
   const showMatchingMessage = activeFilter && (!appointments || appointments.length === 0);
 
   if (adminDashboardData.overviewError && (!appointments || appointments.length === 0)) {
-    appointmentsTable.innerHTML = getAdminTableErrorRow(8, 'Unable to load appointments', 'appointments');
+    appointmentsTable.innerHTML = getAdminTableErrorRow(9, 'Unable to load appointments', 'appointments');
     return;
   }
 
   if (!appointments || appointments.length === 0) {
-    appointmentsTable.innerHTML = `
-      <tr>
-        <td colspan="8" class="px-4 py-8 text-center text-gray-500">
-          <p class="font-semibold text-slate-700">${showMatchingMessage ? 'No matching appointments found.' : 'No appointments found.'}</p>
-          <p class="mt-1 text-sm text-slate-500">${showMatchingMessage ? 'Adjust the search or status filter to review more bookings.' : 'User bookings will appear here when appointments are submitted.'}</p>
-        </td>
-      </tr>
-    `;
+    appointmentsTable.innerHTML = getAdminTableEmptyRow(
+      9,
+      showMatchingMessage ? 'No matching appointments found.' : 'No appointments found.',
+      showMatchingMessage ? 'Adjust the search or filters to review more bookings.' : 'Bookings appear here when pet owners submit them.'
+    );
     return;
   }
 
   appointmentsTable.innerHTML = appointments.map(apt => {
     const handledBy = getHandledByLabel(apt);
     const status = getAppointmentStatus(apt.status);
-    const actionButtons = renderAppointmentActions(status, apt);
 
     return `
-    <tr class="hover:bg-gray-50">
-      <td class="px-4 py-3 text-sm text-gray-900">${escapeHtml(getAppointmentPetLabel(apt))}</td>
-      <td class="px-4 py-3 text-sm text-gray-600">${escapeHtml(displayValue(apt.service_type, 'N/A'))}</td>
-      <td class="px-4 py-3 text-sm text-gray-600">${escapeHtml(getAppointmentDurationLabel(apt))}</td>
-      <td class="px-4 py-3 text-sm text-gray-600">${escapeHtml(formatTableDate(apt.appointment_date, 'N/A'))}</td>
-      <td class="px-4 py-3 text-sm text-gray-600">${escapeHtml(getAppointmentTimeDisplay(apt))}</td>
-      <td class="px-4 py-3 text-sm">
-        <span class="${getStatusBadgeClass(status)}">
-          ${escapeHtml(status)}
-        </span>
+    <tr>
+      <td>${escapeHtml(getAppointmentReference(apt))}</td>
+      <td>
+        <strong>${escapeHtml(getAppointmentPetLabel(apt))}</strong>
+        <p class="ph-dash-muted">${escapeHtml(getAppointmentOwnerLabel(apt))}</p>
       </td>
-      <td class="px-4 py-3 text-sm text-gray-600">${handledBy ? escapeHtml(handledBy) : '<span class="text-slate-400">-</span>'}</td>
-      <td class="px-4 py-3 text-sm">
-        <div class="admin-medical-record-action-cell">${actionButtons}</div>
+      <td>
+        ${escapeHtml(displayValue(apt.service_type, 'N/A'))}
+        ${isEarlierService(apt.service_type) ? '<p><span class="ph-badge ph-badge-warning">Earlier service</span></p>' : ''}
       </td>
+      <td>${escapeHtml(formatTableDate(apt.appointment_date, 'N/A'))}</td>
+      <td>${escapeHtml(getAppointmentTimeDisplay(apt))}</td>
+      <td>${escapeHtml(getAppointmentDurationLabel(apt))}</td>
+      <td><span class="${getStatusBadgeClass(status)}">${escapeHtml(status)}</span></td>
+      <td>${handledBy ? escapeHtml(handledBy) : '<span class="ph-dash-muted">-</span>'}</td>
+      <td><div class="admin-medical-record-action-cell">${renderAppointmentActions(status, apt)}</div></td>
     </tr>
   `;
   }).join('');
@@ -2308,17 +2430,8 @@ function markAppointmentMedicalRecordCompleted(appointmentId, record = null) {
 
 function refreshMedicalRecordActionViews() {
   refreshDerivedDashboardData(adminDashboardData.summary);
-  displayAnalyticsSummary(adminDashboardData.summary);
-  displayAnalyticsExtras();
-  displayMedicalRecordsSection(adminDashboardData.medicalRecords);
-
-  if (currentAdminView === 'management') {
-    applyUserSearch();
-    applyPetSearch();
-    applyAppointmentSearchFilter();
-    return;
-  }
-
+  displayOverviewStats(adminDashboardData.summary);
+  displayDashboardAlerts(adminDashboardData.summary);
   renderCurrentAdminView();
 }
 
@@ -2326,19 +2439,23 @@ function isMedicalRecordAlreadyAddedError(error) {
   return /medical record has already been added/i.test(String(error?.message || error || ''));
 }
 
+// The actions a status allows (the same transitions the server enforces: Pending -> Approved or Cancelled,
+// Approved -> Completed or Cancelled; Completed and Cancelled are final). "Cancel" on a Pending request is how a request
+// is declined: the backend records it as Cancelled and emails the owner that it was cancelled.
 function renderAppointmentActions(status, appointment) {
   const appointmentId = appointment?.id;
   if (!appointmentId) {
-    return '<span class="text-xs text-gray-500">Action unavailable</span>';
+    return '<span class="ph-dash-muted">Action unavailable</span>';
   }
 
-  const appointmentIdValue = escapeInlineHandlerValue(appointmentId);
+  const id = escapeHtml(String(appointmentId));
+  const action = (newStatus, label, type) => `<button type="button" data-appointment-action="${newStatus}" data-appointment-id="${id}" class="${getAdminActionButtonClass(type)}">${label}</button>`;
 
   if (status === 'Pending') {
     return `
       <div class="flex flex-wrap gap-2">
-        <button onclick="updateAppointmentStatus(this, '${appointmentIdValue}', 'Approved')" class="${getAdminActionButtonClass('success')}">Approve</button>
-        <button onclick="updateAppointmentStatus(this, '${appointmentIdValue}', 'Cancelled')" class="${getAdminActionButtonClass('danger')}">Cancel</button>
+        ${action('Approved', 'Approve', 'success')}
+        ${action('Cancelled', 'Cancel', 'danger')}
       </div>
     `;
   }
@@ -2346,8 +2463,8 @@ function renderAppointmentActions(status, appointment) {
   if (status === 'Approved') {
     return `
       <div class="flex flex-wrap gap-2">
-        <button onclick="updateAppointmentStatus(this, '${appointmentIdValue}', 'Completed')" class="${getAdminActionButtonClass('success')}">Complete</button>
-        <button onclick="updateAppointmentStatus(this, '${appointmentIdValue}', 'Cancelled')" class="${getAdminActionButtonClass('danger')}">Cancel</button>
+        ${action('Completed', 'Complete', 'success')}
+        ${action('Cancelled', 'Cancel', 'danger')}
       </div>
     `;
   }
@@ -2359,12 +2476,12 @@ function renderAppointmentActions(status, appointment) {
   if (status === 'Completed' && hasMedicalRecordCreateContext(appointment)) {
     return `
       <div class="flex flex-wrap gap-2">
-        <button onclick="openMedicalRecordForm(this, '${appointmentIdValue}')" class="${getAdminActionButtonClass('success')}">Add Medical Record</button>
+        <button type="button" data-record-appointment="${id}" class="${getAdminActionButtonClass('neutral')}">Add Medical Record</button>
       </div>
     `;
   }
 
-  return '<span class="text-xs text-gray-500">No action needed</span>';
+  return '<span class="ph-dash-muted">No action needed</span>';
 }
 
 function getMedicalRecordAppointment(appointmentId) {
@@ -2453,42 +2570,44 @@ function updateMedicalRecordSaveState(form, syncError = true) {
   }
 }
 
+// The "Add Medical Record" dialog (created once). Fields are the medical_records columns: record_date, weight,
+// vaccination_status, treatment and medical_notes; created_by is the signed-in admin and is checked by the server.
 function ensureMedicalRecordModal() {
   let modal = document.getElementById('adminMedicalRecordModal');
   if (modal) return modal;
 
   document.body.insertAdjacentHTML('beforeend', `
-    <div id="adminMedicalRecordModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/40 px-4 py-6">
-      <div class="w-full max-w-lg rounded-lg bg-white p-5 shadow-xl dark:bg-slate-900">
+    <div id="adminMedicalRecordModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/40 px-4 py-6" role="dialog" aria-modal="true" aria-labelledby="adminMedicalRecordTitle">
+      <div class="w-full max-w-lg max-h-full overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
         <div class="mb-4 flex items-start justify-between gap-4">
           <div>
-            <h2 class="text-lg font-bold text-slate-900 dark:text-slate-100">Add Medical Record</h2>
-            <p id="adminMedicalRecordContext" class="mt-1 text-sm text-slate-500 dark:text-slate-400"></p>
+            <h2 id="adminMedicalRecordTitle" class="text-lg font-bold text-slate-900">Add Medical Record</h2>
+            <p id="adminMedicalRecordContext" class="mt-1 text-sm text-slate-600"></p>
           </div>
-          <button type="button" onclick="closeMedicalRecordForm()" class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200" aria-label="Close medical record form">
-            <i class="ri-close-line text-lg"></i>
+          <button type="button" data-close-record-form class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200" aria-label="Close medical record form">
+            <i class="ri-close-line text-lg" aria-hidden="true"></i>
           </button>
         </div>
 
-        <form id="adminMedicalRecordForm" class="space-y-4">
-          <p id="adminMedicalRecordError" class="hidden rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"></p>
+        <form id="adminMedicalRecordForm" class="ph-form">
+          <p id="adminMedicalRecordError" class="hidden rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert"></p>
 
-          <div>
-            <label for="adminMedicalRecordPetId" class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-200">Pet</label>
-            <select id="adminMedicalRecordPetId" name="pet_id" required class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-orange-400 focus:outline-none dark-safe-select">
+          <div class="ph-field">
+            <label for="adminMedicalRecordPetId" class="ph-label">Pet</label>
+            <select id="adminMedicalRecordPetId" name="pet_id" required class="ph-input">
               <option value="">Select pet</option>
             </select>
-            <p id="adminMedicalRecordRequestedPet" class="mt-1 text-xs text-slate-500 dark:text-slate-400"></p>
+            <p id="adminMedicalRecordRequestedPet" class="ph-help"></p>
           </div>
 
-          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label for="adminMedicalRecordWeight" class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-200">Weight</label>
-              <input id="adminMedicalRecordWeight" name="weight" type="number" min="0" step="0.01" required class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-orange-400 focus:outline-none dark-safe-input">
+          <div class="ph-form-grid">
+            <div class="ph-field">
+              <label for="adminMedicalRecordWeight" class="ph-label">Weight (kg)</label>
+              <input id="adminMedicalRecordWeight" name="weight" type="number" min="0" step="0.01" required class="ph-input">
             </div>
-            <div>
-              <label for="adminMedicalRecordVaccination" class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-200">Vaccination Status</label>
-              <select id="adminMedicalRecordVaccination" name="vaccination_status" required class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-orange-400 focus:outline-none dark-safe-select">
+            <div class="ph-field">
+              <label for="adminMedicalRecordVaccination" class="ph-label">Vaccination Status</label>
+              <select id="adminMedicalRecordVaccination" name="vaccination_status" required class="ph-input">
                 <option value="" disabled selected>Select status</option>
                 <option value="Up to date">Up to date</option>
                 <option value="Due soon">Due soon</option>
@@ -2496,25 +2615,25 @@ function ensureMedicalRecordModal() {
                 <option value="Not applicable">Not applicable</option>
               </select>
             </div>
-            <div>
-              <label for="adminMedicalRecordDate" class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-200">Record Date</label>
-              <input id="adminMedicalRecordDate" name="record_date" type="date" required class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-orange-400 focus:outline-none dark-safe-input">
+            <div class="ph-field">
+              <label for="adminMedicalRecordDate" class="ph-label">Record Date</label>
+              <input id="adminMedicalRecordDate" name="record_date" type="date" required class="ph-input">
             </div>
           </div>
 
-          <div>
-            <label for="adminMedicalRecordTreatment" class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-200">Treatment</label>
-            <input id="adminMedicalRecordTreatment" name="treatment" type="text" required class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-orange-400 focus:outline-none dark-safe-input">
+          <div class="ph-field">
+            <label for="adminMedicalRecordTreatment" class="ph-label">Treatment</label>
+            <input id="adminMedicalRecordTreatment" name="treatment" type="text" required class="ph-input">
           </div>
 
-          <div>
-            <label for="adminMedicalRecordNotes" class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-200">Medical Notes</label>
-            <textarea id="adminMedicalRecordNotes" name="medical_notes" rows="4" required class="w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-orange-400 focus:outline-none dark-safe-input"></textarea>
+          <div class="ph-field">
+            <label for="adminMedicalRecordNotes" class="ph-label">Medical Notes</label>
+            <textarea id="adminMedicalRecordNotes" name="medical_notes" rows="4" required class="ph-input"></textarea>
           </div>
 
-          <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <button type="button" onclick="closeMedicalRecordForm()" class="inline-flex items-center justify-center rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200">Cancel</button>
-            <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600">Save Record</button>
+          <div class="ph-form-actions justify-end">
+            <button type="button" data-close-record-form class="ph-btn ph-btn-secondary">Cancel</button>
+            <button type="submit" class="ph-btn ph-btn-primary">Save Record</button>
           </div>
         </form>
       </div>
@@ -2530,9 +2649,12 @@ function ensureMedicalRecordModal() {
   }
 
   modal?.addEventListener('click', event => {
-    if (event.target === modal) {
+    if (event.target === modal || event.target.closest('[data-close-record-form]')) {
       closeMedicalRecordForm();
     }
+  });
+  modal?.addEventListener('keydown', event => {
+    if (event.key === 'Escape') closeMedicalRecordForm();
   });
 
   return modal;
@@ -2555,10 +2677,13 @@ function setMedicalRecordFormError(message) {
 function getMedicalRecordContextLabel(appointment) {
   const parts = [
     getAppointmentPetLabel(appointment),
-    formatTableDate(appointment?.appointment_date, 'Date not set')
+    formatTableDate(appointment?.appointment_date, 'Date not set'),
+    getAppointmentReference(appointment)
   ];
   return parts.map(part => String(part || '').trim()).filter(Boolean).join(' - ');
 }
+
+let medicalRecordReturnFocus = null;
 
 function openMedicalRecordForm(button, appointmentId) {
   if (button?.dataset?.loading === 'true') return;
@@ -2596,6 +2721,7 @@ function openMedicalRecordForm(button, appointmentId) {
   if (context) context.textContent = getMedicalRecordContextLabel(appointment);
   if (requestedPet) requestedPet.textContent = `Requested pet: ${getAppointmentPetLabel(appointment)}`;
   if (modal) {
+    medicalRecordReturnFocus = button || null;
     modal.dataset.appointmentId = String(appointmentId || '');
     modal.classList.remove('hidden');
     modal.classList.add('flex');
@@ -2616,6 +2742,8 @@ function closeMedicalRecordForm(force = false) {
   modal?.classList.add('hidden');
   modal?.classList.remove('flex');
   if (modal) delete modal.dataset.appointmentId;
+  if (medicalRecordReturnFocus && document.body.contains(medicalRecordReturnFocus)) medicalRecordReturnFocus.focus();
+  medicalRecordReturnFocus = null;
 }
 
 function getMedicalRecordFormPayload(form, appointmentId = '') {
@@ -2665,6 +2793,10 @@ function getMedicalRecordFormPayload(form, appointmentId = '') {
   return payload;
 }
 
+// Adding a record: the admin opens a completed appointment -> the form checks the required fields -> POST
+// /admin/dashboard/medical-records/create -> the server verifies the admin, that the pet exists and belongs to the
+// appointment's owner, that the appointment is Completed and has no record yet (409 otherwise), saves the record with
+// created_by = this admin and logs it -> only then is the record shown, using the record the server returned.
 async function submitMedicalRecordForm(event) {
   event.preventDefault();
 
@@ -2758,7 +2890,6 @@ async function loadContactMessages(shouldRender = true) {
     adminDashboardData.messagesLoaded = true;
     adminDashboardData.messagesError = '';
     if (shouldRender) displayContactMessagesTable(adminDashboardData.messages);
-    displaySidebarStats(adminDashboardData.summary);
     return adminDashboardData.messages;
   } catch (error) {
     console.error('Error loading contact messages:', error);
@@ -2813,17 +2944,17 @@ function displayContactMessagesTable(messages) {
     const status = getContactMessageStatus(msg.status);
 
     return `
-    <tr class="hover:bg-gray-50 align-top">
-      <td class="px-4 py-3 text-sm text-gray-900">${escapeHtml(displayValue(msg.fullname, 'Name not provided'))}</td>
-      <td class="px-4 py-3 text-sm text-gray-600">${escapeHtml(displayValue(msg.email, 'Email not provided'))}</td>
-      <td class="px-4 py-3 text-sm text-gray-700 break-words max-w-xl">${escapeHtml(displayValue(msg.message, 'No message text'))}</td>
-      <td class="px-4 py-3 text-sm">
+    <tr>
+      <td>${escapeHtml(displayValue(msg.fullname, 'Name not provided'))}</td>
+      <td>${escapeHtml(displayValue(msg.email, 'Email not provided'))}</td>
+      <td class="ph-dash-wrap">${escapeHtml(displayValue(msg.message, 'No message text'))}</td>
+      <td>
         <span class="${getContactStatusBadgeClass(status)}">
           ${escapeHtml(status)}
         </span>
       </td>
-      <td class="px-4 py-3 text-sm text-gray-600">${escapeHtml(formatTableDate(msg.created_at, 'Date not recorded'))}</td>
-      <td class="px-4 py-3 text-sm">
+      <td>${escapeHtml(formatTableDate(msg.created_at, 'Date not recorded'))}</td>
+      <td>
         ${renderContactMessageActions(status, msg.id)}
       </td>
     </tr>
@@ -2832,14 +2963,7 @@ function displayContactMessagesTable(messages) {
 }
 
 function getContactMessagesEmptyState() {
-  return `
-    <tr>
-      <td colspan="6" class="px-4 py-8 text-center text-gray-500">
-        <p class="font-semibold text-slate-700">No contact messages yet.</p>
-        <p class="mt-1 text-sm text-slate-500">Public contact form submissions will appear here for admin review.</p>
-      </td>
-    </tr>
-  `;
+  return getAdminTableEmptyRow(6, 'No contact messages yet.', 'Public contact form submissions will appear here for admin review.');
 }
 
 function getContactMessageStatus(status) {
@@ -2868,14 +2992,12 @@ function renderContactMessageActions(status, messageId) {
   }
 
   if (!messageId) {
-    return '<span class="text-xs text-gray-500">Action unavailable</span>';
+    return '<span class="ph-dash-muted">Action unavailable</span>';
   }
-
-  const messageIdValue = escapeInlineHandlerValue(messageId);
 
   return `
     <div class="flex flex-wrap gap-2">
-      <button onclick="toggleContactMessageStatus(this, '${messageIdValue}', '${CONTACT_MESSAGE_READ_STATUS}')" class="${getAdminActionButtonClass('neutral')}">
+      <button type="button" data-message-id="${escapeHtml(String(messageId))}" class="${getAdminActionButtonClass('neutral')}">
         Mark as Read
       </button>
     </div>
@@ -2931,17 +3053,78 @@ async function toggleContactMessageStatus(button, messageId, newStatus) {
   }
 }
 
+// ==================== SERVICES & BOOKING (System Management) ====================
+
+function renderServiceCatalog() {
+  const container = document.getElementById('servicesCatalogContainer');
+  const summary = document.getElementById('bookingStatusSummary');
+  if (!container) return;
+
+  if (!adminDashboardData.serviceCatalogLoaded) {
+    container.innerHTML = getDashboardSectionLoadingHtml('services', 1);
+    if (summary) summary.textContent = '';
+    return;
+  }
+  if (adminDashboardData.serviceCatalogError) {
+    container.innerHTML = getAdminErrorBlock('Unable to load the service catalog', 'the service catalog');
+    if (summary) summary.textContent = '';
+    return;
+  }
+
+  const services = asArray(adminDashboardData.serviceCatalog);
+  const bookableCount = services.filter(service => service.bookable === true).length;
+  if (summary) {
+    summary.textContent = bookableCount === 0
+      ? `Online booking is closed: none of the ${services.length} services has a confirmed duration yet, so the server refuses new bookings and owners are asked to contact the clinic.`
+      : `Online booking is open for ${bookableCount} of ${services.length} services.`;
+  }
+
+  if (!services.length) {
+    container.innerHTML = getAdminEmptyBlock('No services listed', 'The server returned an empty service catalog.');
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="ph-dash-table-wrap">
+      <table class="ph-dash-table">
+        <thead>
+          <tr>
+            <th scope="col">Service</th>
+            <th scope="col">Category</th>
+            <th scope="col">For</th>
+            <th scope="col">Confirmed duration</th>
+            <th scope="col">Online booking</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${services.map(service => `
+            <tr>
+              <td><strong>${escapeHtml(displayValue(service.name))}</strong><p class="ph-dash-muted ph-dash-wrap">${escapeHtml(displayValue(service.description, ''))}</p></td>
+              <td>${escapeHtml(displayValue(service.category_label || service.category))}</td>
+              <td>${escapeHtml(asArray(service.species).join(', ') || 'Not recorded')}</td>
+              <td>${Number.isInteger(service.duration_minutes) && service.duration_minutes > 0 ? escapeHtml(`${service.duration_minutes} minutes`) : '<span class="ph-dash-muted">Not confirmed</span>'}</td>
+              <td>${service.bookable === true
+                ? '<span class="ph-status ph-status-completed px-2.5 py-1 text-xs">Open</span>'
+                : '<span class="ph-status ph-status-other px-2.5 py-1 text-xs">Not open</span>'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
 /**
- * Get CSS class for status badge
+ * Get CSS class for status badge (the same readable colours the pet owner sees)
  */
 function getStatusBadgeClass(status) {
   const classes = {
-    'Pending': 'admin-status-badge admin-status-warning',
-    'Approved': 'admin-status-badge admin-status-info',
-    'Completed': 'admin-status-badge admin-status-success',
-    'Cancelled': 'admin-status-badge admin-status-danger'
+    'Pending': 'ph-status ph-status-pending',
+    'Approved': 'ph-status ph-status-approved',
+    'Completed': 'ph-status ph-status-completed',
+    'Cancelled': 'ph-status ph-status-cancelled'
   };
-  return classes[status] || 'admin-status-badge admin-status-neutral';
+  return `${classes[status] || 'ph-status ph-status-other'} px-2.5 py-1 text-xs`;
 }
 
 function formatSuggestedAppointmentTimeDisplay(timeValue) {
@@ -2970,7 +3153,18 @@ function getAppointmentStatusUpdateErrorMessage(error) {
 }
 
 /**
- * Update appointment status (required for appointment action buttons in dashboard)
+ * Approve, complete or cancel an appointment.
+ * 1. The admin clicks an action on an appointment (Approve / Cancel on Pending, Complete / Cancel on Approved) and
+ *    clicks again to confirm.
+ * 2. The page checks it has the appointment id and the signed-in admin.
+ * 3. PUT /admin/dashboard/appointment-status { id, status }.
+ * 4. The server verifies the token and the admin role (routes/admin.js) and loads the appointment.
+ * 5. It allows only Pending -> Approved/Cancelled and Approved -> Completed/Cancelled; an approval is refused with 409
+ *    if it would overlap another approved or completed appointment (using each appointment's saved duration, which also
+ *    covers earlier services such as "Checkup"), and a status changed meanwhile by another admin gives 409 too.
+ * 6. On success the dashboard reloads everything from the server and only then says it worked; on failure it shows the
+ *    server's message (with the next free time for a schedule conflict) and the appointment is unchanged.
+ * 7. The owner sees the new status the next time their dashboard loads; approval and cancellation also email them.
  */
 async function updateAppointmentStatus(button, appointmentId, newStatus) {
   if (button?.dataset?.loading === 'true') return;

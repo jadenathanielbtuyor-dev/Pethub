@@ -6,459 +6,460 @@
   <title>PetHub | Admin Dashboard</title>
 
   <!-- CSS -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800&amp;display=swap">
   <link rel="stylesheet" href="../../assets/css/style.css">
 
   <!-- Icons -->
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet">
 </head>
-<body class="admin-dashboard-page">
+<!-- ADMIN DASHBOARD: four sections on one page, shown by js/admin/dashboard.js from the address hash.
+     1. #overview      real totals, pending requests, today's and upcoming approved appointments, recent administrative
+                       activity, shortcuts and charts (GET /admin/dashboard/overview, GET /admin/system-logs,
+                       GET /admin/dashboard/contact-messages)
+     2. #appointments  every appointment with search and filters; approve, complete or cancel through
+                       PUT /admin/dashboard/appointment-status (the server checks the transition and the schedule)
+     3. #records       pets and owners, each pet's official medical records, and adding a record for a completed
+                       appointment through POST /admin/dashboard/medical-records/create
+     4. #system        users and roles (PUT /admin/dashboard/user-role), contact messages (mark as read through
+                       PUT /admin/dashboard/contact-message-status), activity logs, and the service catalog with its
+                       online booking status (GET /appointments/services)
+     Every /admin request carries the session token; backend/routes/admin.js verifies it (requireAuth) and re-reads the
+     account's admin role from the database (validateAdminAccess) before any data is returned or changed, so the page's
+     own role check only decides what to show. -->
+<body class="ph-dash-page admin-dashboard-page" data-dashboard="admin" data-dashboard-section="overview">
   <!-- Apply the saved theme before first paint; main.js still owns the toggle -->
   <script>try { if (localStorage.getItem('darkMode') === 'true') { document.documentElement.classList.add('dark'); document.body.classList.add('dark-mode'); } } catch (e) {}</script>
-  <div class="admin-dashboard-shell">
-    <div id="adminSidebarRoot"></div>
+  <a href="#main" class="ph-skip-link">Skip to main content</a>
 
-    <div class="admin-dashboard-content">
-      <main class="admin-dashboard-main p-6 md:p-8">
-        <div class="admin-dashboard-inner max-w-7xl mx-auto space-y-6">
-          <div class="admin-mobile-toolbar flex items-center gap-3 md:hidden" aria-label="Admin mobile navigation">
-            <button id="sidebarToggle" type="button" class="admin-mobile-menu-button inline-flex items-center gap-2 rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 transition-all duration-200" data-admin-sidebar-toggle aria-controls="adminSidebar" aria-expanded="false">
-              <i class="ri-menu-line" aria-hidden="true"></i>
-              <span>Menu</span>
-            </button>
-            <span class="admin-mobile-toolbar-title">PetHub Admin</span>
-          </div>
-          <div id="adminDashboardStatus" class="mb-6 hidden rounded-3xl border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700 shadow-sm"></div>
-          <div id="adminViewOverview">
-            <section id="dashboardOverview" class="admin-dashboard-card mb-6 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
-              <div class="flex flex-col gap-6">
-                <div class="admin-section-header flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                  <div>
-                    <p class="text-sm uppercase tracking-widest text-orange-600 font-semibold">Admin Dashboard</p>
-                    <h1 class="text-4xl font-bold text-slate-800 dark:text-slate-100">PetHub Admin</h1>
-                    <p class="text-slate-600 dark:text-slate-300 mt-2">Manage users, pets, appointments, messages, and medical records from one workspace.</p>
-                  </div>
-                  <div class="flex flex-col items-start gap-3 sm:items-end">
-                    <span class="inline-flex items-center gap-2 rounded-full bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700">
-                      <i class="ri-shield-user-line"></i>
-                      <span id="adminRoleBadge">Loading role</span>
-                    </span>
-                    <span id="adminDate" class="text-sm text-slate-500 dark:text-slate-400">Loading admin account...</span>
-                    <div class="flex flex-wrap items-center gap-3">
-                      <a href="#logout" class="btn-logout inline-flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white transition-all duration-200 hover:bg-orange-600 active:scale-95">
-                        <i class="ri-logout-circle-line"></i>Logout
-                      </a>
-                    </div>
+  <div class="ph-dash-shell">
+    <!-- Sidebar / section bar: rendered by js/shared/dashboard-shell.js -->
+    <div id="dashboardNavRoot"></div>
+
+    <div class="ph-dash-content">
+      <main id="main" class="ph-dash-main" tabindex="-1">
+
+        <!-- Signed-in admin and Refresh (reloads every section from the server) -->
+        <div class="ph-dash-toolbar">
+          <p class="ph-dash-note"><span id="adminDate">Loading admin account...</span> &middot; <span id="adminRoleBadge">Loading role</span></p>
+          <button id="refreshDashboard" type="button" class="ph-btn ph-btn-secondary ph-btn-sm"><i class="ri-refresh-line" aria-hidden="true"></i>Refresh</button>
+        </div>
+
+        <!-- Loading, success and error messages for the whole dashboard -->
+        <div id="adminDashboardStatus" class="mb-5 hidden rounded-2xl border border-red-200 bg-red-50 px-5 py-3 text-sm text-red-700"></div>
+
+        <!-- ================= 1. OVERVIEW ================= -->
+        <section id="adminViewOverview" aria-labelledby="overviewTitle">
+          <header class="ph-dash-header">
+            <div>
+              <p class="ph-dash-eyebrow">Admin Dashboard</p>
+              <h1 id="overviewTitle" class="ph-dash-title" tabindex="-1">Overview</h1>
+              <p class="ph-dash-lead">What needs attention today, counted from live PetHub records.</p>
+            </div>
+          </header>
+
+          <div class="ph-dash-stack">
+            <!-- Totals: from GET /admin/dashboard/overview; "Unavailable" if it fails, never a placeholder number -->
+            <div class="ph-dash-stats ph-dash-stats-4">
+              <button type="button" class="ph-dash-stat" data-admin-go="system:users">
+                <span class="ph-dash-stat-icon"><i class="ri-group-line" aria-hidden="true"></i></span>
+                <span class="ph-dash-stat-body">
+                  <span class="ph-dash-stat-label">Pet owner accounts</span>
+                  <span id="statPetOwners" class="ph-dash-stat-value is-muted">Loading...</span>
+                </span>
+              </button>
+              <button type="button" class="ph-dash-stat" data-admin-go="records">
+                <span class="ph-dash-stat-icon"><i class="ri-bear-smile-line" aria-hidden="true"></i></span>
+                <span class="ph-dash-stat-body">
+                  <span class="ph-dash-stat-label">Pets</span>
+                  <span id="statPets" class="ph-dash-stat-value is-muted">Loading...</span>
+                </span>
+              </button>
+              <button type="button" class="ph-dash-stat" data-admin-go="appointments">
+                <span class="ph-dash-stat-icon"><i class="ri-calendar-event-line" aria-hidden="true"></i></span>
+                <span class="ph-dash-stat-body">
+                  <span class="ph-dash-stat-label">Appointments</span>
+                  <span id="statAppointments" class="ph-dash-stat-value is-muted">Loading...</span>
+                </span>
+              </button>
+              <button type="button" class="ph-dash-stat" data-admin-go="appointments:Pending">
+                <span class="ph-dash-stat-icon"><i class="ri-time-line" aria-hidden="true"></i></span>
+                <span class="ph-dash-stat-body">
+                  <span class="ph-dash-stat-label">Pending requests</span>
+                  <span id="statPending" class="ph-dash-stat-value is-muted">Loading...</span>
+                </span>
+              </button>
+            </div>
+
+            <div class="ph-dash-grid">
+              <section class="ph-dash-panel" aria-labelledby="pendingRequestsTitle">
+                <div class="ph-dash-panel-head">
+                  <h2 id="pendingRequestsTitle" class="ph-dash-panel-title"><i class="ri-inbox-line" aria-hidden="true"></i>Pending requests</h2>
+                  <button type="button" class="ph-dash-link" data-admin-go="appointments:Pending">Review all <i class="ri-arrow-right-line" aria-hidden="true"></i></button>
+                </div>
+                <div id="overviewPendingList"></div>
+              </section>
+
+              <section class="ph-dash-panel" aria-labelledby="upcomingApprovedTitle">
+                <div class="ph-dash-panel-head">
+                  <h2 id="upcomingApprovedTitle" class="ph-dash-panel-title"><i class="ri-calendar-check-line" aria-hidden="true"></i>Today and upcoming</h2>
+                  <button type="button" class="ph-dash-link" data-admin-go="appointments:Approved">All approved <i class="ri-arrow-right-line" aria-hidden="true"></i></button>
+                </div>
+                <div id="overviewUpcomingList"></div>
+              </section>
+            </div>
+
+            <div class="ph-dash-grid">
+              <section class="ph-dash-panel" aria-labelledby="needsAttentionTitle">
+                <div class="ph-dash-panel-head">
+                  <h2 id="needsAttentionTitle" class="ph-dash-panel-title"><i class="ri-flashlight-line" aria-hidden="true"></i>Shortcuts</h2>
+                </div>
+                <ul class="ph-dash-list">
+                  <li>
+                    <button id="queuePendingAppointments" type="button" class="ph-dash-stat" data-admin-go="appointments:Pending">
+                      <span class="ph-dash-stat-icon"><i class="ri-calendar-todo-line" aria-hidden="true"></i></span>
+                      <span class="ph-dash-stat-body">
+                        <span class="ph-dash-list-title">Appointment requests</span>
+                        <span class="ph-dash-list-meta"><span id="alertPendingAppointments">Loading</span> awaiting review</span>
+                      </span>
+                    </button>
+                  </li>
+                  <li>
+                    <button id="queueMedicalRecords" type="button" class="ph-dash-stat" data-admin-go="records">
+                      <span class="ph-dash-stat-icon"><i class="ri-health-book-line" aria-hidden="true"></i></span>
+                      <span class="ph-dash-stat-body">
+                        <span class="ph-dash-list-title">Pet &amp; medical records</span>
+                        <span class="ph-dash-list-meta"><span id="alertMedicalRecords">Loading</span> official records</span>
+                      </span>
+                    </button>
+                  </li>
+                  <li>
+                    <button id="queueUnreadMessages" type="button" class="ph-dash-stat" data-admin-go="system:messages">
+                      <span class="ph-dash-stat-icon"><i class="ri-mail-unread-line" aria-hidden="true"></i></span>
+                      <span class="ph-dash-stat-body">
+                        <span class="ph-dash-list-title">Contact messages</span>
+                        <span class="ph-dash-list-meta"><span id="alertUnreadMessages">Loading</span> unread</span>
+                      </span>
+                    </button>
+                  </li>
+                  <li>
+                    <button id="queueNewUsers" type="button" class="ph-dash-stat" data-admin-go="system:users">
+                      <span class="ph-dash-stat-icon"><i class="ri-user-add-line" aria-hidden="true"></i></span>
+                      <span class="ph-dash-stat-body">
+                        <span class="ph-dash-list-title">New accounts</span>
+                        <span class="ph-dash-list-meta"><span id="alertNewUsers">Loading</span> in the last 7 days</span>
+                      </span>
+                    </button>
+                  </li>
+                </ul>
+              </section>
+
+              <section class="ph-dash-panel" aria-labelledby="adminActivityTitle">
+                <div class="ph-dash-panel-head">
+                  <h2 id="adminActivityTitle" class="ph-dash-panel-title"><i class="ri-history-line" aria-hidden="true"></i>Recent administrative activity</h2>
+                  <button type="button" class="ph-dash-link" data-admin-go="system:activity">All activity <i class="ri-arrow-right-line" aria-hidden="true"></i></button>
+                </div>
+                <div id="overviewAdminActivity"></div>
+              </section>
+            </div>
+
+            <!-- Clinic insights: charts and figures computed from the same overview data -->
+            <section class="ph-dash-panel" aria-labelledby="insightsTitle">
+              <div class="ph-dash-panel-head">
+                <h2 id="insightsTitle" class="ph-dash-panel-title"><i class="ri-bar-chart-2-line" aria-hidden="true"></i>Clinic insights</h2>
+              </div>
+              <div class="ph-dash-stats ph-dash-stats-4">
+                <div class="ph-dash-stat">
+                  <span class="ph-dash-stat-body">
+                    <span class="ph-dash-stat-label">Most common pet type</span>
+                    <span id="insightPetType" class="ph-dash-stat-value is-muted">Loading</span>
+                  </span>
+                </div>
+                <div class="ph-dash-stat">
+                  <span class="ph-dash-stat-body">
+                    <span class="ph-dash-stat-label">Most requested service</span>
+                    <span id="insightService" class="ph-dash-stat-value is-muted">Loading</span>
+                  </span>
+                </div>
+                <div class="ph-dash-stat">
+                  <span class="ph-dash-stat-body">
+                    <span class="ph-dash-stat-label">Upcoming bookings (not cancelled)</span>
+                    <span id="insightBookings" class="ph-dash-stat-value is-muted">Loading</span>
+                  </span>
+                </div>
+                <div class="ph-dash-stat">
+                  <span class="ph-dash-stat-body">
+                    <span class="ph-dash-stat-label">Bookings completed</span>
+                    <span id="insightCompletion" class="ph-dash-stat-value is-muted">Loading</span>
+                  </span>
+                </div>
+              </div>
+              <p class="ph-dash-note mt-3">Upcoming check-ups (pending or approved Dog &amp; Cat Full Check Up in the next 7 days): <strong id="analyticsUpcomingCheckups">Loading</strong></p>
+
+              <div class="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
+                <div class="ph-dash-card">
+                  <h3 class="ph-dash-card-title">Pet types</h3>
+                  <p class="ph-dash-note">Pets by species</p>
+                  <div class="relative mt-3 h-60">
+                    <canvas id="petTypeChart" class="w-full h-60" role="img" aria-label="Pets by species"></canvas>
+                    <div id="petTypeNoData" class="hidden absolute inset-0 ph-dash-note"></div>
                   </div>
                 </div>
-                <div class="inline-flex items-center gap-3 rounded-full bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700">
-                  <i class="ri-pulse-line"></i>
-                  Live PetHub records
-                </div>
-
-                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
-                  <div id="cardTotalUsers" class="cursor-pointer bg-white border border-gray-200 rounded-3xl shadow-sm p-6 transition-all duration-200 hover:shadow-md hover:-translate-y-1">
-                    <div class="flex items-start justify-between gap-4">
-                      <div>
-                        <p class="text-sm uppercase tracking-wide text-slate-500 dark:text-slate-400 font-semibold">Users</p>
-                        <p id="analyticsTotalUsers" class="text-4xl font-bold text-slate-800 dark:text-slate-100 mt-3"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
-                      </div>
-                      <div class="rounded-2xl bg-orange-50 p-3 text-orange-600">
-                        <i class="ri-group-line text-2xl"></i>
-                      </div>
-                    </div>
-                    <p class="text-sm text-slate-500 dark:text-slate-400 mt-4">Registered user accounts</p>
-                  </div>
-
-                  <div id="cardTotalPets" class="cursor-pointer bg-white border border-gray-200 rounded-3xl shadow-sm p-6 transition-all duration-200 hover:shadow-md hover:-translate-y-1">
-                    <div class="flex items-start justify-between gap-4">
-                      <div>
-                        <p class="text-sm uppercase tracking-wide text-slate-500 dark:text-slate-400 font-semibold">Pets</p>
-                        <p id="analyticsTotalPets" class="text-4xl font-bold text-orange-600 mt-3"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
-                      </div>
-                      <div class="rounded-2xl bg-orange-50 p-3 text-orange-600">
-                        <i class="ri-bear-smile-line text-2xl"></i>
-                      </div>
-                    </div>
-                    <p class="text-sm text-slate-500 dark:text-slate-400 mt-4">User-created pet profiles</p>
-                  </div>
-
-                  <div id="cardTotalAppointments" class="cursor-pointer bg-white border border-gray-200 rounded-3xl shadow-sm p-6 transition-all duration-200 hover:shadow-md hover:-translate-y-1">
-                    <div class="flex items-start justify-between gap-4">
-                      <div>
-                        <p class="text-sm uppercase tracking-wide text-slate-500 dark:text-slate-400 font-semibold">Appointments</p>
-                        <p id="analyticsTotalAppointments" class="text-4xl font-bold text-blue-600 mt-3"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
-                      </div>
-                      <div class="rounded-2xl bg-blue-50 p-3 text-blue-600">
-                        <i class="ri-calendar-event-line text-2xl"></i>
-                      </div>
-                    </div>
-                    <p class="text-sm text-slate-500 dark:text-slate-400 mt-4">Appointments in the system</p>
-                  </div>
-
-                  <div id="cardPendingAppointments" class="cursor-pointer bg-white border border-gray-200 rounded-3xl shadow-sm p-6 transition-all duration-200 hover:shadow-md hover:-translate-y-1">
-                    <div class="flex items-start justify-between gap-4">
-                      <div>
-                        <p class="text-sm uppercase tracking-wide text-slate-500 dark:text-slate-400 font-semibold">Pending Appointments</p>
-                        <p id="analyticsPendingAppointments" class="text-4xl font-bold text-yellow-600 mt-3"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
-                      </div>
-                      <div class="rounded-2xl bg-yellow-50 p-3 text-yellow-600">
-                        <i class="ri-time-line text-2xl"></i>
-                      </div>
-                    </div>
-                    <p class="text-sm text-slate-500 dark:text-slate-400 mt-4">Awaiting admin review</p>
+                <div class="ph-dash-card">
+                  <h3 class="ph-dash-card-title">Service usage</h3>
+                  <p class="ph-dash-note">Appointments by service</p>
+                  <div class="relative mt-3 h-60">
+                    <canvas id="serviceUsageChart" class="w-full h-60" role="img" aria-label="Appointments by service"></canvas>
+                    <div id="serviceUsageNoData" class="hidden absolute inset-0 ph-dash-note"></div>
                   </div>
                 </div>
-
-                <div id="adminAlertsCard" class="bg-white border border-gray-200 rounded-3xl shadow-sm p-6">
-                  <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p class="text-sm uppercase tracking-widest text-orange-600 font-semibold">Admin Queue</p>
-                      <h2 class="text-2xl font-bold text-slate-800 dark:text-slate-100">Needs Attention</h2>
-                    </div>
-                    <p class="text-sm text-slate-500 dark:text-slate-400">Current queues from PetHub records.</p>
-                  </div>
-                  <div class="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    <button id="queuePendingAppointments" type="button" class="w-full cursor-pointer rounded-2xl border border-orange-100 bg-orange-50 p-4 text-left transition-all duration-200 hover:-translate-y-1 hover:shadow-md">
-                      <div class="flex items-center gap-3">
-                        <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white text-orange-600">
-                          <i class="ri-time-line text-xl"></i>
-                        </span>
-                        <div>
-                          <p class="text-sm font-semibold text-slate-700">Pending appointments</p>
-                          <p id="alertPendingAppointments" class="text-2xl font-bold text-orange-700"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
-                          <p class="text-sm text-slate-500">Awaiting admin review</p>
-                        </div>
-                      </div>
-                    </button>
-                    <button id="queueUnreadMessages" type="button" class="w-full cursor-pointer rounded-2xl border border-blue-100 bg-blue-50 p-4 text-left transition-all duration-200 hover:-translate-y-1 hover:shadow-md">
-                      <div class="flex items-center gap-3">
-                        <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white text-blue-600">
-                          <i class="ri-mail-unread-line text-xl"></i>
-                        </span>
-                        <div>
-                          <p class="text-sm font-semibold text-slate-700">Unread messages</p>
-                          <p id="alertUnreadMessages" class="text-2xl font-bold text-blue-700"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
-                          <p class="text-sm text-slate-500">Contact form messages</p>
-                        </div>
-                      </div>
-                    </button>
-                    <button id="queueNewUsers" type="button" class="w-full cursor-pointer rounded-2xl border border-gray-200 bg-slate-50 p-4 text-left transition-all duration-200 hover:-translate-y-1 hover:shadow-md">
-                      <div class="flex items-center gap-3">
-                        <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white text-slate-600">
-                          <i class="ri-user-add-line text-xl"></i>
-                        </span>
-                        <div>
-                          <p class="text-sm font-semibold text-slate-700">New users</p>
-                          <p id="alertNewUsers" class="text-2xl font-bold text-slate-700"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
-                          <p class="text-sm text-slate-500">Joined in last 7 days</p>
-                        </div>
-                      </div>
-                    </button>
-                    <button id="queueMedicalRecords" type="button" class="w-full cursor-pointer rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-left transition-all duration-200 hover:-translate-y-1 hover:shadow-md">
-                      <div class="flex items-center gap-3">
-                        <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white text-emerald-600">
-                          <i class="ri-health-book-line text-xl"></i>
-                        </span>
-                        <div>
-                          <p class="text-sm font-semibold text-slate-700">Medical records</p>
-                          <p class="text-sm text-slate-500">Open records center</p>
-                        </div>
-                      </div>
-                    </button>
+                <div class="ph-dash-card">
+                  <h3 class="ph-dash-card-title">Appointment trend</h3>
+                  <p class="ph-dash-note">Appointments dated in the last 7 days</p>
+                  <div class="relative mt-3 h-60">
+                    <canvas id="appointmentTrendChart" class="w-full h-60" role="img" aria-label="Appointments dated in the last 7 days"></canvas>
+                    <div id="appointmentTrendNoData" class="hidden absolute inset-0 ph-dash-note"></div>
                   </div>
                 </div>
               </div>
             </section>
           </div>
+        </section>
 
-    <!-- ================= ANALYTICS SUMMARY ================= -->
-    <div id="adminViewAnalytics" class="hidden">
-      <section id="analyticsSummary" class="admin-dashboard-card mb-8 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
-        <div class="admin-section-header flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <p class="text-sm uppercase tracking-widest text-orange-600 font-semibold">PetHub Analytics</p>
-            <h2 class="text-3xl font-bold text-slate-800 dark:text-slate-100">Analytics</h2>
-            <p class="text-slate-600 dark:text-slate-300 mt-2">View summarized records and trends for pets, services, and appointments.</p>
-          </div>
-        </div>
-      </section>
-
-      <div id="analyticsCharts" class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
-        <div class="bg-white border border-gray-200 rounded-3xl shadow-sm p-6">
-          <div class="flex items-center justify-between mb-4">
+        <!-- ================= 2. APPOINTMENT MANAGEMENT ================= -->
+        <section id="adminViewAppointments" aria-labelledby="appointmentsTitle" hidden>
+          <header class="ph-dash-header">
             <div>
-              <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100">Pet Type Distribution</h3>
-              <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Count by pet species</p>
+              <p class="ph-dash-eyebrow">Admin Dashboard</p>
+              <h1 id="appointmentsTitle" class="ph-dash-title" tabindex="-1">Appointment Management</h1>
+              <p class="ph-dash-lead">Pending requests can be approved or cancelled; approved appointments can be completed or cancelled. Approval is checked against the schedule on the server, and the owner is emailed when an appointment is approved or cancelled.</p>
             </div>
-          </div>
-          <div class="min-h-[320px] relative">
-            <canvas id="petTypeChart" class="w-full h-72"></canvas>
-            <div id="petTypeNoData" class="hidden absolute inset-0 text-slate-500 dark:text-slate-400">
-              <div class="flex h-full items-center justify-center">No pet data available.</div>
-            </div>
-          </div>
-        </div>
+          </header>
 
-        <div class="bg-white border border-gray-200 rounded-3xl shadow-sm p-6">
-          <div class="flex items-center justify-between mb-4">
-            <div>
-              <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100">Service Usage</h3>
-              <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Most requested service types</p>
-            </div>
-          </div>
-          <div class="min-h-[320px] relative">
-            <canvas id="serviceUsageChart" class="w-full h-72"></canvas>
-            <div id="serviceUsageNoData" class="hidden absolute inset-0 text-slate-500 dark:text-slate-400">
-              <div class="flex h-full items-center justify-center">No service data available.</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="bg-white border border-gray-200 rounded-3xl shadow-sm p-6">
-          <div class="flex items-center justify-between mb-4">
-            <div>
-              <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100">Appointment Trend</h3>
-              <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Weekly booking activity</p>
-            </div>
-          </div>
-          <div class="min-h-[320px] relative">
-            <canvas id="appointmentTrendChart" class="w-full h-72"></canvas>
-            <div id="appointmentTrendNoData" class="hidden absolute inset-0 text-slate-500 dark:text-slate-400">
-              <div class="flex h-full items-center justify-center">No appointment trend data available.</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div id="analyticsInsights" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 mb-8">
-        <div class="bg-white border border-gray-200 rounded-3xl shadow-sm p-6">
-          <p class="text-sm uppercase tracking-wide text-slate-500 dark:text-slate-400 font-semibold">Most Common Pet Type</p>
-          <p id="insightPetType" class="text-xl font-semibold text-slate-800 dark:text-slate-100 mt-4"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
-        </div>
-        <div class="bg-white border border-gray-200 rounded-3xl shadow-sm p-6">
-          <p class="text-sm uppercase tracking-wide text-slate-500 dark:text-slate-400 font-semibold">Most Requested Service</p>
-          <p id="insightService" class="text-xl font-semibold text-slate-800 dark:text-slate-100 mt-4"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
-        </div>
-        <div class="bg-white border border-gray-200 rounded-3xl shadow-sm p-6">
-          <p class="text-sm uppercase tracking-wide text-slate-500 dark:text-slate-400 font-semibold">Upcoming Bookings</p>
-          <p id="insightBookings" class="text-xl font-semibold text-slate-800 dark:text-slate-100 mt-4"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
-        </div>
-        <div class="bg-white border border-gray-200 rounded-3xl shadow-sm p-6">
-          <p class="text-sm uppercase tracking-wide text-slate-500 dark:text-slate-400 font-semibold">% of Bookings Completed</p>
-          <p id="insightCompletion" class="text-xl font-semibold text-slate-800 dark:text-slate-100 mt-4"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
-        </div>
-        <div class="bg-white border border-gray-200 rounded-3xl shadow-sm p-6">
-          <p class="text-sm uppercase tracking-wide text-slate-500 dark:text-slate-400 font-semibold">Upcoming Check-ups</p>
-          <p id="analyticsUpcomingCheckups" class="text-xl font-semibold text-slate-800 dark:text-slate-100 mt-4"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading</span></span></p>
-          <p class="text-xs text-slate-500 dark:text-slate-400 mt-2">Pending or approved Dog &amp; Cat Full Check Up appointments in the next 7 days</p>
-        </div>
-      </div>
-    </div>
-
-    <div id="adminViewMedicalRecords" class="hidden">
-      <section id="medicalRecordsSection" class="admin-dashboard-card mb-8 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
-        <div class="admin-section-header flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <p class="inline-flex items-center gap-2 text-sm uppercase tracking-widest text-emerald-600 font-semibold">
-              <i class="ri-health-book-line text-base"></i>
-              <span>Medical Records</span>
-            </p>
-            <h2 class="text-3xl font-bold text-slate-800 dark:text-slate-100">Official medical records</h2>
-            <p class="text-slate-600 dark:text-slate-300 mt-2">Review medical records for pets across PetHub.</p>
-            <p class="text-sm text-slate-500 dark:text-slate-400 mt-2">Official medical records are added after appointments, checkups, vaccinations, or treatments.</p>
-          </div>
-        </div>
-        <div class="mt-6">
-          <div class="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-            <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">Official medical record entries</p>
-            <p id="medicalRecordsSummary" class="text-sm text-slate-500 dark:text-slate-400"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading records</span></span></p>
-          </div>
-          <div id="recentMedicalRecordsContainer" class="space-y-4 text-sm text-slate-600 dark:text-slate-300">
-            <div class="dashboard-loading-state" role="status" aria-live="polite">
-              <div class="dashboard-loading-spinner" aria-hidden="true"></div>
-              <div>
-                <p class="dashboard-loading-title">Loading medical records...</p>
-                <p class="dashboard-loading-copy">Fetching the latest PetHub records.</p>
+          <section class="ph-dash-panel" aria-labelledby="appointmentsTableTitle">
+            <h2 id="appointmentsTableTitle" class="sr-only">Appointments</h2>
+            <div class="ph-dash-filters ph-dash-filters-4">
+              <div class="ph-field">
+                <label for="appointmentSearchInput" class="ph-label">Search</label>
+                <input id="appointmentSearchInput" type="search" class="ph-input" placeholder="Pet, owner or reference">
+              </div>
+              <div class="ph-field">
+                <label for="appointmentStatusFilter" class="ph-label">Status</label>
+                <select id="appointmentStatusFilter" class="ph-input">
+                  <option value="all">All statuses</option>
+                  <option value="Pending">Pending</option>
+                  <option value="Approved">Approved</option>
+                  <option value="Completed">Completed</option>
+                  <option value="Cancelled">Cancelled</option>
+                </select>
+              </div>
+              <div class="ph-field">
+                <label for="appointmentServiceFilter" class="ph-label">Service</label>
+                <select id="appointmentServiceFilter" class="ph-input">
+                  <option value="all">All services</option>
+                </select>
+              </div>
+              <div class="ph-field">
+                <label for="appointmentDateFilter" class="ph-label">Date</label>
+                <input id="appointmentDateFilter" type="date" class="ph-input">
               </div>
             </div>
-          </div>
-        </div>
-      </section>
-    </div>
-
-    <!-- ================= MANAGEMENT PANELS ================= -->
-    <div id="adminViewManagement" class="hidden">
-      <section id="managementPanel" class="admin-dashboard-card mb-8 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
-        <div class="admin-section-header flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <p class="text-sm uppercase tracking-widest text-orange-600 font-semibold">Management</p>
-            <h2 class="text-3xl font-bold text-slate-800 dark:text-slate-100">Manage records</h2>
-            <p class="text-slate-600 dark:text-slate-300 mt-2">Manage users, pets, and appointments using real system data.</p>
-          </div>
-          <button id="refreshDashboard" type="button" class="admin-panel-button inline-flex items-center justify-center rounded-full bg-orange-500 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-600 hover:shadow-md"><i class="ri-refresh-line mr-2" aria-hidden="true"></i>Refresh</button>
-        </div>
-
-        <div class="mt-6 flex flex-wrap gap-3 border-b border-gray-200 pb-4">
-          <button id="tabUsers" type="button" class="rounded-full bg-orange-500 text-white px-4 py-2 text-sm font-semibold shadow-sm transition hover:bg-orange-600" aria-pressed="true">Users</button>
-          <button id="tabPets" type="button" class="rounded-full bg-slate-100 text-slate-700 px-4 py-2 text-sm font-semibold shadow-sm transition hover:bg-slate-200" aria-pressed="false">Pets</button>
-          <button id="tabAppointments" type="button" class="rounded-full bg-slate-100 text-slate-700 px-4 py-2 text-sm font-semibold shadow-sm transition hover:bg-slate-200" aria-pressed="false">Appointments</button>
-        </div>
-
-        <div class="mt-6 space-y-10">
-          <div id="usersTabPanel">
-          <div class="admin-filter-row flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
-            <div class="admin-filter-control w-full sm:max-w-xs">
-              <label for="userSearchInput" class="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Search users</label>
-              <input id="userSearchInput" type="search" placeholder="Name or email" class="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 shadow-sm focus:border-orange-400 focus:outline-none dark-safe-input" />
+            <div class="ph-dash-toolbar">
+              <p id="appointmentFilterSummary" class="ph-dash-note ph-dash-status" role="status" aria-live="polite"></p>
+              <button id="appointmentFiltersClear" type="button" class="ph-btn ph-btn-ghost ph-btn-sm"><i class="ri-filter-off-line" aria-hidden="true"></i>Clear filters</button>
             </div>
-          </div>
-          <div class="admin-table-card overflow-x-auto rounded-3xl border border-gray-200 bg-white shadow-sm">
-            <table class="admin-records-table admin-users-table w-full min-w-full text-left text-sm">
-              <thead class="border-b border-gray-200 bg-slate-50 dark:bg-slate-900">
-                <tr>
-                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Name</th>
-                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Email</th>
-                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Role</th>
-                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Email Status</th>
-                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Joined</th>
-                </tr>
-              </thead>
-              <tbody id="usersTable">
-                <tr><td colspan="5" class="dashboard-table-loading"><div class="dashboard-loading-state" role="status" aria-live="polite"><div class="dashboard-loading-spinner" aria-hidden="true"></div><div><p class="dashboard-loading-title">Loading users...</p><p class="dashboard-loading-copy">Fetching the latest PetHub records.</p></div></div></td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-          <div id="petsTabPanel" class="hidden">
-          <div class="admin-filter-row flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
-            <div class="admin-filter-control w-full sm:max-w-xs">
-              <label for="petSearchInput" class="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Search pets</label>
-              <input id="petSearchInput" type="search" placeholder="Pet, species, breed, owner" class="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 shadow-sm focus:border-orange-400 focus:outline-none dark-safe-input" />
+            <div class="ph-dash-table-wrap">
+              <table class="ph-dash-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Reference</th>
+                    <th scope="col">Pet and owner</th>
+                    <th scope="col">Service</th>
+                    <th scope="col">Date</th>
+                    <th scope="col">Time range</th>
+                    <th scope="col">Duration</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Handled by</th>
+                    <th scope="col">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="appointmentsTable">
+                  <tr><td colspan="9" class="dashboard-table-loading"><div class="dashboard-loading-state" role="status" aria-live="polite"><div class="dashboard-loading-spinner" aria-hidden="true"></div><div><p class="dashboard-loading-title">Loading appointments...</p><p class="dashboard-loading-copy">Fetching the latest PetHub records.</p></div></div></td></tr>
+                </tbody>
+              </table>
             </div>
-          </div>
-          <div class="admin-table-card overflow-x-auto rounded-3xl border border-gray-200 bg-white shadow-sm">
-            <table class="admin-records-table admin-pets-table w-full min-w-full text-left text-sm">
-              <thead class="border-b border-gray-200 bg-slate-50 dark:bg-slate-900">
-                <tr>
-                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Name</th>
-                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Species</th>
-                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Breed</th>
-                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Age</th>
-                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Owner</th>
-                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Latest Record</th>
-                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Created</th>
-                </tr>
-              </thead>
-              <tbody id="petsTable">
-                <tr><td colspan="7" class="dashboard-table-loading"><div class="dashboard-loading-state" role="status" aria-live="polite"><div class="dashboard-loading-spinner" aria-hidden="true"></div><div><p class="dashboard-loading-title">Loading pets...</p><p class="dashboard-loading-copy">Fetching the latest PetHub records.</p></div></div></td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
+            <p class="ph-dash-note mt-3">Each change takes two clicks and is shown only after the server confirms it. Pet owners see the new status the next time their dashboard loads.</p>
+          </section>
+        </section>
 
-          <div id="appointmentsTabPanel" class="hidden">
-          <div class="admin-filter-row grid grid-cols-1 gap-3 md:grid-cols-2 mb-6">
-            <div class="admin-filter-control w-full sm:max-w-xs">
-              <label for="appointmentSearchInput" class="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Search appointments</label>
-              <input id="appointmentSearchInput" type="search" placeholder="Pet or service" class="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 shadow-sm focus:border-orange-400 focus:outline-none dark-safe-input" />
-            </div>
-            <div class="admin-filter-control w-full sm:max-w-xs">
-              <label for="appointmentStatusFilter" class="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Status filter</label>
-              <select id="appointmentStatusFilter" class="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-slate-800 dark:text-slate-100 shadow-sm focus:border-orange-400 focus:outline-none dark-safe-select">
-                <option value="all">All statuses</option>
-                <option value="Pending">Pending</option>
-                <option value="Approved">Approved</option>
-                <option value="Completed">Completed</option>
-                <option value="Cancelled">Cancelled</option>
-              </select>
-            </div>
-          </div>
-          <div class="admin-table-card overflow-x-auto rounded-3xl border border-gray-200 bg-white shadow-sm">
-            <table class="admin-records-table admin-appointments-table w-full min-w-full text-left text-sm">
-              <thead class="border-b border-gray-200 bg-slate-50 dark:bg-slate-900">
-                <tr>
-                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Pet</th>
-                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Service</th>
-                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Duration</th>
-                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Date</th>
-                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Time range</th>
-                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Status</th>
-                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Handled by</th>
-                  <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Actions</th>
-                </tr>
-              </thead>
-              <tbody id="appointmentsTable">
-                <tr><td colspan="8" class="dashboard-table-loading"><div class="dashboard-loading-state" role="status" aria-live="polite"><div class="dashboard-loading-spinner" aria-hidden="true"></div><div><p class="dashboard-loading-title">Loading appointments...</p><p class="dashboard-loading-copy">Fetching the latest PetHub records.</p></div></div></td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-        </div>
-      </section>
-    </div>
-
-    <!-- ================= SYSTEM ACTIVITY LOGS ================= -->
-    <div id="adminViewActivityLogs" class="hidden">
-      <div id="systemLogs" class="admin-dashboard-card rounded-3xl border border-gray-200 bg-white p-6 shadow-sm mb-8">
-        <div class="admin-section-header mb-4 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <p class="text-sm uppercase tracking-widest text-orange-600 font-semibold">System Activity Logs</p>
-            <h2 class="text-3xl font-bold text-slate-800 dark:text-slate-100">Recent system actions</h2>
-          </div>
-        </div>
-        <div id="systemLogsContainer" class="space-y-4 text-sm text-slate-600 dark:text-slate-300">
-          <div class="dashboard-loading-state" role="status" aria-live="polite">
-            <div class="dashboard-loading-spinner" aria-hidden="true"></div>
+        <!-- ================= 3. PET & MEDICAL RECORDS ================= -->
+        <section id="adminViewRecords" aria-labelledby="recordsTitle" hidden>
+          <header class="ph-dash-header">
             <div>
-              <p class="dashboard-loading-title">Loading activity logs...</p>
-              <p class="dashboard-loading-copy">Fetching the latest PetHub records.</p>
+              <p class="ph-dash-eyebrow">Admin Dashboard</p>
+              <h1 id="recordsTitle" class="ph-dash-title" tabindex="-1">Pet &amp; Medical Records</h1>
+              <p class="ph-dash-lead">Pet profiles are entered by their owners. Official medical records are entered by administrators after a completed appointment, and owners can only read them.</p>
+            </div>
+          </header>
+
+          <div class="ph-dash-stack">
+            <!-- One pet: its profile and official records, and adding a record (opened from the table below) -->
+            <section id="adminPetDetail" class="ph-dash-panel" aria-labelledby="adminPetDetailTitle" hidden>
+              <div class="ph-dash-panel-head">
+                <h2 id="adminPetDetailTitle" class="ph-dash-panel-title" tabindex="-1"><i class="ri-bear-smile-line" aria-hidden="true"></i><span id="adminPetDetailName">Pet</span></h2>
+                <button id="adminPetDetailClose" type="button" class="ph-btn ph-btn-secondary ph-btn-sm"><i class="ri-arrow-left-line" aria-hidden="true"></i>Back to all pets</button>
+              </div>
+              <div id="adminPetDetailContent"></div>
+            </section>
+
+            <section class="ph-dash-panel" aria-labelledby="petsTableTitle">
+              <div class="ph-dash-panel-head">
+                <h2 id="petsTableTitle" class="ph-dash-panel-title"><i class="ri-bear-smile-line" aria-hidden="true"></i>Pets and owners</h2>
+              </div>
+              <div class="ph-dash-filters">
+                <div class="ph-field">
+                  <label for="petSearchInput" class="ph-label">Search pets</label>
+                  <input id="petSearchInput" type="search" class="ph-input" placeholder="Pet, species, breed or owner">
+                </div>
+              </div>
+              <div class="ph-dash-table-wrap">
+                <table class="ph-dash-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Pet</th>
+                      <th scope="col">Species</th>
+                      <th scope="col">Breed</th>
+                      <th scope="col">Age</th>
+                      <th scope="col">Owner</th>
+                      <th scope="col">Medical records</th>
+                      <th scope="col">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="petsTable">
+                    <tr><td colspan="7" class="dashboard-table-loading"><div class="dashboard-loading-state" role="status" aria-live="polite"><div class="dashboard-loading-spinner" aria-hidden="true"></div><div><p class="dashboard-loading-title">Loading pets...</p><p class="dashboard-loading-copy">Fetching the latest PetHub records.</p></div></div></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section id="medicalRecordsSection" class="ph-dash-panel" aria-labelledby="allRecordsTitle">
+              <div class="ph-dash-panel-head">
+                <h2 id="allRecordsTitle" class="ph-dash-panel-title"><i class="ri-health-book-line" aria-hidden="true"></i>All official medical records</h2>
+                <p id="medicalRecordsSummary" class="ph-dash-note"><span class="dashboard-inline-loading"><span class="dashboard-inline-spinner" aria-hidden="true"></span><span>Loading records</span></span></p>
+              </div>
+              <div id="recentMedicalRecordsContainer">
+                <div class="dashboard-loading-state" role="status" aria-live="polite">
+                  <div class="dashboard-loading-spinner" aria-hidden="true"></div>
+                  <div>
+                    <p class="dashboard-loading-title">Loading medical records...</p>
+                    <p class="dashboard-loading-copy">Fetching the latest PetHub records.</p>
+                  </div>
+                </div>
+              </div>
+              <p class="ph-dash-note mt-3">Saved records can't be edited from PetHub yet; the server has no route for changing a record.</p>
+            </section>
+          </div>
+        </section>
+
+        <!-- ================= 4. SYSTEM MANAGEMENT ================= -->
+        <section id="adminViewSystem" aria-labelledby="systemTitle" hidden>
+          <header class="ph-dash-header">
+            <div>
+              <p class="ph-dash-eyebrow">Admin Dashboard</p>
+              <h1 id="systemTitle" class="ph-dash-title" tabindex="-1">System Management</h1>
+              <p class="ph-dash-lead">User accounts and roles, contact messages, the activity log, and the clinic's service catalog.</p>
+            </div>
+          </header>
+
+          <div class="ph-dash-panel">
+            <div class="ph-dash-tabs" role="tablist" aria-label="System Management">
+              <button id="systemTabUsers" type="button" class="ph-dash-tab" role="tab" aria-selected="true" aria-controls="systemPanelUsers" data-system-tab="users"><i class="ri-team-line" aria-hidden="true"></i>Users</button>
+              <button id="systemTabMessages" type="button" class="ph-dash-tab" role="tab" aria-selected="false" aria-controls="systemPanelMessages" data-system-tab="messages" tabindex="-1"><i class="ri-mail-line" aria-hidden="true"></i>Contact messages <span id="systemUnreadCount" class="ph-dash-count" hidden></span></button>
+              <button id="systemTabActivity" type="button" class="ph-dash-tab" role="tab" aria-selected="false" aria-controls="systemPanelActivity" data-system-tab="activity" tabindex="-1"><i class="ri-history-line" aria-hidden="true"></i>Activity logs</button>
+              <button id="systemTabServices" type="button" class="ph-dash-tab" role="tab" aria-selected="false" aria-controls="systemPanelServices" data-system-tab="services" tabindex="-1"><i class="ri-scissors-cut-line" aria-hidden="true"></i>Services &amp; booking</button>
+            </div>
+
+            <!-- Users: list and role changes (two clicks; the server allows only "user" and "admin") -->
+            <div id="systemPanelUsers" role="tabpanel" aria-labelledby="systemTabUsers">
+              <div class="ph-dash-filters">
+                <div class="ph-field">
+                  <label for="userSearchInput" class="ph-label">Search users</label>
+                  <input id="userSearchInput" type="search" class="ph-input" placeholder="Name, email or role">
+                </div>
+              </div>
+              <div class="ph-dash-table-wrap">
+                <table class="ph-dash-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Name</th>
+                      <th scope="col">Email</th>
+                      <th scope="col">Role</th>
+                      <th scope="col">Email status</th>
+                      <th scope="col">Joined</th>
+                    </tr>
+                  </thead>
+                  <tbody id="usersTable">
+                    <tr><td colspan="5" class="dashboard-table-loading"><div class="dashboard-loading-state" role="status" aria-live="polite"><div class="dashboard-loading-spinner" aria-hidden="true"></div><div><p class="dashboard-loading-title">Loading users...</p><p class="dashboard-loading-copy">Fetching the latest PetHub records.</p></div></div></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Contact messages: Unread messages can be marked as read -->
+            <div id="systemPanelMessages" role="tabpanel" aria-labelledby="systemTabMessages" hidden>
+              <div class="ph-dash-table-wrap">
+                <table class="ph-dash-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Name</th>
+                      <th scope="col">Email</th>
+                      <th scope="col">Message</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">Received</th>
+                      <th scope="col">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="contactMessagesTable">
+                    <tr><td colspan="6" class="dashboard-table-loading"><div class="dashboard-loading-state" role="status" aria-live="polite"><div class="dashboard-loading-spinner" aria-hidden="true"></div><div><p class="dashboard-loading-title">Loading messages...</p><p class="dashboard-loading-copy">Fetching the latest PetHub records.</p></div></div></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Activity logs: the most recent entries of the activity log -->
+            <div id="systemPanelActivity" role="tabpanel" aria-labelledby="systemTabActivity" hidden>
+              <div id="systemLogsContainer" class="ph-dash-stack">
+                <div class="dashboard-loading-state" role="status" aria-live="polite">
+                  <div class="dashboard-loading-spinner" aria-hidden="true"></div>
+                  <div>
+                    <p class="dashboard-loading-title">Loading activity logs...</p>
+                    <p class="dashboard-loading-copy">Fetching the latest PetHub records.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Services & booking: the catalog as the server lists it, with each service's online booking status -->
+            <div id="systemPanelServices" role="tabpanel" aria-labelledby="systemTabServices" hidden>
+              <p id="bookingStatusSummary" class="ph-dash-panel-text mb-4"></p>
+              <div id="servicesCatalogContainer">
+                <div class="dashboard-loading-state" role="status" aria-live="polite">
+                  <div class="dashboard-loading-spinner" aria-hidden="true"></div>
+                  <div>
+                    <p class="dashboard-loading-title">Loading services...</p>
+                    <p class="dashboard-loading-copy">Fetching the clinic's service catalog.</p>
+                  </div>
+                </div>
+              </div>
+              <p class="ph-dash-note mt-3">Durations and species rules are set in the server's service catalog (backend/constants/services.js) once the clinic confirms them; a service opens for online booking only when its duration is confirmed.</p>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
+        </section>
 
-    <!-- ================= CONTACT MESSAGES ================= -->
-    <div id="adminViewMessages" class="hidden">
-      <section class="admin-dashboard-card mb-8 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
-        <div class="admin-section-header flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <p class="text-sm uppercase tracking-widest text-orange-600 font-semibold">Messages</p>
-            <h2 class="text-3xl font-bold text-slate-800 dark:text-slate-100">Contact messages</h2>
-            <p class="text-slate-600 dark:text-slate-300 mt-2">Review contact form submissions and mark unread messages as read.</p>
-          </div>
-        </div>
-
-        <div class="admin-table-card mt-8 overflow-x-auto rounded-3xl border border-gray-200 bg-white shadow-sm">
-          <table class="admin-records-table admin-messages-table w-full min-w-full text-left text-sm">
-            <thead class="border-b border-gray-200 bg-slate-50 dark:bg-slate-900">
-              <tr>
-                <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Name</th>
-                <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Email</th>
-                <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Message</th>
-                <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Status</th>
-                <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Received</th>
-                <th class="px-4 py-4 font-semibold text-slate-600 dark:text-slate-300">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="contactMessagesTable">
-              <tr><td colspan="6" class="dashboard-table-loading"><div class="dashboard-loading-state" role="status" aria-live="polite"><div class="dashboard-loading-spinner" aria-hidden="true"></div><div><p class="dashboard-loading-title">Loading messages...</p><p class="dashboard-loading-copy">Fetching the latest PetHub records.</p></div></div></td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </div>
-
-        </div>
       </main>
     </div>
   </div>
-
-  <!-- ================= FOOTER ================= -->
-  <footer class="footer hidden" aria-hidden="true">
-    <p>&copy; 2026 PetHub. All rights reserved.</p>
-  </footer>
 
   <!-- ================= DARK MODE TOGGLE ================= -->
   <button id="darkModeToggle" type="button" class="dark-mode-toggle" title="Toggle Dark Mode">
@@ -470,7 +471,7 @@
   <script src="../../js/core/utils.js"></script>
   <script src="../../js/core/storage.js"></script>
   <script src="../../js/main.js"></script>
-  <script src="../../js/admin/sidebar.js"></script>
+  <script src="../../js/shared/dashboard-shell.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="../../js/shared/appointment-durations.js"></script>
   <script src="../../js/admin/dashboard.js"></script>
