@@ -31,7 +31,8 @@ const skip = process.env.PETHUB_BROWSER_TESTS !== '1'
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const pageUrl = (file, query = '') => `${pathToFileURL(path.join(FRONTEND, file)).href}${query}`;
 
-// Answers API calls from scenario.routes: { '/auth/login': { status, body, delay } }; anything else gets a 404
+// Answers API calls from scenario.routes: { '/auth/login': { status, body, delay } }; anything else gets a 404.
+// A list of answers is used in order, one per request, and its last answer repeats.
 const FETCH_STUB = `(() => {
   window.__requests = [];
   const scenario = JSON.parse(localStorage.getItem('__scenario') || '{}');
@@ -40,7 +41,8 @@ const FETCH_STUB = `(() => {
     const route = url.replace(/^https?:\\/\\/[^/]+/, '').split('?')[0];
     const method = (init.method || 'GET').toUpperCase();
     window.__requests.push({ method, route, body: init.body || null });
-    const answer = (scenario.routes || {})[route] || { status: 404, body: { error: 'not stubbed ' + route } };
+    const entry = (scenario.routes || {})[route];
+    const answer = (Array.isArray(entry) ? (entry.length > 1 ? entry.shift() : entry[0]) : entry) || { status: 404, body: { error: 'not stubbed ' + route } };
     return new Promise(resolve => setTimeout(() => resolve(new Response(JSON.stringify(answer.body), { status: answer.status || 200, headers: { 'Content-Type': 'application/json' } })), answer.delay || 30));
   };
 })();`;

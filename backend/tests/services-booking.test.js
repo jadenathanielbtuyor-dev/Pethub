@@ -89,7 +89,8 @@ describe('Species and services', () => {
 describe('New pet profiles', () => {
   it('accept dogs and cats (any letter case, stored as Dog / Cat) and refuse other species', async () => {
     const user = t.createUser();
-    const add = species => t.api('POST', '/pets/create', { token: user.token, body: { user_id: user.id, name: 'Mochi', species } });
+    // Age is required for a new profile (constants/pets.js)
+    const add = species => t.api('POST', '/pets/create', { token: user.token, body: { user_id: user.id, name: 'Mochi', species, age: 2 } });
     const dog = await add('dog');
     assert.equal(dog.status, 201, JSON.stringify(dog.body));
     assert.equal(t.db.table('pets').filter(row => row.user_id === user.id).pop().species, 'Dog');

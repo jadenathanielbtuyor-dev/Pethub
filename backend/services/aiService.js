@@ -55,12 +55,12 @@ const MINI_FAQ = {
   'is my account secure': "I'm not sure based on the current PetHub system.",
   
   // ==================== PET MANAGEMENT ====================
-  'how do i add a pet': "Go to **My Pets** → fill in the **Add a pet** form: Name, Species (**Dog** or **Cat**), Breed and Age (optional) → click **Add Pet**. 🎉",
-  'what info should i add for my pet': "Add the pet details PetHub asks for, such as pet name, species, breed, and age when available. Medical records are added by the clinic after completed visits; you can read them, but not add or change them.",
-  'can i add multiple pets': "I'm not sure based on the current PetHub system.",
-  'how do i edit a pets profile': "PetHub doesn't have an edit option for pet profiles yet. To fix details, add the pet again with the correct information on the **Pets** page, then delete the old profile. If the old profile already has appointments or medical records, use the **Contact** page so the clinic can help.",
-  'how do i delete a pet': "Go to the **Pets** page, find the pet profile, use the available delete option, and confirm.",
-  'what if i add my pet by wrong name': "PetHub doesn't have an edit option for pet profiles yet. Add the pet again with the correct name on the **Pets** page, then delete the old profile. If the old profile already has appointments or medical records, use the **Contact** page so the clinic can help.",
+  'how do i add a pet': "Go to **My Pets** → **Add a pet** → **Register a new pet**: Name, Species (**Dog** or **Cat**), Breed (optional) and Age (whole years, 1 to 25) → click **Add Pet**. If one of your profiles looks like the same pet, PetHub shows it first so you don't add it twice. 🎉",
+  'what info should i add for my pet': "Add the pet details PetHub asks for: pet name, species, breed if you know it, and age in whole years. Medical records are added by the clinic after completed visits; you can read them, but not add or change them.",
+  'can i add multiple pets': "Yes. Register each pet under **My Pets** → **Add a pet** → **Register a new pet**. Two pets can share a name; if a new profile looks like one you already have, PetHub asks you to confirm it's a different pet before saving it.",
+  'how do i edit a pets profile': "Open **My Pets**, choose **View details** on the pet, then **Edit profile** to correct its name, species, breed or age. Official medical records can only be changed by the clinic.",
+  'how do i delete a pet': "Open **My Pets**, choose **View details** on the pet, then **Delete profile** and confirm. A profile can only be deleted while it has no appointments or official medical records in PetHub; otherwise it is kept so that history stays linked, and you can use the **Contact** page if it needs to be removed.",
+  'what if i add my pet by wrong name': "Open **My Pets**, choose **View details** on the pet, then **Edit profile** and correct the name. There's no need to add the pet again.",
   'the species options are limited': "The clinic cares for 🐕 **dogs** and 🐈 **cats** only, so those are the species PetHub pet profiles accept.",
   'how do i track my pets health': "Open **Pet Health & AI Assistant** in your **Pet Owner Dashboard** to read the official records the clinic has added for each pet (weight, vaccination status, treatment and notes). You can also use **appointment booking** when a vet visit is needed.",
   'can i share pet profiles with my vet': "I'm not sure based on the current PetHub system.",
@@ -217,8 +217,10 @@ FILIPINO/TAGALOG EXAMPLES TO UNDERSTAND AND MATCH:
     - Recent account activity, and **Your details** (personal details can be edited there)
 
   My Pets
-    - Add pets (dog or cat), open a pet's details, delete a pet (there is no edit option)
-    - Each pet's official medical history, read-only
+    - Register a new pet (dog or cat, age in whole years from 1 to 25) or choose one already registered; PetHub points out a profile that looks like the same pet instead of adding it twice
+    - Open a pet's details: its PetHub profile ID, Edit profile (name, species, breed, age), the latest weight from an official record
+    - Each pet's appointment history and official medical history, read-only
+    - Delete a profile only while it has no appointments or medical records
 
   Appointments
     - Upcoming and past appointments with their status and reference

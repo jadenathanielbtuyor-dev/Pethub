@@ -242,13 +242,14 @@ describe('AI chatbot', () => {
 });
 
 describe('Route inventory', () => {
-  // Every API route the app had before online payments were removed, except the three /payments routes
+  // Every API route the app had before online payments were removed, except the three /payments routes, plus the pet
+  // profile routes added later (PUT /pets/update/:id, GET /pets/history/:id)
   const ROUTES = [
     ['POST', '/auth/login'], ['POST', '/auth/register'], ['POST', '/auth/verify-email'], ['POST', '/auth/resend-code'],
     ['POST', '/auth/forgot-password'], ['POST', '/auth/reset-password'], ['POST', '/auth/logout'], ['GET', '/auth/user-status'],
     ['GET', '/auth/activity-logs'],
     ['POST', '/pets/create'], ['GET', '/pets/userPets'], ['GET', '/pets/medical-records'], ['POST', '/pets/medical-records/create'],
-    ['DELETE', '/pets/delete/some-id'],
+    ['DELETE', '/pets/delete/some-id'], ['PUT', '/pets/update/some-id'], ['GET', '/pets/history/some-id'],
     ['POST', '/appointments/create'], ['GET', '/appointments/userAppointments'], ['GET', '/appointments/all'], ['PUT', '/appointments/updateStatus'],
     ['POST', '/ai/chat'], ['POST', '/contact'],
     ['GET', '/admin/dashboard/stats'], ['GET', '/admin/dashboard/users'], ['GET', '/admin/dashboard/pets'], ['GET', '/admin/dashboard/appointments'],

@@ -1,8 +1,40 @@
 const { MEDICAL_RECORD_COMPLETED_APPOINTMENT_ACTION } = require('../constants/activityActions');
+const { RECORDED_WEIGHT_UNIT } = require('../constants/pets');
 
 function getRecordTime(record) {
   const date = new Date(record?.record_date || record?.created_at || 0);
   return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
+
+function getCreatedTime(record) {
+  const date = new Date(record?.created_at || 0);
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
+
+// Newest first by record date, then by when the record was saved
+function compareRecordsNewestFirst(first, second) {
+  return (getRecordTime(second) - getRecordTime(first)) || (getCreatedTime(second) - getCreatedTime(first));
+}
+
+function hasRecordedWeight(record) {
+  const weight = record?.weight;
+  if (weight === null || weight === undefined || String(weight).trim() === '') return false;
+  return Number.isFinite(Number(weight));
+}
+
+/**
+ * The weight from the newest official record that has one (records saved without a weight are skipped), with the
+ * date it was recorded; null when no record has a weight. Never estimated or defaulted.
+ */
+function getLatestRecordedWeight(records) {
+  const latest = (Array.isArray(records) ? records : []).filter(hasRecordedWeight).sort(compareRecordsNewestFirst)[0];
+  if (!latest) return null;
+  return {
+    value: Number(latest.weight),
+    unit: RECORDED_WEIGHT_UNIT,
+    record_date: latest.record_date || null,
+    record_id: latest.id || null
+  };
 }
 
 function getMedicalRecordSummary(record) {
@@ -55,6 +87,8 @@ function applyMedicalRecordStateToAppointments(appointments, medicalRecordState 
 
 module.exports = {
   getRecordTime,
+  compareRecordsNewestFirst,
+  getLatestRecordedWeight,
   getMedicalRecordSummary,
   buildMedicalRecordContext,
   getAppointmentIdFromMedicalRecordAction,

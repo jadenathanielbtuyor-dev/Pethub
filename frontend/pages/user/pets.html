@@ -15,12 +15,20 @@
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css" rel="stylesheet">
 </head>
 <!-- PET OWNER DASHBOARD: MY PETS (section 2 of 4). js/user/pets.js:
-     - lists the owner's pets: GET /pets/userPets (only pets whose user_id is the signed-in account)
-     - adds a pet: POST /pets/create (name, species Dog/Cat, breed, age; the server validates them again)
-     - deletes a pet after a second click: DELETE /pets/delete/:id (the server deletes only the owner's own pet)
-     - shows one pet's profile and its official medical history, read-only: GET /pets/medical-records
+     - lists the owner's pets: GET /pets/userPets (only pets whose user_id is the signed-in account), each with the
+       latest weight an official medical record holds
+     - Add a pet, two choices:
+         Register a new pet: POST /pets/create (name, species Dog/Cat, optional breed, age in whole years 1-25; the
+           server validates them again). If one of the owner's own profiles looks like the same pet, the server answers
+           409 with that profile and saves nothing: the owner opens it, or confirms a different pet. Never merged.
+         Use an existing pet: one of the owner's registered pets, to open its profile or request an appointment with
+           its existing id (appointments.html?pet=<id>). Nothing is created.
+     - one pet's details: the profile with its PetHub profile ID, Edit profile (PUT /pets/update/:id), and its history
+       from GET /pets/history/:id (appointments linked by pet_id, and official medical records), read-only
+     - Delete profile only while no appointment or medical record points to the pet (DELETE /pets/delete/:id; the
+       server refuses otherwise)
      Medical records are written by clinic administrators only (POST /admin/dashboard/medical-records/create; the
-     owner route POST /pets/medical-records/create always answers 403). There is no API to edit a saved pet profile. -->
+     owner route POST /pets/medical-records/create always answers 403). -->
 <body class="ph-dash-page user-page" data-dashboard="owner" data-dashboard-section="pets">
   <!-- Apply the saved theme before first paint; main.js still owns the toggle -->
   <script>try { if (localStorage.getItem('darkMode') === 'true') { document.documentElement.classList.add('dark'); document.body.classList.add('dark-mode'); } } catch (e) {}</script>
@@ -37,11 +45,11 @@
           <div>
             <p class="ph-dash-eyebrow">Pet Owner Dashboard</p>
             <h1 class="ph-dash-title">My Pets</h1>
-            <p class="ph-dash-lead">The pet profiles you've added. Open a pet to see its details and the official medical history the clinic has recorded.</p>
+            <p class="ph-dash-lead">The pet profiles you've added. Open a pet to see its profile, its appointments and the official medical history the clinic has recorded.</p>
           </div>
         </header>
 
-        <!-- ================= ONE PET: profile and official medical history (opened from a pet card, or ?pet=<id>) ================= -->
+        <!-- ================= ONE PET: profile and history (opened from a pet card, or ?pet=<id>) ================= -->
         <section id="petDetailPanel" class="ph-dash-panel mb-5" aria-labelledby="petDetailTitle" hidden>
           <div class="ph-dash-panel-head">
             <h2 id="petDetailTitle" class="ph-dash-panel-title" tabindex="-1"><i class="ri-bear-smile-line" aria-hidden="true"></i><span id="petDetailName">Pet details</span></h2>
@@ -68,50 +76,70 @@
             </div>
           </section>
 
-          <!-- ================= ADD A PET: POST /pets/create ================= -->
+          <!-- ================= ADD A PET: register a new one, or use one already registered ================= -->
           <section class="ph-dash-panel" aria-labelledby="addPetTitle">
             <div class="ph-dash-panel-head">
               <h2 id="addPetTitle" class="ph-dash-panel-title"><i class="ri-add-circle-line" aria-hidden="true"></i>Add a pet</h2>
             </div>
 
-            <div id="petError" class="mb-4 p-3 rounded-lg bg-red-50 text-red-700 text-sm hidden"></div>
-            <div id="petSuccess" class="mb-4 p-3 rounded-lg bg-green-50 text-green-700 text-sm hidden"></div>
+            <div class="ph-dash-segmented ph-pet-choice" role="group" aria-label="Add a pet">
+              <button type="button" class="ph-dash-segment" data-pet-mode="new" aria-pressed="true" aria-controls="petNewPanel">Register a new pet</button>
+              <button type="button" class="ph-dash-segment" data-pet-mode="existing" aria-pressed="false" aria-controls="petExistingPanel">Use an existing pet</button>
+            </div>
 
-            <form id="petForm" class="ph-form">
-              <div class="ph-field">
-                <label for="petName" class="ph-label">Pet name<span class="ph-required" aria-hidden="true">*</span></label>
-                <input type="text" id="petName" class="ph-input" placeholder="e.g., Max" maxlength="50" required>
-              </div>
+            <!-- Register a new pet: POST /pets/create -->
+            <div id="petNewPanel" class="mt-4">
+              <div id="petError" class="mb-4 p-3 rounded-lg bg-red-50 text-red-700 text-sm hidden"></div>
+              <div id="petSuccess" class="mb-4 p-3 rounded-lg bg-green-50 text-green-700 text-sm hidden"></div>
+              <!-- Shown when the server finds a profile of yours that looks like the same pet -->
+              <div id="petDuplicateNotice" class="ph-pet-notice mb-4" tabindex="-1" hidden></div>
 
-              <div class="ph-field">
-                <label for="petType" class="ph-label">Species<span class="ph-required" aria-hidden="true">*</span></label>
-                <select id="petType" class="ph-input" required aria-describedby="petTypeHelp">
-                  <option value="">Select Species</option>
-                  <option value="Dog">Dog</option>
-                  <option value="Cat">Cat</option>
-                </select>
-                <p id="petTypeHelp" class="ph-help">The clinic cares for dogs and cats.</p>
-              </div>
+              <form id="petForm" class="ph-form" novalidate>
+                <div class="ph-field">
+                  <label for="petName" class="ph-label">Pet name<span class="ph-required" aria-hidden="true">*</span></label>
+                  <input type="text" id="petName" class="ph-input" placeholder="e.g., Max" maxlength="50" required aria-describedby="petNameError">
+                  <p id="petNameError" class="ph-field-error" hidden></p>
+                </div>
 
-              <div class="ph-field">
-                <label for="petBreed" class="ph-label">Breed</label>
-                <input type="text" id="petBreed" class="ph-input" placeholder="e.g., Golden Retriever" maxlength="50">
-              </div>
+                <div class="ph-field">
+                  <label for="petType" class="ph-label">Species<span class="ph-required" aria-hidden="true">*</span></label>
+                  <select id="petType" class="ph-input" required aria-describedby="petTypeHelp petTypeError">
+                    <option value="">Select Species</option>
+                    <option value="Dog">Dog</option>
+                    <option value="Cat">Cat</option>
+                  </select>
+                  <p id="petTypeHelp" class="ph-help">The clinic cares for dogs and cats.</p>
+                  <p id="petTypeError" class="ph-field-error" hidden></p>
+                </div>
 
-              <div class="ph-field">
-                <label for="petAge" class="ph-label">Age (years)</label>
-                <input type="number" id="petAge" class="ph-input" placeholder="e.g., 3" min="0" aria-describedby="petAgeWarning">
-                <p id="petAgeWarning" class="ph-help font-semibold hidden" aria-live="polite">This age is uncommon. Please confirm.</p>
-              </div>
+                <div class="ph-field">
+                  <label for="petBreed" class="ph-label">Breed</label>
+                  <input type="text" id="petBreed" class="ph-input" placeholder="e.g., Golden Retriever" maxlength="50" aria-describedby="petBreedError">
+                  <p id="petBreedError" class="ph-field-error" hidden></p>
+                </div>
 
-              <p class="ph-help">A saved profile can't be edited online yet. If a detail is wrong, add the pet again and delete the old profile, or contact the clinic if it already has appointments or records.</p>
+                <div class="ph-field">
+                  <label for="petAge" class="ph-label">Age (years)<span class="ph-required" aria-hidden="true">*</span></label>
+                  <input type="number" id="petAge" class="ph-input" placeholder="e.g., 3" min="1" max="25" step="1" inputmode="numeric" required aria-describedby="petAgeHelp petAgeError">
+                  <p id="petAgeHelp" class="ph-help">Whole years from 1 to 25.</p>
+                  <p id="petAgeError" class="ph-field-error" hidden></p>
+                </div>
 
-              <div class="ph-form-actions">
-                <button type="submit" class="ph-btn ph-btn-primary ph-btn-block">
-                  <i class="ri-add-line" aria-hidden="true"></i>Add Pet
-                </button>
-              </div>
-            </form>
+                <p class="ph-help">PetHub checks your other profiles before saving, so the same pet isn't added twice. Saved details can be corrected later with Edit profile.</p>
+
+                <div class="ph-form-actions">
+                  <button type="submit" class="ph-btn ph-btn-primary ph-btn-block">
+                    <i class="ri-add-line" aria-hidden="true"></i>Add Pet
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <!-- Use an existing pet: one of the owner's own profiles, nothing is created -->
+            <div id="petExistingPanel" class="mt-4" hidden>
+              <p class="ph-dash-note">Already registered this pet? Choose its profile. Appointments and history keep using that profile and its PetHub ID, and no new profile is created.</p>
+              <div id="existingPetChooser" class="mt-3"></div>
+            </div>
           </section>
 
         </div>

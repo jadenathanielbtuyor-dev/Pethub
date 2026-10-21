@@ -45,9 +45,20 @@ const PROFILE = { phone_number: '+639170000000', date_of_birth: '1990-01-01', ge
 const ok = body => ({ body: { success: true, ...body } });
 const failed = { status: 500, body: { error: 'Server error' } };
 
+// GET /pets/history/:id for one pet: its appointments and official records, as the server returns them
+const petHistory = petId => ok({
+  pet: PETS.find(pet => pet.id === petId),
+  latest_weight: petId === 'p1' ? { value: 12.5, unit: 'kg', record_date: RECORDS[0].record_date, record_id: 'r1' } : null,
+  appointments: APPOINTMENTS.filter(item => item.pet_id === petId),
+  medical_records: RECORDS.filter(record => record.pet_id === petId),
+  unlinked_appointment_count: 0
+});
+
 const ownerRoutes = (overrides = {}) => ({
   '/auth/user-status': ok({ user: OWNER, profile: PROFILE }),
   '/pets/userPets': ok({ pets: PETS }),
+  '/pets/history/p1': petHistory('p1'),
+  '/pets/history/p2': petHistory('p2'),
   '/appointments/userAppointments': ok({ appointments: APPOINTMENTS }),
   '/pets/medical-records': ok({ records: RECORDS }),
   '/auth/activity-logs': ok({ logs: [{ id: 'l1', action: 'user_logged_in', details: '', created_at: new Date().toISOString() }] }),
@@ -183,7 +194,7 @@ describe('Pet Owner Dashboard in a browser (mocked API)', { skip }, () => {
     } finally { await empty.close(); }
   });
 
-  it('My Pets opens one pet with its official medical history, read-only, and shows a records error inside the details', async () => {
+  it('My Pets opens one pet with its official medical history, read-only, and shows a history error inside the details', async () => {
     const tab = await open('pages/user/pets.html', '?pet=p1', OWNER, ownerRoutes());
     try {
       assert.ok(await tab.waitFor(`!document.getElementById('petDetailPanel').hidden && document.getElementById('petDetailContent').innerText.includes('Deworming')`));
@@ -191,22 +202,23 @@ describe('Pet Owner Dashboard in a browser (mocked API)', { skip }, () => {
       assert.match(detail, /Official medical history/);
       assert.match(detail, /Official record/);
       assert.match(detail, /12\.5 kg/);
-      assert.equal(await tab.evaluate(`document.querySelectorAll('#petDetailPanel input, #petDetailPanel textarea, #petDetailPanel select, #petDetailPanel form').length`), 0, 'nothing to edit');
-      assert.deepEqual(await tab.evaluate(`[...document.querySelectorAll('#petDetailPanel button')].map(b => b.textContent.trim())`), ['Back to all pets']);
+      assert.equal(await tab.evaluate(`document.querySelectorAll('#petHistory input, #petHistory textarea, #petHistory select, #petHistory form').length`), 0, 'the history cannot be edited');
+      assert.deepEqual(await tab.evaluate(`[...document.querySelectorAll('#petDetailPanel button')].map(b => b.textContent.trim())`), ['Back to all pets', 'Edit profile'],
+        'only the profile can be edited; Mochi has history, so it cannot be deleted');
       assert.equal(await tab.evaluate('document.activeElement.id'), 'petDetailTitle');
 
       await tab.evaluate(`document.querySelector('[data-pet-view="p2"]').click()`);
       assert.ok(await tab.waitFor(`document.getElementById('petDetailName').textContent === 'Luna'`));
-      assert.match(await tab.evaluate(textOf('#petDetailContent')), /No medical records yet/);
+      assert.ok(await tab.waitFor(`document.getElementById('petDetailContent').innerText.includes('No medical records yet')`), 'Luna\'s history loads');
       assert.match(await tab.evaluate('location.search'), /pet=p2/);
       await tab.evaluate(`document.getElementById('petDetailClose').click()`);
       assert.equal(await tab.evaluate(`document.getElementById('petDetailPanel').hidden`), true);
       assert.deepEqual(tab.errors, []);
     } finally { await tab.close(); }
 
-    const broken = await open('pages/user/pets.html', '?pet=p1', OWNER, ownerRoutes({ '/pets/medical-records': failed }));
+    const broken = await open('pages/user/pets.html', '?pet=p1', OWNER, ownerRoutes({ '/pets/history/p1': failed }));
     try {
-      assert.ok(await broken.waitFor(`document.getElementById('petDetailContent').innerText.includes('Unable to load medical records')`));
+      assert.ok(await broken.waitFor(`document.getElementById('petDetailContent').innerText.includes('Unable to load this pet\\'s history')`));
       assert.match(await broken.evaluate(textOf('#petsList')), /Mochi/, 'the pet list still loads');
     } finally { await broken.close(); }
   });

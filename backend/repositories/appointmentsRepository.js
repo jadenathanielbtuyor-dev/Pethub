@@ -70,6 +70,32 @@ function listByUserId(userId) {
     .eq('user_id', userId));
 }
 
+// One pet's appointments on the owner's account (linked by pet_id, never by pet name), newest first
+function listByUserIdAndPetId(userId, petId) {
+  return orderNewestFirst(supabase
+    .from('appointments')
+    .select(APPOINTMENT_SELECT)
+    .eq('user_id', userId)
+    .eq('pet_id', petId));
+}
+
+// Older appointments on the owner's account that were saved without a pet_id (they keep only pet_name)
+function countUnlinkedByUserId(userId) {
+  return supabase
+    .from('appointments')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .is('pet_id', null);
+}
+
+// Every appointment that points at the pet, whoever booked it
+function countByPetId(petId) {
+  return supabase
+    .from('appointments')
+    .select('id', { count: 'exact', head: true })
+    .eq('pet_id', petId);
+}
+
 function listAllAppointments() {
   return orderNewestFirst(supabase
     .from('appointments')
@@ -146,6 +172,9 @@ module.exports = {
   listScheduleByDate,
   createAppointment,
   listByUserId,
+  listByUserIdAndPetId,
+  countUnlinkedByUserId,
+  countByPetId,
   listAllAppointments,
   findById,
   findStatusById,

@@ -436,5 +436,6 @@ module.exports = {
   createAppointment,
   getUserAppointments,
   getAllAppointments,
-  updateStatus
+  updateStatus,
+  attachHandledByNames
 };

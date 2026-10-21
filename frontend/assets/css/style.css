@@ -7749,6 +7749,90 @@ body.dark-mode.ph-dash-page .dashboard-skeleton-line {
   background-image: linear-gradient(90deg, #374151 25%, #4b5563 50%, #374151 75%);
 }
 
+/* ================= MY PETS (ph-pet-*): add-a-pet choice, profile ID, possible duplicate, history ================= */
+
+.ph-pet-choice {
+  display: grid;
+  width: 100%;
+}
+
+.ph-pet-choice .ph-dash-segment {
+  line-height: 1.25;
+  text-align: center;
+}
+
+/* The PetHub profile ID: a long id that wraps instead of widening the card */
+
+.ph-pet-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+/* A profile of the owner's that looks like the same pet: a warning, not an error */
+
+.ph-pet-notice {
+  padding: 1rem;
+  border: 2px solid #fcd34d;
+  border-radius: 1rem;
+  background-color: #fffbeb;
+  color: #78350f;
+}
+
+.ph-pet-notice:focus-visible {
+  outline: 2px solid var(--ph-orange-strong);
+  outline-offset: 2px;
+}
+
+.ph-pet-notice-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  color: #78350f;
+  font-weight: 800;
+}
+
+.ph-pet-notice-text {
+  margin-top: 0.25rem;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.ph-pet-edit {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 2px solid var(--ph-peach);
+}
+
+.ph-pet-history + .ph-pet-history,
+.ph-pet-section:not(:empty) {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 2px solid var(--ph-peach);
+}
+
+body.dark-mode .ph-pet-notice {
+  border-color: #92400e;
+  background-color: #451a03;
+  color: #fde68a;
+}
+
+body.dark-mode .ph-pet-notice-title {
+  color: #fef3c7;
+}
+
+body.dark-mode .ph-pet-notice .ph-dash-card {
+  background-color: #1f2937;
+}
+
+body.dark-mode .ph-pet-edit,
+body.dark-mode .ph-pet-history + .ph-pet-history,
+body.dark-mode .ph-pet-section:not(:empty) {
+  border-top-color: #374151;
+}
+
 .hover\:bg-gray-50:hover {
   --tw-bg-opacity: 1;
   background-color: rgb(249 250 251 / var(--tw-bg-opacity, 1));

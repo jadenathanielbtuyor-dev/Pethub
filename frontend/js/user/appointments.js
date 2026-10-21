@@ -6,6 +6,8 @@
 //   applied in the browser to that list; statuses are the backend's own values (Pending, Approved, Completed,
 //   Cancelled) and are never changed here.
 // - Booking: GET /appointments/services lists the clinic's nine services; POST /appointments/create books one.
+//   The pet is one of the owner's registered profiles (GET /pets/userPets; ?pet=<id> from My Pets preselects it) and
+//   is sent as its pet_id, which the server checks belongs to the owner; booking never creates a pet.
 //   The flow: the owner picks a pet, service, date and time -> the form checks them (service bookable for the pet's
 //   species, date and time not in the past, slot not already taken by an approved appointment) -> the server checks
 //   everything again, including that the clinic has confirmed the service's duration (409 until it has) and that the
@@ -791,6 +793,16 @@ function renderAppointmentPetOptions() {
   }
 }
 
+// "Request an appointment" on My Pets names the pet's existing profile (?pet=<id>). Only one of the owner's own loaded
+// pets can be chosen this way (any other id is ignored), and the booking still uses that profile's id; no pet is created.
+function applyRequestedPet() {
+  const requested = new URLSearchParams(window.location.search).get("pet");
+  const petSelect = getAppointmentPetSelect();
+  if (!requested || !petSelect || petSelect.value || !getAppointmentPetById(requested)) return;
+  petSelect.value = String(requested).trim();
+  petSelect.dispatchEvent(new Event("change"));
+}
+
 function updateAppointmentPetBookingState() {
   const petSelect = getAppointmentPetSelect();
   const hint = getAppointmentPetHint();
@@ -856,6 +868,7 @@ async function loadAppointmentPets(userId) {
     appointmentPetsLoaded = true;
     appointmentPetsError = "";
     renderAppointmentPetOptions();
+    applyRequestedPet();
     updateAppointmentPetBookingState();
     return currentUserPets;
   } catch (error) {

@@ -99,11 +99,12 @@ describe('Dashboard navigation: four sections each', () => {
 describe('Dashboard data: real API routes and no invented figures', () => {
   const DASHBOARD_SCRIPTS = ['js/user/dashboard.js', 'js/user/pets.js', 'js/user/appointments.js', 'js/user/health.js', 'js/admin/dashboard.js', 'js/shared/ai-widget.js'];
 
-  // "/pets/userPets" from `${window.API_BASE_URL}/pets/userPets?user_id=...` and getOwnerJson(`/pets/...`)
+  // "/pets/userPets" from `${window.API_BASE_URL}/pets/userPets?user_id=...`, getOwnerJson(`/pets/...`) and
+  // requestPetsApi('/pets/...') (My Pets)
   function getCalledPaths(source) {
     const paths = [
       ...[...source.matchAll(/\$\{(?:window\.API_BASE_URL|AI_WIDGET_API)\}(\/[A-Za-z0-9/_-]+)/g)].map(match => match[1]),
-      ...[...source.matchAll(/getOwnerJson\(`(\/[A-Za-z0-9/_-]+)/g)].map(match => match[1])
+      ...[...source.matchAll(/(?:getOwnerJson|requestPetsApi)\([`'](\/[A-Za-z0-9/_-]+)/g)].map(match => match[1])
     ];
     return [...new Set(paths.map(value => value.replace(/\/$/, '')))];
   }
@@ -128,8 +129,9 @@ describe('Dashboard data: real API routes and no invented figures', () => {
       const called = getCalledPaths(read(file));
       assert.ok(called.length > 0, file);
       for (const route of called) {
-        // DELETE /pets/delete/:id is built as `${...}/pets/delete/${id}`
-        const candidate = route === '/pets/delete' ? '/pets/delete/some-id' : route;
+        // Routes ending in /:id (DELETE /pets/delete/:id, PUT /pets/update/:id, GET /pets/history/:id) are built as
+        // `.../pets/delete/${id}`
+        const candidate = ['/pets/delete', '/pets/update', '/pets/history'].includes(route) ? `${route}/some-id` : route;
         assert.ok(mounted.some(entry => entry.pattern.test(candidate)), `${file} calls ${route}, which the backend does not mount`);
       }
     }

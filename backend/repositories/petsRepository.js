@@ -23,6 +23,26 @@ function listByUserId(userId) {
     .order('created_at', { ascending: false });
 }
 
+// The full profile of one pet, only if it belongs to userId
+function findProfileForUser(userId, petId) {
+  return supabase
+    .from('pets')
+    .select(PET_SELECT)
+    .eq('id', petId)
+    .eq('user_id', userId)
+    .maybeSingle();
+}
+
+// Changes only the given profile fields of the owner's pet; 0 rows returned = not this owner's pet
+function updateByIdForUser(petId, userId, changes) {
+  return supabase
+    .from('pets')
+    .update(changes)
+    .eq('id', petId)
+    .eq('user_id', userId)
+    .select(PET_SELECT);
+}
+
 function deleteByIdForUser(petId, userId) {
   return supabase
     .from('pets')
@@ -82,6 +102,8 @@ module.exports = {
   countAll,
   createPet,
   listByUserId,
+  findProfileForUser,
+  updateByIdForUser,
   deleteByIdForUser,
   listBasicByUserId,
   findUserPetById,

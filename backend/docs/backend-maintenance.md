@@ -42,6 +42,37 @@ The clinic's services (Bath, Trim, Puppy Cut, Full Grooming, Nail Cutting, Face 
 
 Durations are NOT confirmed yet: every service has `durationMinutes: null`, so online booking answers 409 "cannot be booked online yet" until the clinic confirms each length (or one standard length in `STANDARD_DURATION_MINUTES`). Enter only confirmed minutes. The rule "Puppy Cut is for dogs only" is pending the clinic's confirmation and is not applied (`SPECIES_PENDING_CONFIRMATION`). Earlier service names saved on existing appointments (e.g. "Checkup") cannot be booked any more but those appointments keep their saved duration and can still be approved, completed or cancelled; one saved without a duration can be approved but blocks no time. New pet profiles must be a Dog or a Cat.
 
+## Pet Profiles
+
+Rules for `POST /pets/create` and `PUT /pets/update/:id` are in `validators/petsValidator.js` with the values in `constants/pets.js` (repeated by `frontend/js/core/utils.js validateAge` and the My Pets form; `tests/pets-page.test.js` keeps them in step): name and species (Dog or Cat) required, breed optional, name and breed at most 50 characters, and age required as a whole number of years from 1 to 25. That range is the application's configured age-entry range, not a lifespan figure. An edit changes only the fields sent; a saved age outside the range is kept until the owner changes the age or the species.
+
+Duplicates (`utils/petDuplicates.js`): a new or edited profile that matches another profile of the SAME owner on name and species, with a breed and age that do not contradict, is answered 409 `POSSIBLE_DUPLICATE_PET` with that owner's matching profiles and nothing is saved, until the owner sends `confirm_not_duplicate: true`. A matching name alone never counts, nothing is merged, other accounts are never compared, and there is no unique database constraint (households may have two pets with the same name). Without a stable identifier (no microchip column) the same animal registered on two accounts cannot be detected; moving a pet between accounts would need a verified ownership-transfer workflow, which does not exist.
+
+History: `GET /pets/history/:id` returns the owner's pet with its appointments (`appointments.pet_id`, never matched by pet name) and its official medical records, newest first, and `latest_weight`: the weight of the newest record that has one, in kg (the unit of the admin form), or null. Appointments saved without a `pet_id` are only counted (`unlinked_appointment_count`) and stay on the owner's Appointments list. Owners cannot write medical records through any route.
+
+Deleting: `DELETE /pets/delete/:id` refuses (409 `PET_HAS_HISTORY`) while any appointment or medical record points to the pet, so history is never removed and an owner cannot start over with a clean history. Profiles with history can only be removed by a reviewed, manual decision.
+
+Not used by the application although present in the live `pets` table (seen 2026-10-21, all empty): `profile_image`, `gender`, `birthdate`, `color`, `archived_at`. `archived_at` could back an archive workflow later, but only after its meaning (hidden from booking? from admin lists? restorable?) is decided.
+
+Read-only checks to run in the Supabase SQL Editor before relying on these rules (they change nothing):
+
+```sql
+-- What happens to appointments and medical records if a pet row is deleted (a = NO ACTION, r = RESTRICT, c = CASCADE, n = SET NULL)
+SELECT conrelid::regclass AS table_name, conname, confdeltype
+FROM pg_constraint
+WHERE contype = 'f' AND confrelid = 'public.pets'::regclass;
+
+-- Older appointments without a pet_id, and how many of the owner's pets share that name (0 = no match, 1 = one candidate, 2+ = ambiguous)
+SELECT a.id, a.user_id, a.pet_name, a.appointment_date, a.status,
+       (SELECT count(*) FROM public.pets p WHERE p.user_id = a.user_id AND lower(trim(p.name)) = lower(trim(a.pet_name))) AS same_name_pets
+FROM public.appointments a
+WHERE a.pet_id IS NULL
+ORDER BY a.appointment_date;
+
+-- Saved ages the current form would not accept
+SELECT id, age FROM public.pets WHERE age IS NULL OR age < 1 OR age > 25;
+```
+
 ## Database Migrations
 
 Migration files in `database/migrations/` are prepared for review and run by hand in the Supabase SQL Editor; nothing applies them automatically. Each file says in its header whether it has been applied. Pending as of 2026-10-20: `2026-10-20_users_profile_fields.sql` (before deploying the backend) and `2026-10-20_rls_least_privilege.sql` (after the backend runs with the service role key; it closes every table to the public key).

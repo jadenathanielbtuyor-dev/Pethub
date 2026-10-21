@@ -351,16 +351,20 @@ function validateInput(value, fieldName, minLength = 1, maxLength = 255) {
 }
 
 /**
- * Validate pet age (non-negative number)
- * @param {*} age - Age value to validate
+ * Validate pet age: required, whole years from 1 to 25 (PetHub's configured age-entry range, the same rule as
+ * backend/constants/pets.js). Decimals, signs and text are refused.
+ * @param {*} age - The age field's value
  * @returns {Object} { valid: boolean, error: string }
  */
 function validateAge(age) {
-  if (age === null || age === undefined || age === '') return { valid: true, error: '' };
-  const ageNum = Number(age);
-  if (isNaN(ageNum)) return { valid: false, error: 'Age must be a number' };
-  if (ageNum < 0) return { valid: false, error: 'Age cannot be negative' };
-  if (ageNum > 100) return { valid: false, error: 'Age must be less than 100 years' };
+  const minYears = 1;
+  const maxYears = 25;
+  const rangeMessage = `Age must be a whole number of years from ${minYears} to ${maxYears}.`;
+  const value = String(age ?? '').trim();
+  if (!value) return { valid: false, error: `Enter the pet's age in whole years (${minYears} to ${maxYears}).` };
+  if (!/^\d+$/.test(value)) return { valid: false, error: rangeMessage };
+  const ageNum = Number(value);
+  if (ageNum < minYears || ageNum > maxYears) return { valid: false, error: rangeMessage };
   return { valid: true, error: '' };
 }
 
