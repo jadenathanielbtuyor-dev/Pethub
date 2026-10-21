@@ -129,6 +129,13 @@ function findForRoleUpdate(userId) {
     .maybeSingle();
 }
 
+function countByRole(role) {
+  return supabase
+    .from('users')
+    .select('id', { count: 'exact', head: true })
+    .eq('role', role);
+}
+
 function updateRole(userId, role) {
   return supabase
     .from('users')
@@ -161,6 +168,7 @@ module.exports = {
   listAdminUsers,
   findRoleAndVerificationById,
   findForRoleUpdate,
+  countByRole,
   updateRole,
   listNamesByIds
 };

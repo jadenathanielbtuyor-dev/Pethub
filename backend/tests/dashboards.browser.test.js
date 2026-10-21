@@ -92,7 +92,7 @@ const OWNER_SECTIONS = [
   ['health', 'pages/user/health.html']
 ];
 const OWNER_LABELS = ['Overview', 'My Pets', 'Appointments', 'Pet Health & AI Assistant'];
-const ADMIN_LABELS = ['Overview', 'Appointment Management', 'Pet & Medical Records', 'System Management'];
+const ADMIN_LABELS = ['Overview', 'Appointment Management', 'Pet Owners & Records', 'System Management'];
 
 const navState = `(() => {
   const links = [...document.querySelectorAll('.ph-dash-nav-link')];
@@ -419,10 +419,11 @@ describe('Admin Dashboard in a browser (mocked API)', { skip }, () => {
     } finally { await tab.close(); }
   });
 
-  it('Pet & Medical Records shows each pet\'s records and offers a new record only for a completed appointment without one', async () => {
+  it('Pet Owners & Records shows each pet\'s records and offers a new record only for a completed appointment without one', async () => {
     const tab = await open('pages/admin/dashboard.html', '#records', ADMIN, adminRoutes());
     try {
       assert.ok(await tab.waitFor(`document.querySelector('#petsTable [data-pet-view="p1"]') !== null`));
+      await tab.evaluate(`document.querySelector('[data-records-list="pets"]').click()`);
       await tab.evaluate(`document.querySelector('#petsTable [data-pet-view="p1"]').click()`);
       assert.ok(await tab.waitFor(`!document.getElementById('adminPetDetail').hidden`));
       const detail = await tab.evaluate(textOf('#adminPetDetail'));
@@ -434,7 +435,8 @@ describe('Admin Dashboard in a browser (mocked API)', { skip }, () => {
       assert.equal(await tab.evaluate(`document.getElementById('adminMedicalRecordPetId').value`), 'p1');
       await tab.evaluate(`document.querySelector('#adminMedicalRecordModal [data-close-record-form]').click()`);
 
-      await tab.evaluate(`document.querySelector('#petsTable [data-pet-view="p2"]').click()`);
+      // Luna belongs to the same owner: her profile is one click away
+      await tab.evaluate(`document.querySelector('#adminPetDetail [data-other-pet="p2"]').click()`);
       assert.ok(await tab.waitFor(`document.getElementById('adminPetDetailName').textContent === 'Luna'`));
       assert.match(await tab.evaluate(textOf('#adminPetDetailContent')), /no completed appointment without a record/);
       assert.equal(await tab.evaluate(`document.querySelector('[data-add-record]')`), null);

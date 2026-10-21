@@ -5,8 +5,11 @@
 //                  activity, shortcuts and clinic charts.
 //   #appointments  Appointment Management: every appointment, searchable and filterable by pet/owner/reference,
 //                  status, service and date; approve, complete or cancel.
-//   #records       Pet & Medical Records: pets with their owners, each pet's official records, and adding a record for
-//                  a completed appointment.
+//   #records       Pet Owners & Records: one search for owners and pets; an owner's account, registered pets and
+//                  appointment history (#records/owner/<id>); a pet's profile, appointment history and official medical
+//                  records, and adding a record for a completed appointment (#records/pet/<id>). Each step has its own
+//                  address, so Back, Forward and Refresh keep the place. Appointments belong to a pet only through
+//                  pet_id; older bookings without one are shown as not linked and are never matched by pet name.
 //   #system        System Management: users and roles, contact messages, activity logs, service catalog and booking.
 //
 // Data (all real PetHub records; nothing here is a placeholder figure):
@@ -41,6 +44,9 @@ const ADMIN_APPOINTMENT_STATUS_STORAGE_KEY = 'pethubAdminDashboardAppointmentSta
 const ADMIN_VIEWS = ['overview', 'appointments', 'records', 'system'];
 const SYSTEM_TABS = ['users', 'messages', 'activity', 'services'];
 const APPOINTMENT_STATUSES = ['Pending', 'Approved', 'Completed', 'Cancelled'];
+// The status filter also offers "needs-outcome": Pending or Approved appointments whose time has passed
+const APPOINTMENT_STATUS_FILTERS = ['all', ...APPOINTMENT_STATUSES, 'needs-outcome'];
+const RECORDS_LISTS = ['owners', 'pets'];
 const OVERVIEW_LIST_LIMIT = 5;
 const SYSTEM_LOG_LIMIT = 50;
 // Earlier addresses of these sections (the previous dashboard views and the retired Users, Pets and Appointments pages)
@@ -52,7 +58,7 @@ const LEGACY_ADMIN_HASHES = {
   management: { view: 'appointments' },
   medicalRecords: { view: 'records' },
   medicalRecordsSection: { view: 'records' },
-  pets: { view: 'records' },
+  pets: { view: 'records', recordsList: 'pets' },
   users: { view: 'system', tab: 'users' },
   messages: { view: 'system', tab: 'messages' },
   activityLogs: { view: 'system', tab: 'activity' },
@@ -69,7 +75,9 @@ let serviceUsageChart = null;
 let appointmentTrendChart = null;
 let currentAdminView = 'overview';
 let currentSystemTab = 'users';
-let selectedAdminPetId = '';
+// Pet Owners & Records: what is open ({ type: 'directory' | 'owner' | 'pet', id }) and which list the directory shows
+let recordsRoute = { type: 'directory', id: '' };
+let recordsList = 'owners';
 let dashboardOverviewLoadPromise = null;
 let adminDashboardInteractionsBound = false;
 let adminStatusTimeoutId = null;
@@ -173,11 +181,15 @@ async function initializeAdminDashboard() {
   setupAdminDashboardInteractions();
 
   const initial = resolveAdminLocation(window.location.hash);
-  showAdminView(initial.view, { systemTab: initial.tab });
-  // Back/forward and typed addresses; other hashes (none are used on this page) are ignored
+  showAdminView(initial.view, { systemTab: initial.tab, record: initial.record, recordsList: initial.recordsList });
+  // Back/forward, typed addresses, and the owner and pet links of Pet Owners & Records (plain links to
+  // #records/owner/<id> and #records/pet/<id>, so each step is its own history entry); other hashes are ignored
   window.addEventListener('hashchange', () => {
     const location = resolveAdminLocation(window.location.hash, false);
-    if (location) showAdminView(location.view, { systemTab: location.tab });
+    if (!location) return;
+    const previousRoute = { ...recordsRoute };
+    showAdminView(location.view, { systemTab: location.tab, record: location.record, recordsList: location.recordsList });
+    if (location.view === 'records') focusRecordsRoute(previousRoute);
   });
 
   await Promise.all([loadDashboardOverview(), loadServiceCatalog()]);
@@ -201,10 +213,21 @@ function displayAdminHeaderInfo() {
   }
 }
 
-// "#appointments" -> { view: 'appointments' }; earlier hashes map to the section that replaced them. With
-// fallback=false an unknown hash gives null instead of the Overview.
+// "#appointments" -> { view: 'appointments' }; "#records/owner/<id>" -> { view: 'records', record: { type: 'owner', id } };
+// earlier hashes map to the section that replaced them. With fallback=false an unknown hash gives null instead of the
+// Overview.
 function resolveAdminLocation(hash, fallback = true) {
   const value = String(hash || '').replace(/^#/, '').trim();
+  const recordMatch = value.match(/^records\/(owner|pet)\/([^/?#]+)$/);
+  if (recordMatch) {
+    let id = recordMatch[2];
+    try {
+      id = decodeURIComponent(id);
+    } catch (error) {
+      // Keep the raw value; it simply will not match any record
+    }
+    return { view: 'records', record: { type: recordMatch[1], id } };
+  }
   if (ADMIN_VIEWS.includes(value)) return { view: value };
   if (LEGACY_ADMIN_HASHES[value]) return LEGACY_ADMIN_HASHES[value];
   return fallback ? { view: 'overview' } : null;
@@ -234,14 +257,14 @@ function setStoredSystemTab(tab) {
 function getStoredAdminAppointmentStatusFilter() {
   try {
     const status = sessionStorage.getItem(ADMIN_APPOINTMENT_STATUS_STORAGE_KEY);
-    return ['all', ...APPOINTMENT_STATUSES].includes(status) ? status : 'all';
+    return APPOINTMENT_STATUS_FILTERS.includes(status) ? status : 'all';
   } catch (error) {
     return 'all';
   }
 }
 
 function setStoredAdminAppointmentStatusFilter(status) {
-  const normalizedStatus = ['all', ...APPOINTMENT_STATUSES].includes(status) ? status : 'all';
+  const normalizedStatus = APPOINTMENT_STATUS_FILTERS.includes(status) ? status : 'all';
   try {
     sessionStorage.setItem(ADMIN_APPOINTMENT_STATUS_STORAGE_KEY, normalizedStatus);
   } catch (error) {
@@ -250,10 +273,19 @@ function setStoredAdminAppointmentStatusFilter(status) {
 }
 
 // Shows one of the four sections; options.systemTab opens a System Management tab, options.focusHeading moves keyboard
-// focus to the section's heading (used when the section is chosen from the navigation)
+// focus to the section's heading (used when the section is chosen from the navigation). For Pet Owners & Records,
+// options.record opens an owner or a pet ({ type, id }); without it the section opens on its search (options.recordsList
+// chooses Owners or Pets).
 function showAdminView(viewName, options = {}) {
   const view = ADMIN_VIEWS.includes(viewName) ? viewName : 'overview';
   currentAdminView = view;
+  if (view === 'records') {
+    const record = options.record;
+    recordsRoute = record && ['owner', 'pet'].includes(record.type) && hasRecordedValue(record.id)
+      ? { type: record.type, id: String(record.id) }
+      : { type: 'directory', id: '' };
+    if (RECORDS_LISTS.includes(options.recordsList)) recordsList = options.recordsList;
+  }
   const views = {
     overview: document.getElementById('adminViewOverview'),
     appointments: document.getElementById('adminViewAppointments'),
@@ -281,9 +313,14 @@ function showAdminView(viewName, options = {}) {
 
 window.showAdminView = showAdminView;
 
+function getRecordsHash(route = recordsRoute) {
+  return route.type === 'directory' ? 'records' : `records/${route.type}/${encodeURIComponent(route.id)}`;
+}
+
 function updateAdminViewHash(viewName) {
-  if (window.location.hash.replace(/^#/, '') === viewName) return;
-  history.replaceState(null, '', `#${viewName}`);
+  const target = viewName === 'records' ? getRecordsHash() : viewName;
+  if (window.location.hash.replace(/^#/, '') === target) return;
+  history.replaceState(null, '', `#${target}`);
 }
 
 function markInteractionFeedback(element) {
@@ -412,6 +449,7 @@ function showAdminDashboardLoadingStates() {
     'alertPendingAppointments',
     'alertUnreadMessages',
     'alertNewUsers',
+    'alertAwaitingOutcome',
     'alertMedicalRecords'
   ].forEach(id => setElementLoading(id, 'Loading'));
 
@@ -466,17 +504,111 @@ function renderAppointmentsView() {
   applyAppointmentFilters();
 }
 
+// Pet Owners & Records: the search (owners or pets, and every official record), or one owner, or one pet
 function renderRecordsView() {
-  if (isOverviewLoading()) {
+  const route = recordsRoute;
+  const loading = isOverviewLoading();
+  const owner = route.type === 'owner' && !loading ? getUserById(route.id) : null;
+  const pet = route.type === 'pet' && !loading ? getPetById(route.id) : null;
+  const notFound = route.type !== 'directory' && !loading && !adminDashboardData.overviewError && !owner && !pet;
+  const showOwner = route.type === 'owner' && !notFound;
+  const showPet = route.type === 'pet' && !notFound;
+  const showDirectory = !showOwner && !showPet;
+
+  const setHidden = (id, hidden) => {
+    const element = document.getElementById(id);
+    if (element) element.hidden = hidden;
+  };
+  setHidden('adminOwnerDetail', !showOwner);
+  setHidden('adminPetDetail', !showPet);
+  setHidden('recordsDirectory', !showDirectory);
+  setHidden('medicalRecordsSection', !showDirectory);
+
+  const notice = document.getElementById('recordsNotice');
+  if (notice) {
+    notice.innerHTML = notFound
+      ? `<div class="ph-dash-error" role="alert"><p class="ph-dash-error-title">${route.type === 'owner' ? 'Pet owner not found' : 'Pet not found'}</p><p class="ph-dash-error-text">No ${route.type === 'owner' ? 'account' : 'pet profile'} with that ID is in the loaded records. Search for it below.</p></div>`
+      : '';
+  }
+
+  renderRecordsBreadcrumb(showOwner ? owner : null, showPet ? pet : null, loading);
+  syncRecordsListChoice();
+
+  if (loading) {
+    const ownersTable = document.getElementById('ownersTable');
     const petsTable = document.getElementById('petsTable');
     const recordsContainer = document.getElementById('recentMedicalRecordsContainer');
+    if (ownersTable) ownersTable.innerHTML = getAdminTableLoadingRow(6, 'owners');
     if (petsTable) petsTable.innerHTML = getAdminTableLoadingRow(7, 'pets');
     if (recordsContainer) recordsContainer.innerHTML = getDashboardSectionLoadingHtml('medical records', 2);
+    ['adminOwnerDetailContent', 'adminPetDetailContent'].forEach(id => {
+      const content = document.getElementById(id);
+      if (content) content.innerHTML = getDashboardSectionLoadingHtml('records', 2);
+    });
     return;
   }
-  applyPetSearch();
+
+  // A panel that is not shown keeps no stale content (such as its loading state)
+  if (!showOwner) {
+    const ownerContent = document.getElementById('adminOwnerDetailContent');
+    if (ownerContent) ownerContent.innerHTML = '';
+  }
+  if (!showPet) {
+    const petContent = document.getElementById('adminPetDetailContent');
+    if (petContent) petContent.innerHTML = '';
+  }
+
+  // The search and the record list stay current even while an owner or pet is open, ready for the way back
+  applyRecordsSearch();
   displayMedicalRecordsSection(adminDashboardData.medicalRecords);
-  renderAdminPetDetail();
+  if (showOwner) renderOwnerAccount(owner);
+  else if (showPet) renderAdminPetDetail(pet);
+}
+
+// "Pet Owners & Records > Owner > Pet" above an open owner or pet; each step is a link to its address
+function renderRecordsBreadcrumb(owner, pet, loading) {
+  const nav = document.getElementById('recordsBreadcrumb');
+  if (!nav) return;
+  if (recordsRoute.type === 'directory' || (!owner && !pet && !loading)) {
+    nav.hidden = true;
+    nav.innerHTML = '';
+    return;
+  }
+
+  const crumbs = [`<li><a class="ph-dash-link" href="#records">Pet Owners &amp; Records</a></li>`];
+  if (loading) {
+    crumbs.push('<li aria-current="page">Loading...</li>');
+  } else if (owner) {
+    crumbs.push(`<li aria-current="page">${escapeHtml(displayValue(owner.fullname, 'Pet owner'))}</li>`);
+  } else if (pet) {
+    const petOwner = getUserById(pet.user_id);
+    if (petOwner) crumbs.push(`<li><a class="ph-dash-link" href="${getOwnerHref(petOwner.id)}">${escapeHtml(displayValue(petOwner.fullname, 'Pet owner'))}</a></li>`);
+    crumbs.push(`<li aria-current="page">${escapeHtml(displayValue(pet.name, 'Unnamed pet'))}</li>`);
+  }
+  nav.innerHTML = `<ol class="ph-crumbs">${crumbs.join('')}</ol>`;
+  nav.hidden = false;
+}
+
+// After the address changes inside Pet Owners & Records: focus the opened owner or pet, or, back on the search, the
+// row it was opened from
+function focusRecordsRoute(previousRoute) {
+  if (currentAdminView !== 'records') return;
+  if (recordsRoute.type === 'owner' || recordsRoute.type === 'pet') {
+    const panel = document.getElementById(recordsRoute.type === 'owner' ? 'adminOwnerDetail' : 'adminPetDetail');
+    const title = document.getElementById(recordsRoute.type === 'owner' ? 'adminOwnerDetailTitle' : 'adminPetDetailTitle');
+    if (panel && !panel.hidden && title) {
+      document.getElementById('recordsTitle')?.scrollIntoView({ block: 'start' });
+      title.focus({ preventScroll: true });
+    }
+    return;
+  }
+  if (previousRoute && previousRoute.type !== 'directory') {
+    const selector = previousRoute.type === 'owner'
+      ? `#ownersTable [data-open-owner="${CSS.escape(previousRoute.id)}"]`
+      : `#petsTable [data-pet-view="${CSS.escape(previousRoute.id)}"]`;
+    const row = document.querySelector(selector);
+    if (row && row.offsetParent !== null) row.focus();
+  }
 }
 
 function renderSystemView() {
@@ -754,6 +886,115 @@ function getAppointmentSortKey(appointment) {
   return `${normalizeDashboardDateValue(appointment?.appointment_date) || '9999-12-31'} ${String(appointment?.appointment_time || '').slice(0, 8)}`;
 }
 
+// Newest date and time first; appointments without a date go last
+function compareAppointmentsNewestFirst(first, second) {
+  const firstDate = normalizeDashboardDateValue(first?.appointment_date);
+  const secondDate = normalizeDashboardDateValue(second?.appointment_date);
+  if (!firstDate || !secondDate) return firstDate ? -1 : secondDate ? 1 : 0;
+  return getAppointmentSortKey(second).localeCompare(getAppointmentSortKey(first));
+}
+
+// When the appointment ends (start + saved duration; the start when no duration was saved; the end of the day when no
+// time was saved), in the browser's time like the times shown; null without a valid date
+function getAppointmentEndTime(appointment) {
+  const dateMatch = normalizeDashboardDateValue(appointment?.appointment_date).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!dateMatch) return null;
+  const timeMatch = String(appointment?.appointment_time || '').trim().match(/^(\d{1,2}):(\d{2})/);
+  const start = timeMatch
+    ? new Date(Number(dateMatch[1]), Number(dateMatch[2]) - 1, Number(dateMatch[3]), Number(timeMatch[1]), Number(timeMatch[2]))
+    : new Date(Number(dateMatch[1]), Number(dateMatch[2]) - 1, Number(dateMatch[3]), 23, 59);
+  const duration = timeMatch ? getAppointmentDurationMinutes(appointment) : null;
+  return new Date(start.getTime() + (duration || 0) * 60000);
+}
+
+// Pending or Approved, and its time has passed: the clinic has not recorded what happened. Shown so an administrator
+// can complete or cancel it; nothing is ever marked Completed automatically.
+function isAwaitingOutcome(appointment, now = new Date()) {
+  const status = getAppointmentStatus(appointment?.status);
+  if (status !== 'Pending' && status !== 'Approved') return false;
+  const end = getAppointmentEndTime(appointment);
+  return Boolean(end) && end < now;
+}
+
+// How an appointment is tied to a pet profile, by pet_id only:
+//   linked         the pet_id of a pet of the same account
+//   unlinked       no pet_id (an older booking that kept only the pet name typed at booking; never matched by name)
+//   missing        the pet_id of a profile that is not in the records
+//   other-account  the pet_id of a pet that belongs to a different account (a data problem to review)
+function getAppointmentPetLink(appointment) {
+  if (!hasRecordedValue(appointment?.pet_id)) return { state: 'unlinked', pet: null };
+  const pet = getPetById(appointment.pet_id);
+  if (!pet) return { state: 'missing', pet: null };
+  if (String(pet.user_id) !== String(appointment.user_id)) return { state: 'other-account', pet };
+  return { state: 'linked', pet };
+}
+
+const PET_LINK_NOTES = {
+  unlinked: 'Not linked to a pet profile',
+  missing: 'Pet profile not found',
+  'other-account': 'Pet profile belongs to another account'
+};
+
+function getOwnerHref(ownerId) {
+  return `#records/owner/${encodeURIComponent(String(ownerId))}`;
+}
+
+function getPetHref(petId) {
+  return `#records/pet/${encodeURIComponent(String(petId))}`;
+}
+
+// Pet owners: customer accounts (role "user"; accounts without a role are treated as customers everywhere in PetHub)
+// and any other account that has a pet profile
+function getOwnerAccounts() {
+  const ownerIdsWithPets = new Set(asArray(adminDashboardData.pets).map(pet => String(pet.user_id)));
+  return asArray(adminDashboardData.users)
+    .filter(user => String(user.role || 'user').trim().toLowerCase() === 'user' || ownerIdsWithPets.has(String(user.id)))
+    .sort((a, b) => displayValue(a.fullname, '').localeCompare(displayValue(b.fullname, ''), 'en', { sensitivity: 'base' }));
+}
+
+function getPetsOfOwner(ownerId) {
+  const id = String(ownerId);
+  return asArray(adminDashboardData.pets)
+    .filter(pet => String(pet.user_id) === id)
+    .sort((a, b) => displayValue(a.name, '').localeCompare(displayValue(b.name, ''), 'en', { sensitivity: 'base' }));
+}
+
+// Every appointment booked from the account (user_id), newest first
+function getAppointmentsOfOwner(ownerId) {
+  const id = String(ownerId);
+  return asArray(adminDashboardData.appointments)
+    .filter(appointment => String(appointment.user_id) === id)
+    .sort(compareAppointmentsNewestFirst);
+}
+
+// Every appointment that names the pet by pet_id, newest first
+function getAppointmentsOfPet(petId) {
+  const id = String(petId);
+  return asArray(adminDashboardData.appointments)
+    .filter(appointment => String(appointment.pet_id) === id)
+    .sort(compareAppointmentsNewestFirst);
+}
+
+// The weight of the newest official record that has one, with its date; never estimated
+function getLatestOfficialWeight(petId) {
+  const record = getMedicalRecordsForPet(petId)
+    .find(item => hasRecordedValue(item.weight) && Number.isFinite(Number(item.weight)));
+  return record ? { value: Number(record.weight), date: record.record_date || record.created_at || '' } : null;
+}
+
+function getLatestOfficialWeightText(petId) {
+  const weight = getLatestOfficialWeight(petId);
+  if (!weight) return 'No weight recorded yet';
+  return weight.date ? `${weight.value} kg, recorded ${formatDate(weight.date)}` : `${weight.value} kg`;
+}
+
+// "2 pending · 1 awaiting an outcome": what an owner's appointments need, for the owners list
+function getAppointmentNeedsText(appointments) {
+  const pending = appointments.filter(appointment => getAppointmentStatus(appointment.status) === 'Pending').length;
+  const awaiting = appointments.filter(appointment => isAwaitingOutcome(appointment)).length;
+  return [pending ? `${pending} pending` : '', awaiting ? `${awaiting} awaiting an outcome` : ''].filter(Boolean).join(' · ');
+}
+
 function countAppointmentsByStatus(status) {
   return asArray(adminDashboardData.appointments)
     .filter(appointment => getAppointmentStatus(appointment.status) === status)
@@ -971,6 +1212,12 @@ function displayDashboardAlerts(summary = adminDashboardData.summary || {}) {
     }
   }
   if (newUsers) newUsers.textContent = String(getNewUsersAlertValue());
+  const awaitingOutcome = document.getElementById('alertAwaitingOutcome');
+  if (awaitingOutcome) {
+    awaitingOutcome.textContent = adminDashboardData.overviewError
+      ? 'Unavailable'
+      : String(asArray(adminDashboardData.appointments).filter(appointment => isAwaitingOutcome(appointment)).length);
+  }
   if (medicalRecords) {
     medicalRecords.textContent = adminDashboardData.overviewError
       ? 'Unavailable'
@@ -1107,7 +1354,8 @@ function formatLogTimestamp(value) {
     : 'Time not recorded';
 }
 
-// Shortcut buttons and figures with data-admin-go="view" or "view:filter" (appointments:Pending, system:messages)
+// Shortcut buttons and figures with data-admin-go="view" or "view:filter" (appointments:Pending,
+// appointments:needs-outcome, records:owners, system:messages)
 function goToAdminSection(target) {
   const [view, detail] = String(target || '').split(':');
   if (view === 'appointments') {
@@ -1119,12 +1367,16 @@ function goToAdminSection(target) {
     if (service) service.value = 'all';
     if (date) date.value = '';
     if (status) {
-      status.value = APPOINTMENT_STATUSES.includes(detail) ? detail : 'all';
+      status.value = APPOINTMENT_STATUS_FILTERS.includes(detail) ? detail : 'all';
       status.dataset.ready = 'true';
       setStoredAdminAppointmentStatusFilter(status.value);
     }
   }
-  showAdminView(view, { systemTab: view === 'system' ? detail : undefined, focusHeading: true });
+  showAdminView(view, {
+    systemTab: view === 'system' ? detail : undefined,
+    recordsList: view === 'records' ? detail : undefined,
+    focusHeading: true
+  });
 }
 
 function showAdminStatus(type, message) {
@@ -1208,10 +1460,11 @@ function displayMedicalRecordsSection(records) {
     const weight = valueOrFallback(record.weight);
     const weightDisplay = weight === 'Not recorded' ? weight : `${weight} kg`;
     const recordedBy = getMedicalRecordRecorderLabel(record);
+    const petLabel = escapeHtml(getMedicalRecordPetLabel(record));
 
     return `
       <tr>
-        <td><strong>${escapeHtml(getMedicalRecordPetLabel(record))}</strong></td>
+        <td><strong>${getPetById(record.pet_id) ? `<a class="ph-dash-link" href="${getPetHref(record.pet_id)}">${petLabel}</a>` : petLabel}</strong></td>
         <td>${escapeHtml(recordDate)}</td>
         <td>${escapeHtml(weightDisplay)}</td>
         <td>${escapeHtml(valueOrFallback(record.vaccination_status))}</td>
@@ -1273,9 +1526,23 @@ function setupAdminDashboardInteractions() {
   });
 
   const userSearchInput = document.getElementById('userSearchInput');
-  const petSearchInput = document.getElementById('petSearchInput');
+  const recordsSearchInput = document.getElementById('recordsSearchInput');
   if (userSearchInput) userSearchInput.addEventListener('input', debounce(applyUserSearch, 180));
-  if (petSearchInput) petSearchInput.addEventListener('input', debounce(applyPetSearch, 180));
+  if (recordsSearchInput) recordsSearchInput.addEventListener('input', debounce(applyRecordsSearch, 180));
+
+  // Pet Owners & Records: Owners or Pets in the search, and "All owners and pets" (owner and pet links are plain
+  // links to their address and need no handler)
+  document.querySelectorAll('[data-records-list]').forEach(button => {
+    button.addEventListener('click', () => {
+      recordsList = RECORDS_LISTS.includes(button.dataset.recordsList) ? button.dataset.recordsList : 'owners';
+      syncRecordsListChoice();
+      applyRecordsSearch();
+    });
+  });
+  document.getElementById('adminViewRecords')?.addEventListener('click', event => {
+    if (!event.target.closest('[data-records-go="directory"]')) return;
+    window.location.hash = '#records';
+  });
 
   const appointmentSearchInput = document.getElementById('appointmentSearchInput');
   if (appointmentSearchInput) appointmentSearchInput.addEventListener('input', debounce(applyAppointmentFilters, 180));
@@ -1313,11 +1580,6 @@ function setupAdminDashboardInteractions() {
     if (!addButton) return;
     const select = document.getElementById('adminPetRecordAppointment');
     if (select && select.value) openMedicalRecordForm(addButton, select.value);
-  });
-  document.getElementById('adminPetDetailClose')?.addEventListener('click', () => {
-    const petId = selectedAdminPetId;
-    closeAdminPetDetail();
-    document.querySelector(`#petsTable [data-pet-view="${CSS.escape(petId)}"]`)?.focus();
   });
   document.getElementById('usersTable')?.addEventListener('change', event => {
     const select = event.target.closest('select[data-user-id]');
@@ -1383,17 +1645,100 @@ function applyUserSearch() {
   displayUsersTable(filtered);
 }
 
-function applyPetSearch() {
-  const query = document.getElementById('petSearchInput')?.value.trim().toLowerCase() || '';
-  const filtered = adminDashboardData.pets.filter(pet => {
-    const name = (pet.name || '').toLowerCase();
-    const species = (pet.species || '').toLowerCase();
-    const breed = (pet.breed || '').toLowerCase();
-    const ownerId = String(pet.user_id || '').toLowerCase();
-    const ownerName = formatOwnerLabel(pet).toLowerCase();
-    return name.includes(query) || species.includes(query) || breed.includes(query) || ownerId.includes(query) || ownerName.includes(query);
+// Owners or Pets in the Pet Owners & Records search (pressed state and which list is shown)
+function syncRecordsListChoice() {
+  document.querySelectorAll('[data-records-list]').forEach(button => {
+    button.setAttribute('aria-pressed', String(button.dataset.recordsList === recordsList));
   });
-  displayPetsTable(filtered);
+  const ownersPanel = document.getElementById('ownersListPanel');
+  const petsPanel = document.getElementById('petsListPanel');
+  if (ownersPanel) ownersPanel.hidden = recordsList !== 'owners';
+  if (petsPanel) petsPanel.hidden = recordsList !== 'pets';
+}
+
+function getPetSearchText(pet) {
+  const owner = getUserById(pet.user_id);
+  return [pet.name, pet.species, pet.breed, pet.id, owner?.fullname, owner?.email].map(value => String(value || '')).join(' ').toLowerCase();
+}
+
+// One search for both lists: an owner matches on their name or email or on any of their pets; a pet matches on its
+// name, species, breed, PetHub ID, or its owner's name or email
+function applyRecordsSearch() {
+  const query = document.getElementById('recordsSearchInput')?.value.trim().toLowerCase() || '';
+  const owners = getOwnerAccounts();
+  const pets = asArray(adminDashboardData.pets);
+  const matchingOwners = owners.filter(owner => !query
+    || [owner.fullname, owner.email].map(value => String(value || '').toLowerCase()).join(' ').includes(query)
+    || getPetsOfOwner(owner.id).some(pet => getPetSearchText(pet).includes(query)));
+  const matchingPets = pets.filter(pet => !query || getPetSearchText(pet).includes(query));
+
+  const ownersCount = document.getElementById('ownersListCount');
+  const petsCount = document.getElementById('petsListCount');
+  const unavailable = Boolean(adminDashboardData.overviewError);
+  if (ownersCount) ownersCount.textContent = unavailable ? '' : String(query ? matchingOwners.length : owners.length);
+  if (petsCount) petsCount.textContent = unavailable ? '' : String(query ? matchingPets.length : pets.length);
+
+  const summary = document.getElementById('recordsSearchSummary');
+  if (summary) {
+    summary.textContent = unavailable || !query
+      ? ''
+      : `${matchingOwners.length} of ${owners.length} owner${owners.length === 1 ? '' : 's'} and ${matchingPets.length} of ${pets.length} pet${pets.length === 1 ? '' : 's'} match "${query}".`;
+  }
+
+  displayOwnersTable(matchingOwners);
+  displayPetsTable(matchingPets);
+}
+
+function displayOwnersTable(owners) {
+  const ownersTable = document.getElementById('ownersTable');
+  if (!ownersTable) return;
+
+  const query = document.getElementById('recordsSearchInput')?.value.trim();
+  if (adminDashboardData.overviewError && (!owners || owners.length === 0)) {
+    ownersTable.innerHTML = getAdminTableErrorRow(6, 'Unable to load pet owners', 'pet owners');
+    return;
+  }
+  if (!owners || owners.length === 0) {
+    ownersTable.innerHTML = getAdminTableEmptyRow(
+      6,
+      query ? 'No matching owners found.' : 'No pet owner accounts yet.',
+      query ? 'Search by the owner\'s name or email, or by one of their pets.' : 'Pet owners appear here after they register.'
+    );
+    return;
+  }
+
+  ownersTable.innerHTML = owners.map(owner => {
+    const pets = getPetsOfOwner(owner.id);
+    const appointments = getAppointmentsOfOwner(owner.id);
+    const needs = getAppointmentNeedsText(appointments);
+    const name = displayValue(owner.fullname, 'Name not provided');
+    const verificationStatus = getUserVerificationStatus(owner);
+    const isAdmin = String(owner.role || '').toLowerCase() === 'admin';
+    return `
+      <tr>
+        <td class="ph-dash-wrap">
+          <strong>${escapeHtml(name)}</strong>
+          <p class="ph-dash-muted">${escapeHtml(displayValue(owner.email, 'Email not provided'))}</p>
+          ${isAdmin ? '<p><span class="ph-badge">Administrator account</span></p>' : ''}
+        </td>
+        <td class="ph-dash-wrap">
+          ${pets.length} pet${pets.length === 1 ? '' : 's'}
+          ${pets.length ? `<p class="ph-dash-muted">${escapeHtml(pets.map(pet => displayValue(pet.name, 'Unnamed pet')).join(', '))}</p>` : ''}
+        </td>
+        <td>
+          ${appointments.length} appointment${appointments.length === 1 ? '' : 's'}
+          ${needs ? `<p class="ph-dash-muted">${escapeHtml(needs)}</p>` : ''}
+        </td>
+        <td><span class="admin-status-badge ${getUserVerificationBadgeClass(verificationStatus)}">${escapeHtml(verificationStatus)}</span></td>
+        <td>${escapeHtml(formatTableDate(owner.created_at))}</td>
+        <td>
+          <a class="ph-btn ph-btn-secondary ph-btn-sm" href="${getOwnerHref(owner.id)}" data-open-owner="${escapeHtml(String(owner.id))}">
+            Open account<span class="sr-only"> of ${escapeHtml(name)}</span>
+          </a>
+        </td>
+      </tr>
+    `;
+  }).join('');
 }
 
 // Service names for the filter: the catalog's nine services, then any other name found on appointments (earlier
@@ -1428,12 +1773,15 @@ function applyAppointmentFilters() {
   setStoredAdminAppointmentStatusFilter(status);
 
   const all = asArray(adminDashboardData.appointments);
+  const now = new Date();
   const filtered = all.filter(apt => {
     const text = [getAppointmentPetLabel(apt), getAppointmentOwnerLabel(apt), getAppointmentReference(apt), apt.service_type]
       .join(' ')
       .toLowerCase();
+    const statusMatches = status === 'all'
+      || (status === 'needs-outcome' ? isAwaitingOutcome(apt, now) : getAppointmentStatus(apt.status) === status);
     return (!query || text.includes(query))
-      && (status === 'all' || getAppointmentStatus(apt.status) === status)
+      && statusMatches
       && (service === 'all' || String(apt.service_type || '').trim() === service)
       && (!date || normalizeDashboardDateValue(apt.appointment_date) === date);
   });
@@ -1450,6 +1798,7 @@ function applyAppointmentFilters() {
 function showManagementLoadingStates() {
   const loaders = [
     ['usersTable', 5, 'users'],
+    ['ownersTable', 6, 'owners'],
     ['petsTable', 7, 'pets'],
     ['appointmentsTable', 9, 'appointments'],
     ['contactMessagesTable', 6, 'messages']
@@ -2085,7 +2434,8 @@ async function handleUserRoleChange(select) {
   } catch (error) {
     console.error('Error updating user role:', error);
     select.value = oldRole;
-    showAdminStatus('error', 'Unable to update the user role right now. Please try again.');
+    // The server's reason (e.g. the last administrator cannot be changed), or a general message
+    showAdminStatus('error', error.message || 'Unable to update the user role right now. Please try again.');
   } finally {
     select.disabled = false;
   }
@@ -2098,7 +2448,7 @@ function displayPetsTable(pets) {
   const petsTable = document.getElementById('petsTable');
   if (!petsTable) return;
 
-  const query = document.getElementById('petSearchInput')?.value.trim();
+  const query = document.getElementById('recordsSearchInput')?.value.trim();
   const showMatchingMessage = Boolean(query) && (!pets || pets.length === 0);
 
   if (adminDashboardData.overviewError && (!pets || pets.length === 0)) {
@@ -2119,20 +2469,22 @@ function displayPetsTable(pets) {
     const records = getMedicalRecordsForPet(pet?.id);
     const latestRecordDateRaw = records[0]?.record_date || records[0]?.created_at || '';
     const id = escapeHtml(String(pet.id || ''));
+    const owner = getUserById(pet.user_id);
+    const ownerLabel = escapeHtml(formatOwnerLabel(pet));
     return `
     <tr>
       <td><strong>${escapeHtml(displayValue(pet.name, 'Unnamed pet'))}</strong></td>
       <td>${escapeHtml(displayValue(pet.species))}</td>
       <td>${escapeHtml(displayValue(pet.breed))}</td>
       <td>${escapeHtml(formatPetAge(pet.age))}</td>
-      <td>${escapeHtml(formatOwnerLabel(pet))}</td>
+      <td>${owner ? `<a class="ph-dash-link" href="${getOwnerHref(owner.id)}">${ownerLabel}</a>` : `${ownerLabel}<p class="ph-dash-muted">Owner account not found</p>`}</td>
       <td>
         ${records.length} record${records.length === 1 ? '' : 's'}
         ${latestRecordDateRaw ? `<p class="ph-dash-muted">Latest ${escapeHtml(formatDate(latestRecordDateRaw))}</p>` : ''}
       </td>
       <td>
         <button type="button" class="ph-btn ph-btn-secondary ph-btn-sm" data-pet-view="${id}" aria-controls="adminPetDetail">
-          View records<span class="sr-only"> for ${escapeHtml(displayValue(pet.name, 'this pet'))}</span>
+          Open profile<span class="sr-only"> of ${escapeHtml(displayValue(pet.name, 'this pet'))}</span>
         </button>
       </td>
     </tr>
@@ -2140,24 +2492,166 @@ function displayPetsTable(pets) {
   }).join('');
 }
 
-// ==================== ONE PET: PROFILE, OFFICIAL RECORDS, ADDING A RECORD ====================
+// ==================== APPOINTMENT HISTORY (owner account and pet profile) ====================
+
+// The medical-record column: only a Completed appointment can have an official record
+function getAppointmentRecordCellHtml(appointment) {
+  if (getAppointmentStatus(appointment.status) !== 'Completed') return '<span class="ph-dash-muted">Not applicable</span>';
+  return appointmentHasMedicalRecord(appointment)
+    ? '<span class="ph-badge ph-badge-official">Record added</span>'
+    : '<span class="ph-dash-muted">No record yet</span>';
+}
+
+function getAppointmentStatusCellHtml(appointment) {
+  const status = getAppointmentStatus(appointment.status);
+  return `
+    <span class="${getStatusBadgeClass(status)}">${escapeHtml(status)}</span>
+    ${isAwaitingOutcome(appointment) ? '<p class="mt-1"><span class="ph-badge ph-badge-warning">Awaiting an outcome</span></p>' : ''}
+  `;
+}
+
+// The pet column: a link to the profile when the appointment's pet_id is one of the account's pets; otherwise the name
+// typed at booking and why it is not linked
+function getAppointmentPetCellHtml(appointment) {
+  const link = getAppointmentPetLink(appointment);
+  const label = escapeHtml(getAppointmentPetLabel(appointment));
+  if (link.state === 'linked') return `<a class="ph-dash-link" href="${getPetHref(link.pet.id)}">${label}</a>`;
+  return `${label}<p class="mt-1"><span class="ph-badge ph-badge-warning">${escapeHtml(PET_LINK_NOTES[link.state])}</span></p>`;
+}
+
+// columns: which of 'pet' and 'owner' to include besides date, time, service, status, record, handled by and reference
+function getAppointmentHistoryTableHtml(appointments, { columns = [] } = {}) {
+  const showPet = columns.includes('pet');
+  const showOwner = columns.includes('owner');
+  const rows = appointments.map(appointment => {
+    const owner = getUserById(appointment.user_id);
+    const handledBy = getHandledByLabel(appointment);
+    return `
+      <tr>
+        <td>${escapeHtml(formatTableDate(appointment.appointment_date, 'Date not set'))}</td>
+        <td>${escapeHtml(getAppointmentTimeDisplay(appointment))}</td>
+        ${showPet ? `<td>${getAppointmentPetCellHtml(appointment)}</td>` : ''}
+        ${showOwner ? `<td>${owner ? `<a class="ph-dash-link" href="${getOwnerHref(owner.id)}">${escapeHtml(getAppointmentOwnerLabel(appointment))}</a>` : escapeHtml(getAppointmentOwnerLabel(appointment))}</td>` : ''}
+        <td>${escapeHtml(displayValue(appointment.service_type, 'Service not recorded'))}</td>
+        <td>${getAppointmentStatusCellHtml(appointment)}</td>
+        <td>${getAppointmentRecordCellHtml(appointment)}</td>
+        <td>${handledBy ? escapeHtml(handledBy) : '<span class="ph-dash-muted">-</span>'}</td>
+        <td>${escapeHtml(getAppointmentReference(appointment))}</td>
+      </tr>
+    `;
+  }).join('');
+
+  return `
+    <div class="ph-dash-table-wrap">
+      <table class="ph-dash-table">
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Time</th>
+            ${showPet ? '<th scope="col">Pet</th>' : ''}
+            ${showOwner ? '<th scope="col">Booked by</th>' : ''}
+            <th scope="col">Service</th>
+            <th scope="col">Status</th>
+            <th scope="col">Medical record</th>
+            <th scope="col">Handled by</th>
+            <th scope="col">Reference</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+const APPOINTMENT_HISTORY_NOTE = 'Bookings and their current status, newest first. An appointment is a completed service only when the clinic has marked it Completed; "Awaiting an outcome" means its time has passed and it has not been completed or cancelled yet.';
+
+// ==================== ONE OWNER: ACCOUNT, PETS, APPOINTMENT HISTORY ====================
+
+function renderOwnerAccount(owner) {
+  const content = document.getElementById('adminOwnerDetailContent');
+  const nameElement = document.getElementById('adminOwnerDetailName');
+  if (!content) return;
+  if (!owner) {
+    if (nameElement) nameElement.textContent = 'Pet owner';
+    content.innerHTML = getAdminErrorBlock('Unable to load this account', 'pet owner accounts');
+    return;
+  }
+
+  const name = displayValue(owner.fullname, 'Name not provided');
+  if (nameElement) nameElement.textContent = name;
+
+  const pets = getPetsOfOwner(owner.id);
+  const appointments = getAppointmentsOfOwner(owner.id);
+  const recordCount = pets.reduce((total, pet) => total + getMedicalRecordsForPet(pet.id).length, 0);
+  const statusCounts = APPOINTMENT_STATUSES
+    .map(status => [status, appointments.filter(appointment => getAppointmentStatus(appointment.status) === status).length])
+    .filter(([, count]) => count > 0)
+    .map(([status, count]) => `${count} ${status.toLowerCase()}`)
+    .join(', ');
+  const awaiting = appointments.filter(appointment => isAwaitingOutcome(appointment)).length;
+  const notLinked = appointments.filter(appointment => getAppointmentPetLink(appointment).state !== 'linked');
+  const verificationStatus = getUserVerificationStatus(owner);
+
+  const petCards = pets.length
+    ? pets.map(pet => {
+        const petRecords = getMedicalRecordsForPet(pet.id).length;
+        const petName = displayValue(pet.name, 'Unnamed pet');
+        return `
+          <article class="ph-dash-card">
+            <div class="ph-dash-card-head">
+              <p class="ph-dash-card-title">${escapeHtml(petName)}</p>
+              <span class="ph-badge">${petRecords} official record${petRecords === 1 ? '' : 's'}</span>
+            </div>
+            <dl class="ph-dash-facts">
+              <div><dt>Species and breed</dt> <dd>${escapeHtml([displayValue(pet.species), displayValue(pet.breed, 'Breed not recorded')].join(' · '))}</dd></div>
+              <div><dt>Age (as entered)</dt> <dd>${escapeHtml(formatPetAge(pet.age))}</dd></div>
+              <div class="is-wide"><dt>Latest official weight</dt> <dd>${escapeHtml(getLatestOfficialWeightText(pet.id))}</dd></div>
+            </dl>
+            <div class="ph-dash-card-actions">
+              <a class="ph-btn ph-btn-secondary ph-btn-sm" href="${getPetHref(pet.id)}">Open pet profile<span class="sr-only"> of ${escapeHtml(petName)}</span></a>
+            </div>
+          </article>
+        `;
+      }).join('')
+    : getAdminEmptyBlock('No pets registered', 'This owner has not added a pet profile yet.');
+
+  content.innerHTML = `
+    <div class="ph-dash-grid-side">
+      <div>
+        <h3 class="ph-dash-card-title">Account</h3>
+        <dl class="ph-dash-facts">
+          <div class="is-wide"><dt>Email</dt> <dd>${escapeHtml(displayValue(owner.email, 'Email not provided'))}</dd></div>
+          <div><dt>Email status</dt> <dd><span class="admin-status-badge ${getUserVerificationBadgeClass(verificationStatus)}">${escapeHtml(verificationStatus)}</span></dd></div>
+          <div><dt>Role</dt> <dd>${escapeHtml(formatRoleLabel(owner.role || 'user'))}</dd></div>
+          <div><dt>Account created</dt> <dd>${escapeHtml(formatTableDate(owner.created_at))}</dd></div>
+          <div><dt>Registered pets</dt> <dd>${pets.length}</dd></div>
+          <div class="is-wide"><dt>Appointments</dt> <dd>${appointments.length ? `${appointments.length} (${escapeHtml(statusCounts)})` : '0'}</dd></div>
+          <div><dt>Official medical records</dt> <dd>${recordCount}</dd></div>
+          ${awaiting ? `<div class="is-wide"><dt>Awaiting an outcome</dt> <dd>${awaiting} appointment${awaiting === 1 ? '' : 's'} whose time has passed</dd></div>` : ''}
+        </dl>
+        <p class="ph-dash-note mt-3">Passwords and sign-in codes are never shown. Roles are changed under System Management &gt; Users.</p>
+      </div>
+      <div>
+        <h3 class="ph-dash-card-title">Registered pets (${pets.length})</h3>
+        <div class="ph-dash-stack mt-3">${petCards}</div>
+      </div>
+    </div>
+    <section class="ph-admin-history" aria-labelledby="ownerAppointmentsTitle">
+      <h3 id="ownerAppointmentsTitle" class="ph-dash-card-title">Appointment history (${appointments.length})</h3>
+      <p class="ph-dash-note">${escapeHtml(APPOINTMENT_HISTORY_NOTE)} Official medical records are on each pet's profile.</p>
+      ${notLinked.length ? `<p class="ph-dash-note mt-2"><span class="ph-badge ph-badge-warning">${notLinked.length} not linked</span> ${notLinked.length === 1 ? 'This appointment is' : 'These appointments are'} not connected to one of this owner's pet profiles. ${notLinked.length === 1 ? 'It is' : 'They are'} kept as booked and never matched to a pet by name.</p>` : ''}
+      <div class="mt-3">${appointments.length
+        ? getAppointmentHistoryTableHtml(appointments, { columns: ['pet'] })
+        : getAdminEmptyBlock('No appointments yet', 'Appointments this owner books appear here with their status.')}</div>
+    </section>
+  `;
+}
+
+// ==================== ONE PET: PROFILE, APPOINTMENTS, OFFICIAL RECORDS, ADDING A RECORD ====================
 
 function openAdminPetDetail(petId) {
   if (!getPetById(petId)) return;
-  selectedAdminPetId = String(petId);
-  renderAdminPetDetail();
-  const panel = document.getElementById('adminPetDetail');
-  if (panel) {
-    panel.hidden = false;
-    panel.scrollIntoView({ block: 'start' });
-  }
-  document.getElementById('adminPetDetailTitle')?.focus();
-}
-
-function closeAdminPetDetail() {
-  selectedAdminPetId = '';
-  const panel = document.getElementById('adminPetDetail');
-  if (panel) panel.hidden = true;
+  window.location.hash = getPetHref(petId);
 }
 
 // Completed appointments of this pet that have no record yet: the only ones a record can be added for
@@ -2169,19 +2663,21 @@ function getRecordableAppointmentsForPet(petId) {
     .sort((a, b) => getAppointmentSortKey(b).localeCompare(getAppointmentSortKey(a)));
 }
 
-function renderAdminPetDetail() {
-  const panel = document.getElementById('adminPetDetail');
+function renderAdminPetDetail(pet) {
   const content = document.getElementById('adminPetDetailContent');
-  const pet = getPetById(selectedAdminPetId);
-  if (!panel || !content) return;
+  const nameElement = document.getElementById('adminPetDetailName');
+  if (!content) return;
   if (!pet) {
-    if (selectedAdminPetId) closeAdminPetDetail();
+    if (nameElement) nameElement.textContent = 'Pet';
+    content.innerHTML = getAdminErrorBlock('Unable to load this pet', 'pet profiles');
     return;
   }
 
-  const nameElement = document.getElementById('adminPetDetailName');
   if (nameElement) nameElement.textContent = displayValue(pet.name, 'Unnamed pet');
 
+  const owner = getUserById(pet.user_id);
+  const otherPets = getPetsOfOwner(pet.user_id).filter(item => String(item.id) !== String(pet.id));
+  const appointments = getAppointmentsOfPet(pet.id);
   const records = getMedicalRecordsForPet(pet.id);
   const recordable = getRecordableAppointmentsForPet(pet.id);
   const recordCards = records.length
@@ -2220,17 +2716,32 @@ function renderAdminPetDetail() {
     `
     : '<p class="ph-dash-note">A record is added for a completed appointment. This pet has no completed appointment without a record.</p>';
 
+  const otherPetsHtml = otherPets.length
+    ? `
+      <div class="ph-admin-other-pets">
+        <p class="ph-dash-note">Other pets of ${escapeHtml(owner ? displayValue(owner.fullname, 'this owner') : 'this owner')}:</p>
+        <ul class="ph-chips" aria-label="Other pets of this owner">
+          ${otherPets.map(item => `<li><a class="ph-chip ph-chip-link" href="${getPetHref(item.id)}" data-other-pet="${escapeHtml(String(item.id))}">${escapeHtml(displayValue(item.name, 'Unnamed pet'))}</a></li>`).join('')}
+        </ul>
+      </div>
+    `
+    : '';
+  const otherAccountAppointments = appointments.filter(appointment => getAppointmentPetLink(appointment).state === 'other-account');
+
   content.innerHTML = `
+    ${otherPetsHtml}
     <div class="ph-dash-grid-side">
       <div>
         <h3 class="ph-dash-card-title">Pet profile</h3>
         <p class="ph-dash-note">Entered by the owner.</p>
         <dl class="ph-dash-facts">
-          <div><dt>Owner</dt> <dd>${escapeHtml(formatOwnerLabel(pet))}</dd></div>
+          <div class="is-wide"><dt>PetHub profile ID</dt> <dd class="ph-pet-id">${escapeHtml(String(pet.id))}</dd></div>
+          <div><dt>Owner</dt> <dd>${owner ? `<a class="ph-dash-link" href="${getOwnerHref(owner.id)}">${escapeHtml(formatOwnerLabel(pet))}</a>` : `${escapeHtml(formatOwnerLabel(pet))} (account not found)`}</dd></div>
           <div><dt>Species</dt> <dd>${escapeHtml(displayValue(pet.species))}</dd></div>
           <div><dt>Breed</dt> <dd>${escapeHtml(displayValue(pet.breed))}</dd></div>
-          <div><dt>Age</dt> <dd>${escapeHtml(formatPetAge(pet.age))}</dd></div>
-          <div class="is-wide"><dt>Profile added</dt> <dd>${escapeHtml(formatTableDate(pet.created_at))}</dd></div>
+          <div><dt>Age (as entered)</dt> <dd>${escapeHtml(formatPetAge(pet.age))}</dd></div>
+          <div><dt>Profile added</dt> <dd>${escapeHtml(formatTableDate(pet.created_at))}</dd></div>
+          <div><dt>Latest official weight</dt> <dd>${escapeHtml(getLatestOfficialWeightText(pet.id))}</dd></div>
         </dl>
         <h3 class="ph-dash-card-title mt-5">Add an official record</h3>
         ${addRecordHtml}
@@ -2243,6 +2754,14 @@ function renderAdminPetDetail() {
         <div class="ph-dash-stack mt-3">${recordCards}</div>
       </div>
     </div>
+    <section class="ph-admin-history" aria-labelledby="petAppointmentsTitle">
+      <h3 id="petAppointmentsTitle" class="ph-dash-card-title">Appointment history (${appointments.length})</h3>
+      <p class="ph-dash-note">${escapeHtml(APPOINTMENT_HISTORY_NOTE)} Only appointments booked for this pet profile are listed; older bookings without a linked pet stay on the owner's account.</p>
+      ${otherAccountAppointments.length ? `<p class="ph-dash-note mt-2"><span class="ph-badge ph-badge-warning">Needs review</span> ${otherAccountAppointments.length} appointment${otherAccountAppointments.length === 1 ? ' was' : 's were'} booked from an account that does not own this pet.</p>` : ''}
+      <div class="mt-3">${appointments.length
+        ? getAppointmentHistoryTableHtml(appointments, { columns: otherAccountAppointments.length ? ['owner'] : [] })
+        : getAdminEmptyBlock('No appointments yet', 'Appointments booked for this pet appear here with their status.')}</div>
+    </section>
   `;
 }
 
@@ -2274,13 +2793,15 @@ function displayAppointmentsTable(appointments) {
   appointmentsTable.innerHTML = appointments.map(apt => {
     const handledBy = getHandledByLabel(apt);
     const status = getAppointmentStatus(apt.status);
+    const owner = getUserById(apt.user_id);
+    const ownerLabel = escapeHtml(getAppointmentOwnerLabel(apt));
 
     return `
     <tr>
       <td>${escapeHtml(getAppointmentReference(apt))}</td>
       <td>
-        <strong>${escapeHtml(getAppointmentPetLabel(apt))}</strong>
-        <p class="ph-dash-muted">${escapeHtml(getAppointmentOwnerLabel(apt))}</p>
+        <strong>${getAppointmentPetCellHtml(apt)}</strong>
+        <p class="ph-dash-muted">${owner ? `<a class="ph-dash-link" href="${getOwnerHref(owner.id)}">${ownerLabel}</a>` : ownerLabel}</p>
       </td>
       <td>
         ${escapeHtml(displayValue(apt.service_type, 'N/A'))}
@@ -2289,7 +2810,7 @@ function displayAppointmentsTable(appointments) {
       <td>${escapeHtml(formatTableDate(apt.appointment_date, 'N/A'))}</td>
       <td>${escapeHtml(getAppointmentTimeDisplay(apt))}</td>
       <td>${escapeHtml(getAppointmentDurationLabel(apt))}</td>
-      <td><span class="${getStatusBadgeClass(status)}">${escapeHtml(status)}</span></td>
+      <td>${getAppointmentStatusCellHtml(apt)}</td>
       <td>${handledBy ? escapeHtml(handledBy) : '<span class="ph-dash-muted">-</span>'}</td>
       <td><div class="admin-medical-record-action-cell">${renderAppointmentActions(status, apt)}</div></td>
     </tr>

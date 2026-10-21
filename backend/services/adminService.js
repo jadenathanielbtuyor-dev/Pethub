@@ -41,6 +41,8 @@ const { countServicesForAnalytics, isCheckupService, normalizeSpecies } = requir
 // today through today + 7 days (inclusive). Counted from appointments only: medical records describe past visits.
 const UPCOMING_CHECKUPS_WINDOW_DAYS = 7;
 const UPCOMING_CHECKUPS_STATUSES = ['Pending', 'Approved'];
+// GET /admin/system-logs?limit= is capped so one request cannot ask for the whole activity log
+const SYSTEM_LOG_MAX_LIMIT = 200;
 
 function getUpcomingCheckupsEndDate(today) {
   const endDate = new Date(`${today}T00:00:00.000Z`);
@@ -750,26 +752,51 @@ const updateUserRole = async (req) => {
       } };
     }
 
-    const { data: existingUser, error: existingError } = await usersRepository.findForRoleUpdate(normalizedUserId);
+    // Role changes run one at a time (in this process), so two admins demoting each other at once cannot both pass the
+    // last-administrator check below
+    const outcome = await runExclusive('user-roles', async () => {
+      const { data: existingUser, error: existingError } = await usersRepository.findForRoleUpdate(normalizedUserId);
 
-    if (existingError) {
-      console.error('Error loading user for role update:', existingError);
-      return { statusCode: 500, body: { success: false, error: 'Failed to load user' } };
-    }
+      if (existingError) {
+        console.error('Error loading user for role update:', existingError);
+        return { refused: { statusCode: 500, body: { success: false, error: 'Failed to load user' } } };
+      }
 
-    if (!existingUser) {
-      return { statusCode: 404, body: { success: false, error: 'User not found' } };
-    }
+      if (!existingUser) {
+        return { refused: { statusCode: 404, body: { success: false, error: 'User not found' } } };
+      }
 
-    if (String(existingUser.role || '').toLowerCase() === normalizedRole) {
-      return { statusCode: 200, body: {
-        success: true,
-        message: 'User role updated successfully',
-        user: existingUser
-      } };
-    }
+      if (String(existingUser.role || '').toLowerCase() === normalizedRole) {
+        return { refused: { statusCode: 200, body: {
+          success: true,
+          message: 'User role updated successfully',
+          user: existingUser
+        } } };
+      }
 
-    const { data, error } = await usersRepository.updateRole(normalizedUserId, normalizedRole);
+      // PetHub must keep an administrator: demoting the last one (including yourself) would leave nobody able to open
+      // the Admin Dashboard, and only a manual database change could undo it
+      if (String(existingUser.role || '').toLowerCase() === 'admin') {
+        const { count: adminCount, error: countError } = await usersRepository.countByRole('admin');
+        if (countError) {
+          console.error('Error counting administrators:', countError);
+          return { refused: { statusCode: 500, body: { success: false, error: 'Failed to update user role' } } };
+        }
+        if ((adminCount || 0) <= 1) {
+          return { refused: { statusCode: 409, body: {
+            success: false,
+            error: 'PetHub needs at least one administrator. Make another account an administrator before changing this one.'
+          } } };
+        }
+      }
+
+      const { data, error } = await usersRepository.updateRole(normalizedUserId, normalizedRole);
+      return { existingUser, data, error };
+    });
+
+    if (outcome.refused) return outcome.refused;
+
+    const { existingUser, data, error } = outcome;
 
     if (error) {
       console.error('Error updating user role:', error);
@@ -913,7 +940,9 @@ const getAllAppointments = async (req) => {
  */
 const getSystemLogs = async (req) => {
   try {
-    const limit = parseInt(req.query.limit, 10) || 20;
+    // 20 by default, never more than SYSTEM_LOG_MAX_LIMIT entries per request
+    const requestedLimit = parseInt(req.query.limit, 10);
+    const limit = Number.isInteger(requestedLimit) && requestedLimit > 0 ? Math.min(requestedLimit, SYSTEM_LOG_MAX_LIMIT) : 20;
     const { data: logs, error } = await activityLogsRepository.listRecentSystemLogs(limit);
 
     if (error) {

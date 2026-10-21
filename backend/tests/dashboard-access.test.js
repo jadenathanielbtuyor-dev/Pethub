@@ -137,7 +137,7 @@ describe('Admin Dashboard operations are for administrators only', () => {
     await t.settleEmails();
   });
 
-  it('Pet & Medical Records: a record is attributed to the signed-in admin and cannot claim another creator', async () => {
+  it('Pet Owners & Records: a record is attributed to the signed-in admin and cannot claim another creator', async () => {
     const admin = t.createUser({ role: 'admin', name: 'Clinic Admin' });
     const otherAdmin = t.createUser({ role: 'admin', name: 'Other Admin' });
     const owner = t.createUser();

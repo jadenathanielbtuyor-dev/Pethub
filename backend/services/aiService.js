@@ -109,9 +109,9 @@ const MINI_FAQ = {
   'does pethub guarantee treatment': "No. PetHub does not promise treatment outcomes. For medical concerns, consult a veterinarian.",
   
   // ==================== ADMIN FEATURES (if user asks) ====================
-  'what can admins do': "Admins use the **Admin Dashboard**: **Overview**, **Appointment Management**, **Pet & Medical Records**, and **System Management** (users, contact messages, activity logs and the service catalog).",
+  'what can admins do': "Admins use the **Admin Dashboard**: **Overview**, **Appointment Management**, **Pet Owners & Records**, and **System Management** (users, contact messages, activity logs and the service catalog).",
   'how do appointments get approved': "Admins review requests in **Appointment Management** on the **Admin Dashboard** and approve or cancel them. Approval depends on admin review and on the schedule being free.",
-  'what is the admin dashboard': "The **Admin Dashboard** is the admin area with four sections: **Overview**, **Appointment Management**, **Pet & Medical Records**, and **System Management**.",
+  'what is the admin dashboard': "The **Admin Dashboard** is the admin area with four sections: **Overview**, **Appointment Management**, **Pet Owners & Records**, and **System Management**.",
   
   // ==================== TROUBLESHOOTING ====================
   'i forgot my password': "On the **Login** page, choose **Forgot password?**, enter your email, and use the 6-digit code we email you to set a new password.",
@@ -245,8 +245,9 @@ FILIPINO/TAGALOG EXAMPLES TO UNDERSTAND AND MATCH:
     - Approve or cancel pending requests; complete or cancel approved appointments
     - Approval is refused if the time overlaps another approved appointment
 
-  Pet & Medical Records
-    - Pets and their owners, each pet's official records
+  Pet Owners & Records
+    - Find a pet owner or a pet; an owner's account, registered pets and appointment history
+    - A pet's profile, appointment history and official medical records
     - Add an official record for a completed appointment
 
   System Management
@@ -474,7 +475,7 @@ Guide perfect workflows with exact page names:
 - Pet Owner Dashboard: Overview, My Pets, Appointments, Pet Health & AI Assistant
 - Services
 - Contact
-- Admin Dashboard: Overview, Appointment Management, Pet & Medical Records, System Management
+- Admin Dashboard: Overview, Appointment Management, Pet Owners & Records, System Management
 
 NEW USER WORKFLOW:
 1. Register (Registration page)

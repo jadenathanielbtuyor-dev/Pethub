@@ -32,9 +32,11 @@ Registration requires every field: full legal name, email, password and its conf
 
 Accounts created before the details were required keep NULL in those columns and can still log in and book. Their dashboard shows a "Complete your details" banner; the owner fills them in with `PUT /auth/profile` (signed-in owner only; every detail required; email, password, role and verification status are refused). The dashboard reads them through `GET /auth/user-status?include=profile` (owner only); admin user lists do not include them.
 
+Roles: `PUT /admin/dashboard/user-role` accepts only `user` and `admin`, and refuses (409) to change the role of the last remaining administrator, including an administrator changing their own role, so the Admin Dashboard can never be left without an administrator. Role changes run one at a time within one backend process.
+
 ## Request Limits
 
-`middleware/rateLimit.js` limits login, registration, email verification, verification-code resends, password reset, the contact form, the chatbot (per client IP) and profile updates (per account); the numbers are in `constants/rateLimits.js`. Over the limit the API answers 429 with `Retry-After`. `server.js` trusts one proxy hop (Railway) so the client IP is the visitor's. The counts live in memory: they reset when the server restarts and are not shared between instances.
+`middleware/rateLimit.js` limits login, registration, email verification, verification-code resends, password reset, the contact form, the chatbot (per client IP) and profile updates (per account); the numbers are in `constants/rateLimits.js`. `GET /admin/system-logs?limit=` returns 20 entries by default and never more than 200. Over the limit the API answers 429 with `Retry-After`. `server.js` trusts one proxy hop (Railway) so the client IP is the visitor's. The counts live in memory: they reset when the server restarts and are not shared between instances.
 
 ## Services and Scheduling
 

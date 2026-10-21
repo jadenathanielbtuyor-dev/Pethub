@@ -7833,6 +7833,98 @@ body.dark-mode .ph-pet-section:not(:empty) {
   border-top-color: #374151;
 }
 
+/* ================= ADMIN: PET OWNERS & RECORDS (breadcrumb, other pets, appointment history) ================= */
+
+.ph-crumbs-nav {
+  margin-bottom: 1rem;
+}
+
+.ph-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  margin: 0;
+  padding: 0;
+  color: var(--ph-ink-muted);
+  font-size: 0.9375rem;
+  list-style: none;
+}
+
+.ph-crumbs li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ph-crumbs li + li::before {
+  content: "\203A";
+  color: var(--ph-ink-muted);
+  font-weight: 700;
+}
+
+.ph-crumbs [aria-current="page"] {
+  color: var(--ph-ink);
+  font-weight: 700;
+}
+
+/* A chip that is a link (another pet of the same owner) */
+
+.ph-chip-link {
+  display: inline-flex;
+  min-height: 2.25rem;
+  align-items: center;
+  text-decoration: none;
+}
+
+.ph-chip-link:hover {
+  border-color: var(--ph-orange-strong);
+  color: var(--ph-orange-deep);
+}
+
+.ph-chip-link:focus-visible {
+  outline: 2px solid var(--ph-orange-strong);
+  outline-offset: 2px;
+}
+
+.ph-admin-other-pets {
+  margin-bottom: 1.25rem;
+}
+
+.ph-admin-other-pets .ph-chips {
+  margin-top: 0.5rem;
+}
+
+.ph-admin-history {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 2px solid var(--ph-peach);
+}
+
+body.dark-mode .ph-crumbs,
+body.dark-mode .ph-crumbs li + li::before {
+  color: #d1d5db;
+}
+
+body.dark-mode .ph-crumbs [aria-current="page"] {
+  color: #f3f4f6;
+}
+
+body.dark-mode .ph-chip-link:hover {
+  border-color: #fdba74;
+  color: #fdba74;
+}
+
+body.dark-mode .ph-chip-link:focus-visible {
+  outline-color: #fdba74;
+}
+
+body.dark-mode .ph-admin-history {
+  border-top-color: #374151;
+}
+
 .hover\:bg-gray-50:hover {
   --tw-bg-opacity: 1;
   background-color: rgb(249 250 251 / var(--tw-bg-opacity, 1));

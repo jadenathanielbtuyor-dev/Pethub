@@ -20,8 +20,10 @@
                        GET /admin/dashboard/contact-messages)
      2. #appointments  every appointment with search and filters; approve, complete or cancel through
                        PUT /admin/dashboard/appointment-status (the server checks the transition and the schedule)
-     3. #records       pets and owners, each pet's official medical records, and adding a record for a completed
-                       appointment through POST /admin/dashboard/medical-records/create
+     3. #records       Pet Owners & Records: find an owner or a pet; an owner's account, pets and appointment history
+                       (#records/owner/<id>); a pet's profile, appointments and official medical records, and adding a
+                       record for a completed appointment through POST /admin/dashboard/medical-records/create
+                       (#records/pet/<id>)
      4. #system        users and roles (PUT /admin/dashboard/user-role), contact messages (mark as read through
                        PUT /admin/dashboard/contact-message-status), activity logs, and the service catalog with its
                        online booking status (GET /appointments/services)
@@ -62,7 +64,7 @@
           <div class="ph-dash-stack">
             <!-- Totals: from GET /admin/dashboard/overview; "Unavailable" if it fails, never a placeholder number -->
             <div class="ph-dash-stats ph-dash-stats-4">
-              <button type="button" class="ph-dash-stat" data-admin-go="system:users">
+              <button type="button" class="ph-dash-stat" data-admin-go="records:owners">
                 <span class="ph-dash-stat-icon"><i class="ri-group-line" aria-hidden="true"></i></span>
                 <span class="ph-dash-stat-body">
                   <span class="ph-dash-stat-label">Pet owner accounts</span>
@@ -122,6 +124,15 @@
                       <span class="ph-dash-stat-body">
                         <span class="ph-dash-list-title">Appointment requests</span>
                         <span class="ph-dash-list-meta"><span id="alertPendingAppointments">Loading</span> awaiting review</span>
+                      </span>
+                    </button>
+                  </li>
+                  <li>
+                    <button id="queueAwaitingOutcome" type="button" class="ph-dash-stat" data-admin-go="appointments:needs-outcome">
+                      <span class="ph-dash-stat-icon"><i class="ri-error-warning-line" aria-hidden="true"></i></span>
+                      <span class="ph-dash-stat-body">
+                        <span class="ph-dash-list-title">Awaiting an outcome</span>
+                        <span class="ph-dash-list-meta"><span id="alertAwaitingOutcome">Loading</span> pending or approved, time already passed</span>
                       </span>
                     </button>
                   </li>
@@ -252,6 +263,7 @@
                   <option value="Approved">Approved</option>
                   <option value="Completed">Completed</option>
                   <option value="Cancelled">Cancelled</option>
+                  <option value="needs-outcome">Awaiting an outcome (time passed)</option>
                 </select>
               </div>
               <div class="ph-field">
@@ -293,53 +305,104 @@
           </section>
         </section>
 
-        <!-- ================= 3. PET & MEDICAL RECORDS ================= -->
+        <!-- ================= 3. PET OWNERS & RECORDS =================
+             Owner account -> registered pets -> one pet's profile -> its appointments and official medical records.
+             #records                 find an owner or a pet (one search for both)
+             #records/owner/<id>      one owner's account, pets and appointment history
+             #records/pet/<id>        one pet's profile, appointments, official records, and adding a record
+             Everything comes from GET /admin/dashboard/overview (admin only on the server). Appointments are linked to a pet
+             by pet_id only, never by the pet name typed at booking. -->
         <section id="adminViewRecords" aria-labelledby="recordsTitle" hidden>
           <header class="ph-dash-header">
             <div>
               <p class="ph-dash-eyebrow">Admin Dashboard</p>
-              <h1 id="recordsTitle" class="ph-dash-title" tabindex="-1">Pet &amp; Medical Records</h1>
-              <p class="ph-dash-lead">Pet profiles are entered by their owners. Official medical records are entered by administrators after a completed appointment, and owners can only read them.</p>
+              <h1 id="recordsTitle" class="ph-dash-title" tabindex="-1">Pet Owners &amp; Records</h1>
+              <p class="ph-dash-lead">Find a pet owner or a pet, then open the owner's account, their pets, and each pet's appointments and official medical records. Pet profiles are entered by owners; official records are entered by administrators after a completed appointment.</p>
             </div>
           </header>
 
+          <!-- Where you are: Pet Owners & Records > owner > pet -->
+          <nav id="recordsBreadcrumb" class="ph-crumbs-nav" aria-label="Breadcrumb" hidden></nav>
+          <!-- An address naming an owner or pet that is not in the loaded records -->
+          <div id="recordsNotice" class="ph-dash-status mb-5"></div>
+
           <div class="ph-dash-stack">
-            <!-- One pet: its profile and official records, and adding a record (opened from the table below) -->
+            <!-- One owner's account (#records/owner/<id>) -->
+            <section id="adminOwnerDetail" class="ph-dash-panel" aria-labelledby="adminOwnerDetailTitle" hidden>
+              <div class="ph-dash-panel-head">
+                <h2 id="adminOwnerDetailTitle" class="ph-dash-panel-title" tabindex="-1"><i class="ri-user-heart-line" aria-hidden="true"></i><span id="adminOwnerDetailName">Pet owner</span></h2>
+                <button type="button" class="ph-btn ph-btn-secondary ph-btn-sm" data-records-go="directory"><i class="ri-arrow-left-line" aria-hidden="true"></i>All owners and pets</button>
+              </div>
+              <div id="adminOwnerDetailContent"></div>
+            </section>
+
+            <!-- One pet's profile (#records/pet/<id>) -->
             <section id="adminPetDetail" class="ph-dash-panel" aria-labelledby="adminPetDetailTitle" hidden>
               <div class="ph-dash-panel-head">
                 <h2 id="adminPetDetailTitle" class="ph-dash-panel-title" tabindex="-1"><i class="ri-bear-smile-line" aria-hidden="true"></i><span id="adminPetDetailName">Pet</span></h2>
-                <button id="adminPetDetailClose" type="button" class="ph-btn ph-btn-secondary ph-btn-sm"><i class="ri-arrow-left-line" aria-hidden="true"></i>Back to all pets</button>
+                <button id="adminPetDetailClose" type="button" class="ph-btn ph-btn-secondary ph-btn-sm" data-records-go="directory"><i class="ri-arrow-left-line" aria-hidden="true"></i>All owners and pets</button>
               </div>
               <div id="adminPetDetailContent"></div>
             </section>
 
-            <section class="ph-dash-panel" aria-labelledby="petsTableTitle">
+            <!-- Find an owner or a pet -->
+            <section id="recordsDirectory" class="ph-dash-panel" aria-labelledby="recordsDirectoryTitle">
               <div class="ph-dash-panel-head">
-                <h2 id="petsTableTitle" class="ph-dash-panel-title"><i class="ri-bear-smile-line" aria-hidden="true"></i>Pets and owners</h2>
+                <h2 id="recordsDirectoryTitle" class="ph-dash-panel-title"><i class="ri-search-line" aria-hidden="true"></i>Find an owner or a pet</h2>
+                <div class="ph-dash-segmented" role="group" aria-label="List">
+                  <button type="button" class="ph-dash-segment" data-records-list="owners" aria-pressed="true" aria-controls="ownersListPanel">Owners <span id="ownersListCount" class="ph-dash-count"></span></button>
+                  <button type="button" class="ph-dash-segment" data-records-list="pets" aria-pressed="false" aria-controls="petsListPanel">Pets <span id="petsListCount" class="ph-dash-count"></span></button>
+                </div>
               </div>
               <div class="ph-dash-filters">
                 <div class="ph-field">
-                  <label for="petSearchInput" class="ph-label">Search pets</label>
-                  <input id="petSearchInput" type="search" class="ph-input" placeholder="Pet, species, breed or owner">
+                  <label for="recordsSearchInput" class="ph-label">Search owners and pets</label>
+                  <input id="recordsSearchInput" type="search" class="ph-input" placeholder="Owner name or email, pet name, species or breed" aria-describedby="recordsSearchSummary">
                 </div>
               </div>
-              <div class="ph-dash-table-wrap">
-                <table class="ph-dash-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">Pet</th>
-                      <th scope="col">Species</th>
-                      <th scope="col">Breed</th>
-                      <th scope="col">Age</th>
-                      <th scope="col">Owner</th>
-                      <th scope="col">Medical records</th>
-                      <th scope="col">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody id="petsTable">
-                    <tr><td colspan="7" class="dashboard-table-loading"><div class="dashboard-loading-state" role="status" aria-live="polite"><div class="dashboard-loading-spinner" aria-hidden="true"></div><div><p class="dashboard-loading-title">Loading pets...</p><p class="dashboard-loading-copy">Fetching the latest PetHub records.</p></div></div></td></tr>
-                  </tbody>
-                </table>
+              <p id="recordsSearchSummary" class="ph-dash-note ph-dash-status mb-3" role="status" aria-live="polite"></p>
+
+              <!-- Owners: pet owner accounts with their pets and appointments -->
+              <div id="ownersListPanel">
+                <div class="ph-dash-table-wrap">
+                  <table class="ph-dash-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Owner</th>
+                        <th scope="col">Pets</th>
+                        <th scope="col">Appointments</th>
+                        <th scope="col">Email status</th>
+                        <th scope="col">Joined</th>
+                        <th scope="col">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody id="ownersTable">
+                      <tr><td colspan="6" class="dashboard-table-loading"><div class="dashboard-loading-state" role="status" aria-live="polite"><div class="dashboard-loading-spinner" aria-hidden="true"></div><div><p class="dashboard-loading-title">Loading owners...</p><p class="dashboard-loading-copy">Fetching the latest PetHub records.</p></div></div></td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Pets: every pet profile with its owner -->
+              <div id="petsListPanel" hidden>
+                <div class="ph-dash-table-wrap">
+                  <table class="ph-dash-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Pet</th>
+                        <th scope="col">Species</th>
+                        <th scope="col">Breed</th>
+                        <th scope="col">Age</th>
+                        <th scope="col">Owner</th>
+                        <th scope="col">Medical records</th>
+                        <th scope="col">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody id="petsTable">
+                      <tr><td colspan="7" class="dashboard-table-loading"><div class="dashboard-loading-state" role="status" aria-live="polite"><div class="dashboard-loading-spinner" aria-hidden="true"></div><div><p class="dashboard-loading-title">Loading pets...</p><p class="dashboard-loading-copy">Fetching the latest PetHub records.</p></div></div></td></tr>
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </section>
 

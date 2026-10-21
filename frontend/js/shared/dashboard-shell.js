@@ -25,7 +25,7 @@
       sections: [
         { id: 'overview', href: '#overview', icon: 'ri-dashboard-line', label: 'Overview', short: 'Overview' },
         { id: 'appointments', href: '#appointments', icon: 'ri-calendar-check-line', label: 'Appointment Management', short: 'Appointments' },
-        { id: 'records', href: '#records', icon: 'ri-health-book-line', label: 'Pet & Medical Records', short: 'Records' },
+        { id: 'records', href: '#records', icon: 'ri-health-book-line', label: 'Pet Owners & Records', short: 'Owners' },
         { id: 'system', href: '#system', icon: 'ri-settings-4-line', label: 'System Management', short: 'System' }
       ]
     }

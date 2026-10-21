@@ -47,9 +47,9 @@ describe('Dashboard navigation: four sections each', () => {
     assert.match(read('js/shared/dashboard-shell.js'), /label: 'Pet Owner Dashboard'/);
   });
 
-  it('the Admin Dashboard has Overview, Appointment Management, Pet & Medical Records and System Management, as views of one page', () => {
+  it('the Admin Dashboard has Overview, Appointment Management, Pet Owners & Records and System Management, as views of one page', () => {
     const sections = getShellSections('admin');
-    assert.deepEqual(sections.map(section => section.label), ['Overview', 'Appointment Management', 'Pet & Medical Records', 'System Management']);
+    assert.deepEqual(sections.map(section => section.label), ['Overview', 'Appointment Management', 'Pet Owners & Records', 'System Management']);
     assert.deepEqual(sections.map(section => section.href), ['#overview', '#appointments', '#records', '#system']);
 
     const page = read('pages/admin/dashboard.html');
@@ -58,6 +58,14 @@ describe('Dashboard navigation: four sections each', () => {
     assert.deepEqual(views.map(tag => tag.match(/id="(\w+)"/)[1]), ['adminViewOverview', 'adminViewAppointments', 'adminViewRecords', 'adminViewSystem']);
     assert.doesNotMatch(views[0], /\bhidden\b/, 'the Overview shows first');
     views.slice(1).forEach(tag => assert.match(tag, /\bhidden\b/));
+
+    // Each section heading, and the chatbot's description of the Admin Dashboard, use the navigation's names
+    for (const section of sections) {
+      assert.ok(page.includes(`ph-dash-title" tabindex="-1">${section.label.replace(/&/g, '&amp;')}</h1>`), `${section.label} heading`);
+    }
+    const chatbot = fs.readFileSync(path.join(BACKEND, 'services', 'aiService.js'), 'utf8');
+    assert.ok(chatbot.includes(`- Admin Dashboard: ${sections.map(section => section.label).join(', ')}`), 'the chatbot lists the four sections');
+    assert.doesNotMatch(chatbot, /Pet & Medical Records/, 'no earlier section name');
   });
 
   it('every Pet Owner page is labelled Pet Owner Dashboard, marks its own section and loads the shell after the session helpers', () => {
