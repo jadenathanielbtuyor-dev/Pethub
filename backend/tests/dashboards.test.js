@@ -1,4 +1,5 @@
-// The Pet Owner Dashboard and the Admin Dashboard as shipped: four sections each in the shared navigation
+// The Pet Owner Dashboard and Admin Dashboard's four in-page views in the shared navigation, plus the separate
+// admin Breed Catalog page
 // (frontend/js/shared/dashboard-shell.js), the pages wired to it, the retired admin pages forwarding to the matching
 // section, every API path the dashboards call being a route the backend mounts, owner scripts never calling admin
 // routes, no hard-coded figures, the AI assistant sent only a question and a page name, and online booking still
@@ -47,10 +48,13 @@ describe('Dashboard navigation: four sections each', () => {
     assert.match(read('js/shared/dashboard-shell.js'), /label: 'Pet Owner Dashboard'/);
   });
 
-  it('the Admin Dashboard has Overview, Appointment Management, Pet Owners & Records and System Management, as views of one page', () => {
+  it('the Admin Dashboard keeps its four views and links to a separate Breed Catalog page', () => {
     const sections = getShellSections('admin');
-    assert.deepEqual(sections.map(section => section.label), ['Overview', 'Appointment Management', 'Pet Owners & Records', 'System Management']);
-    assert.deepEqual(sections.map(section => section.href), ['#overview', '#appointments', '#records', '#system']);
+    const dashboardSections = sections.slice(0, 4);
+    assert.deepEqual(dashboardSections.map(section => section.label), ['Overview', 'Appointment Management', 'Pet Owners & Records', 'System Management']);
+    assert.deepEqual(dashboardSections.map(section => section.href), ['#overview', '#appointments', '#records', '#system']);
+    assert.deepEqual(sections.slice(4).map(section => [section.label, section.href]), [['Breed Catalog', 'breeds.html']]);
+    assert.ok(fs.existsSync(path.join(FRONTEND, 'pages/admin/breeds.html')));
 
     const page = read('pages/admin/dashboard.html');
     assert.match(page, /<body[^>]*data-dashboard="admin"[^>]*data-dashboard-section="overview"/);
@@ -60,11 +64,12 @@ describe('Dashboard navigation: four sections each', () => {
     views.slice(1).forEach(tag => assert.match(tag, /\bhidden\b/));
 
     // Each section heading, and the chatbot's description of the Admin Dashboard, use the navigation's names
-    for (const section of sections) {
+    for (const section of dashboardSections) {
       assert.ok(page.includes(`ph-dash-title" tabindex="-1">${section.label.replace(/&/g, '&amp;')}</h1>`), `${section.label} heading`);
     }
     const chatbot = fs.readFileSync(path.join(BACKEND, 'services', 'aiService.js'), 'utf8');
-    assert.ok(chatbot.includes(`- Admin Dashboard: ${sections.map(section => section.label).join(', ')}`), 'the chatbot lists the four sections');
+    assert.ok(chatbot.includes(`- Admin Dashboard: ${dashboardSections.map(section => section.label).join(', ')}`), 'the chatbot lists the four dashboard sections');
+    assert.match(chatbot, /- Breed Catalog: a separate Admin Dashboard page/);
     assert.doesNotMatch(chatbot, /Pet & Medical Records/, 'no earlier section name');
   });
 
@@ -105,7 +110,7 @@ describe('Dashboard navigation: four sections each', () => {
 });
 
 describe('Dashboard data: real API routes and no invented figures', () => {
-  const DASHBOARD_SCRIPTS = ['js/user/dashboard.js', 'js/user/pets.js', 'js/user/appointments.js', 'js/user/health.js', 'js/admin/dashboard.js', 'js/shared/ai-widget.js'];
+  const DASHBOARD_SCRIPTS = ['js/user/dashboard.js', 'js/user/pets.js', 'js/user/appointments.js', 'js/user/health.js', 'js/admin/dashboard.js', 'js/admin/breeds.js', 'js/shared/ai-widget.js'];
 
   // "/pets/userPets" from `${window.API_BASE_URL}/pets/userPets?user_id=...`, getOwnerJson(`/pets/...`) and
   // requestPetsApi('/pets/...') (My Pets)
@@ -139,7 +144,10 @@ describe('Dashboard data: real API routes and no invented figures', () => {
       for (const route of called) {
         // Routes ending in /:id (DELETE /pets/delete/:id, PUT /pets/update/:id, GET /pets/history/:id) are built as
         // `.../pets/delete/${id}`
-        const candidate = ['/pets/delete', '/pets/update', '/pets/history'].includes(route) ? `${route}/some-id` : route;
+        const candidate = ['/pets/delete', '/pets/update', '/pets/history', '/appointments/cancel'].includes(route) ? `${route}/some-id`
+          : route === '/pets/' || route === '/pets' ? '/pets/some-id/weight-reports'
+            : route === '/admin/breeds' ? '/admin/breeds'
+              : route === '/admin/breeds/' ? '/admin/breeds/some-id' : route;
         assert.ok(mounted.some(entry => entry.pattern.test(candidate)), `${file} calls ${route}, which the backend does not mount`);
       }
     }

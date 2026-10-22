@@ -1,8 +1,9 @@
-// PetHub dashboard shell: the four-section navigation shared by the Pet Owner Dashboard and the Admin Dashboard.
+// PetHub dashboard shell: the section navigation shared by the Pet Owner Dashboard and the Admin Dashboard.
 // - Which dashboard and section: <body data-dashboard="owner|admin" data-dashboard-section="...">; the navigation is
 //   rendered in place of <div id="dashboardNavRoot"> (styles: .ph-dash-* in assets/css/input.css).
 // - Pet Owner sections are separate pages (pages/user/dashboard.html, pets.html, appointments.html, health.html).
-//   Admin sections are views of pages/admin/dashboard.html (#overview, #appointments, #records, #system) that
+//   Admin sections are views of pages/admin/dashboard.html (#overview, #appointments, #records, #system), with the
+//   breed catalog managed on its own focused page.
 //   js/admin/dashboard.js shows through window.showAdminView().
 // - From 1024px the navigation is a sidebar beside the content; below that it is a bar of four links that stays at the
 //   top of the screen. It is never hidden and never covers the page.
@@ -26,7 +27,8 @@
         { id: 'overview', href: '#overview', icon: 'ri-dashboard-line', label: 'Overview', short: 'Overview' },
         { id: 'appointments', href: '#appointments', icon: 'ri-calendar-check-line', label: 'Appointment Management', short: 'Appointments' },
         { id: 'records', href: '#records', icon: 'ri-health-book-line', label: 'Pet Owners & Records', short: 'Owners' },
-        { id: 'system', href: '#system', icon: 'ri-settings-4-line', label: 'System Management', short: 'System' }
+        { id: 'system', href: '#system', icon: 'ri-settings-4-line', label: 'System Management', short: 'System' },
+        { id: 'breeds', href: 'breeds.html', icon: 'ri-list-check-2', label: 'Breed Catalog', short: 'Breeds' }
       ]
     }
   };

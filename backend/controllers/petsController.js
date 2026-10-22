@@ -8,6 +8,7 @@ const getPetHistory = createControllerHandler(petsService.getPetHistory, 'getPet
 const deletePet = createControllerHandler(petsService.deletePet, 'deletePet');
 const getUserMedicalRecords = createControllerHandler(petsService.getUserMedicalRecords, 'getUserMedicalRecords');
 const createMedicalRecord = createControllerHandler(petsService.createMedicalRecord, 'createMedicalRecord');
+const createOwnerWeightReport = createControllerHandler(petsService.createOwnerWeightReport, 'createOwnerWeightReport');
 
 module.exports = {
   createPet,
@@ -16,5 +17,6 @@ module.exports = {
   getPetHistory,
   deletePet,
   getUserMedicalRecords,
-  createMedicalRecord
+  createMedicalRecord,
+  createOwnerWeightReport
 };

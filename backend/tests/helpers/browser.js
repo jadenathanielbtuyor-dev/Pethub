@@ -38,10 +38,11 @@ const FETCH_STUB = `(() => {
   const scenario = JSON.parse(localStorage.getItem('__scenario') || '{}');
   window.fetch = (input, init = {}) => {
     const url = String(input && input.url ? input.url : input);
-    const route = url.replace(/^https?:\\/\\/[^/]+/, '').split('?')[0];
+    const requestPath = url.replace(/^https?:\\/\\/[^/]+/, '');
+    const route = requestPath.split('?')[0];
     const method = (init.method || 'GET').toUpperCase();
     window.__requests.push({ method, route, body: init.body || null });
-    const entry = (scenario.routes || {})[route];
+    const entry = (scenario.routes || {})[requestPath] || (scenario.routes || {})[route];
     const answer = (Array.isArray(entry) ? (entry.length > 1 ? entry.shift() : entry[0]) : entry) || { status: 404, body: { error: 'not stubbed ' + route } };
     return new Promise(resolve => setTimeout(() => resolve(new Response(JSON.stringify(answer.body), { status: answer.status || 200, headers: { 'Content-Type': 'application/json' } })), answer.delay || 30));
   };

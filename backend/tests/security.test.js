@@ -116,6 +116,17 @@ describe('Database key selection (config/env.js)', () => {
     }
   }
 
+  function requireConfig(variables) {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'pethub-env-'));
+    try {
+      const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, SUPABASE_URL: 'https://fake.supabase.invalid', ...variables };
+      const script = `require(${JSON.stringify(path.join(BACKEND, 'config', 'env.js'))}).requireSupabaseConfig();`;
+      return spawnSync(process.execPath, ['-e', script], { cwd, env, encoding: 'utf8' });
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true });
+    }
+  }
+
   it('uses the server-only service role key when it is set', () => {
     assert.deepEqual(selectedKey({ SUPABASE_SERVICE_KEY: fakeJwt('service_role'), SUPABASE_ANON_KEY: 'sb_publishable_fake' }), { name: 'SUPABASE_SERVICE_KEY', role: 'service_role' });
     assert.deepEqual(selectedKey({ SUPABASE_SERVICE_KEY: 'sb_secret_fake', SUPABASE_ANON_KEY: 'sb_publishable_fake' }), { name: 'SUPABASE_SERVICE_KEY', role: 'service_role' });
@@ -125,6 +136,15 @@ describe('Database key selection (config/env.js)', () => {
     assert.deepEqual(selectedKey({ SUPABASE_ANON_KEY: 'sb_publishable_fake' }), { name: 'SUPABASE_ANON_KEY', role: 'anon' });
     assert.deepEqual(selectedKey({ SUPABASE_SERVICE_KEY: 'sb_publishable_fake', SUPABASE_ANON_KEY: 'sb_publishable_fake' }), { name: 'SUPABASE_ANON_KEY', role: 'anon' });
     assert.deepEqual(selectedKey({ SUPABASE_SERVICE_KEY: fakeJwt('anon'), SUPABASE_ANON_KEY: 'sb_publishable_fake' }), { name: 'SUPABASE_ANON_KEY', role: 'anon' });
+    assert.deepEqual(selectedKey({ SUPABASE_SERVICE_KEY: 'not-a-recognized-key', SUPABASE_ANON_KEY: 'sb_publishable_fake' }), { name: 'SUPABASE_ANON_KEY', role: 'anon' });
+  });
+
+  it('requires a service-role key for production startup', () => {
+    const publicKey = requireConfig({ NODE_ENV: 'production', SUPABASE_ANON_KEY: 'sb_publishable_fake' });
+    assert.notEqual(publicKey.status, 0);
+    assert.match(publicKey.stderr, /Production requires a service-role Supabase key/);
+    const serviceKey = requireConfig({ NODE_ENV: 'production', SUPABASE_SERVICE_KEY: fakeJwt('service_role') });
+    assert.equal(serviceKey.status, 0, serviceKey.stderr);
   });
 });
 

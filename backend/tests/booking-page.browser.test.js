@@ -36,7 +36,7 @@ const SERVICES = SERVICE_CATALOG.map(entry => ({
   bookable: true
 }));
 const CHECK_UP = 'Dog & Cat Full Check Up';
-const PETS = [{ id: 'p1', user_id: 'u1', name: 'Mochi', species: 'Dog' }, { id: 'p2', user_id: 'u1', name: 'Luna', species: 'Cat' }];
+const PETS = [{ id: 'p1', user_id: 'u1', name: 'Mochi', species: 'Dog', breed: 'Aspin', age: 3 }, { id: 'p2', user_id: 'u1', name: 'Luna', species: 'Cat', breed: 'Puspin', age: 2 }];
 
 function findBrowser() {
   const candidates = [
@@ -179,6 +179,18 @@ async function openTab({ url, scenario = {}, dark = false, width = 1280 }) {
   return { evaluate, waitFor, errors, payMongoNavigations, close, send };
 }
 
+async function clickElement(tab, selector) {
+  const box = await tab.evaluate(`(() => {
+    const element = document.querySelector(${JSON.stringify(selector)});
+    element.scrollIntoView({ block: 'center', behavior: 'instant' });
+    const rect = element.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  })()`);
+  for (const type of ['mousePressed', 'mouseReleased']) {
+    await tab.send('Input.dispatchMouseEvent', { type, x: box.x, y: box.y, button: 'left', clickCount: 1 });
+  }
+}
+
 const SUBMIT = 'document.querySelector("#appointmentForm button[type=submit]")';
 const summaryState = `(() => {
   const text = id => (document.getElementById(id) || {}).textContent?.trim() || '';
@@ -229,6 +241,44 @@ const lowContrastIn = selector => `(() => { ${CONTRAST}
 describe('Booking page in a browser (mocked API)', { skip }, () => {
   before(startBrowser);
   after(stopBrowser);
+
+  it('opens an accessible pet picker, shows only the owner pets, supports Escape, and keeps the selected pet in the form', async () => {
+    const tab = await openTab({ url: BOOKING_PAGE });
+    try {
+      assert.ok(await tab.waitFor(petsLoaded));
+      await clickElement(tab, '#choosePetButton');
+      assert.ok(await tab.waitFor(`document.getElementById('petPickerDialog').open`));
+      assert.equal(await tab.evaluate(`document.getElementById('petPickerDialog').getAttribute('aria-labelledby')`), 'petPickerTitle');
+      assert.deepEqual(await tab.evaluate(`[...document.querySelectorAll('[data-pet-picker-id]')].map(card => card.innerText.replace(/\\s+/g, ' ').trim())`), [
+        'Mochi Dog · Aspin · 3 years', 'Luna Cat · Puspin · 2 years'
+      ]);
+      assert.equal(await tab.evaluate(`document.querySelector('[data-pet-picker-id="p1"]').getAttribute('aria-pressed')`), 'false');
+
+      await tab.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
+      await tab.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
+      assert.ok(await tab.waitFor(`!document.getElementById('petPickerDialog').open`));
+      assert.equal(await tab.evaluate(`document.activeElement.id`), 'choosePetButton', 'closing the modal restores focus to its trigger');
+
+      await clickElement(tab, '#choosePetButton');
+      await tab.evaluate(`document.querySelector('[data-pet-picker-id="p2"]').click()`);
+      assert.equal(await tab.evaluate(`document.getElementById('petSelect').value`), 'p2');
+      assert.match(await tab.evaluate(`document.getElementById('chosenPetLabel').textContent`), /Luna · Cat \/ Puspin/);
+      assert.ok(await tab.waitFor(`!document.getElementById('petPickerDialog').open`));
+      assert.deepEqual(tab.errors, []);
+    } finally { await tab.close(); }
+  });
+
+  it('offers pet registration from the picker empty state', async () => {
+    const tab = await openTab({ url: BOOKING_PAGE, scenario: { pets: [] } });
+    try {
+      assert.ok(await tab.waitFor(`document.getElementById('petPickerList').innerText.includes('No pets registered yet')`));
+      await tab.evaluate(`document.getElementById('choosePetButton').click()`);
+      assert.ok(await tab.waitFor(`document.getElementById('petPickerDialog').open`));
+      assert.equal(await tab.evaluate(`document.querySelector('#petPickerList a').getAttribute('href')`), 'pets.html');
+      assert.match(await tab.evaluate(`document.getElementById('petPickerList').innerText`), /Add a pet profile before booking/);
+      assert.deepEqual(tab.errors, []);
+    } finally { await tab.close(); }
+  });
 
   it('shows the booking summary and a disabled "Book Appointment" before anything is chosen, with no payment content', async () => {
     const tab = await openTab({ url: BOOKING_PAGE, scenario: { listDelay: 1500 } });
@@ -407,7 +457,7 @@ describe('Booking page in a browser (mocked API)', { skip }, () => {
       assert.match(list, /Pending/);
       assert.match(list, /Approved/);
       assert.doesNotMatch(list, PAYMENT_WORDING);
-      assert.equal(await tab.evaluate(`document.querySelectorAll('#appointmentsList button').length`), 0, 'no payment buttons on the cards');
+      assert.equal(await tab.evaluate(`![...document.querySelectorAll('#appointmentsList button')].some(button => /pay|deposit|checkout/i.test(button.textContent))`), true, 'appointment actions contain no payment buttons');
       // Status badges use the shared, readable status colours
       assert.deepEqual(await tab.evaluate(`[...document.querySelectorAll('#appointmentsList .ph-status')].map(badge => badge.className.match(/ph-status-(\\w+)/)[1]).sort()`), ['approved', 'pending']);
       assert.ok(await tab.waitFor('document.getAnimations().length === 0'));

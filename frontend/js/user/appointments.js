@@ -13,9 +13,9 @@
 //   everything again, including that the clinic has confirmed the service's duration (409 until it has) and that the
 //   slot is free (400 with a suggested time) -> on success the appointment is saved as Pending and the list is reloaded
 //   from the server; on failure nothing is saved and the form keeps the owner's choices.
-// - Not available online: cancelling or rescheduling. Only administrators change a status
-//   (PUT /admin/dashboard/appointment-status), so each card tells the owner what happens next and the page points to
-//   the clinic for changes.
+// - Owners may cancel their own Pending or Approved appointments at least two hours before clinic-local start.
+//   The server recomputes this cutoff and conditionally updates only the current owner/status; the browser countdown
+//   is explanatory and never authorizes the change. Rescheduling remains clinic-managed.
 
 // Module-level user variable
 let currentUser = null;
@@ -52,6 +52,9 @@ let bookingSlotUnavailable = false;
 let loadedAppointments = [];
 const appointmentListFilter = { when: "upcoming", status: "all" };
 const UPCOMING_APPOINTMENT_STATUSES = ["Pending", "Approved"];
+const CLINIC_TIME_ZONE = "Asia/Manila";
+const APPOINTMENT_CANCEL_CUTOFF_MS = 2 * 60 * 60 * 1000;
+const appointmentCancellationInProgress = new Set();
 
 // Initialize on page load
 document.addEventListener("DOMContentLoaded", initAppointments);
@@ -78,6 +81,7 @@ function initAppointments() {
   // Load appointments and setup form
   setupAppointmentDateMin();
   setupServiceDurationHint();
+  setupPetPicker();
   renderAppointmentPetOptions();
   renderServiceOptions();
   updateAppointmentPetBookingState();
@@ -92,16 +96,48 @@ function initAppointments() {
 }
 
 function getTodayDateValue(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  const parts = clinicDateTimeParts(date);
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 function getTimeInputValue(date = new Date()) {
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  return `${hours}:${minutes}`;
+  const parts = clinicDateTimeParts(date);
+  return `${parts.hour}:${parts.minute}`;
+}
+
+function clinicDateTimeParts(date) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: CLINIC_TIME_ZONE,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+  }).formatToParts(date);
+  return Object.fromEntries(parts.map(part => [part.type, part.value]));
+}
+
+function clinicLocalDateTime(dateValue, timeValue) {
+  const dateMatch = String(dateValue || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const timeMatch = String(timeValue || "").trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!dateMatch || !timeMatch) return null;
+  const [year, month, day] = dateMatch.slice(1).map(Number);
+  const hours = Number(timeMatch[1]);
+  const minutes = Number(timeMatch[2]);
+  const seconds = Number(timeMatch[3] || 0);
+  if (month < 1 || month > 12 || day < 1 || day > 31 || hours > 23 || minutes > 59 || seconds > 59) return null;
+
+  const targetWallMs = Date.UTC(year, month - 1, day, hours, minutes, seconds);
+  let candidateMs = targetWallMs;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const parts = clinicDateTimeParts(new Date(candidateMs));
+    const representedWallMs = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute), Number(parts.second));
+    const correction = targetWallMs - representedWallMs;
+    candidateMs += correction;
+    if (correction === 0) break;
+  }
+  const verified = clinicDateTimeParts(new Date(candidateMs));
+  return Number(verified.year) === year && Number(verified.month) === month && Number(verified.day) === day &&
+    Number(verified.hour) === hours && Number(verified.minute) === minutes && Number(verified.second) === seconds
+    ? new Date(candidateMs)
+    : null;
 }
 
 function setupAppointmentDateMin() {
@@ -587,48 +623,7 @@ function updateServiceTypeHint() {
 }
 
 function parseAppointmentDateTime(dateValue, timeValue) {
-  const dateMatch = String(dateValue || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  const timeMatch = String(timeValue || "").trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
-  if (!dateMatch || !timeMatch) return null;
-
-  const year = Number(dateMatch[1]);
-  const month = Number(dateMatch[2]);
-  const day = Number(dateMatch[3]);
-  const hours = Number(timeMatch[1]);
-  const minutes = Number(timeMatch[2]);
-  const seconds = Number(timeMatch[3] || 0);
-
-  if (
-    !Number.isInteger(year) ||
-    !Number.isInteger(month) ||
-    !Number.isInteger(day) ||
-    !Number.isInteger(hours) ||
-    !Number.isInteger(minutes) ||
-    !Number.isInteger(seconds) ||
-    month < 1 ||
-    month > 12 ||
-    day < 1 ||
-    day > 31 ||
-    hours < 0 ||
-    hours > 23 ||
-    minutes < 0 ||
-    minutes > 59 ||
-    seconds < 0 ||
-    seconds > 59
-  ) {
-    return null;
-  }
-
-  const appointmentDate = new Date(year, month - 1, day, hours, minutes, seconds, 0);
-  if (
-    appointmentDate.getFullYear() !== year ||
-    appointmentDate.getMonth() !== month - 1 ||
-    appointmentDate.getDate() !== day
-  ) {
-    return null;
-  }
-
-  return appointmentDate;
+  return clinicLocalDateTime(dateValue, timeValue);
 }
 
 function getEstimatedAppointmentEndTime(serviceType, dateValue, timeValue) {
@@ -640,6 +635,7 @@ function getEstimatedAppointmentEndTime(serviceType, dateValue, timeValue) {
   return endTime.toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
+    timeZone: CLINIC_TIME_ZONE,
   });
 }
 
@@ -647,12 +643,13 @@ function formatAppointmentDateDisplay(dateValue) {
   const match = String(dateValue || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!match) return "N/A";
 
-  const appointmentDate = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  const appointmentDate = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
   if (Number.isNaN(appointmentDate.getTime())) return "N/A";
   return appointmentDate.toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
     day: "numeric",
+    timeZone: "UTC",
   });
 }
 
@@ -662,7 +659,7 @@ function getAppointmentTimeRangeDisplay(appointment) {
   if (!Number.isFinite(durationMinutes) || !startTime) return "N/A";
 
   const endTime = new Date(startTime.getTime() + durationMinutes * 60000);
-  const formatOptions = { hour: "numeric", minute: "2-digit" };
+  const formatOptions = { hour: "numeric", minute: "2-digit", timeZone: CLINIC_TIME_ZONE };
   return `${startTime.toLocaleTimeString("en-US", formatOptions)} - ${endTime.toLocaleTimeString("en-US", formatOptions)}`;
 }
 
@@ -684,9 +681,10 @@ function formatSuggestedAppointmentTimeDisplay(timeValue) {
     return "";
   }
 
-  return new Date(2000, 0, 1, hours, minutes, seconds).toLocaleTimeString("en-US", {
+  return new Date(Date.UTC(2000, 0, 1, hours, minutes, seconds)).toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
+    timeZone: "UTC",
   });
 }
 
@@ -791,6 +789,67 @@ function renderAppointmentPetOptions() {
   if (previousValue && getAppointmentPetById(previousValue)) {
     petSelect.value = previousValue;
   }
+  renderPetPicker();
+}
+
+function setupPetPicker() {
+  const dialog = document.getElementById("petPickerDialog");
+  const openButton = document.getElementById("choosePetButton");
+  const closeButton = document.getElementById("closePetPicker");
+  const list = document.getElementById("petPickerList");
+  if (!dialog || !openButton || !list) return;
+
+  openButton.addEventListener("click", () => {
+    if (appointmentPetsError) return;
+    if (!dialog.open) dialog.showModal();
+  });
+  closeButton?.addEventListener("click", () => dialog.close());
+  list.addEventListener("click", event => {
+    const option = event.target.closest("[data-pet-picker-id]");
+    if (!option) return;
+    const petSelect = getAppointmentPetSelect();
+    if (!petSelect || !getAppointmentPetById(option.dataset.petPickerId)) return;
+    petSelect.value = option.dataset.petPickerId;
+    petSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    dialog.close();
+  });
+}
+
+function renderPetPicker() {
+  const list = document.getElementById("petPickerList");
+  const chosenLabel = document.getElementById("chosenPetLabel");
+  const openButton = document.getElementById("choosePetButton");
+  const petSelect = getAppointmentPetSelect();
+  if (chosenLabel) {
+    const selectedPet = getAppointmentPetById(petSelect?.value);
+    chosenLabel.textContent = selectedPet
+      ? `${selectedPet.name} · ${[selectedPet.species, selectedPet.breed].filter(Boolean).join(" / ")}`
+      : appointmentPetsError ? "Unable to load your pets" : !appointmentPetsLoaded ? "Loading your pets..." : "Choose a pet";
+  }
+  if (openButton) openButton.disabled = Boolean(appointmentPetsError);
+  if (!list) return;
+  if (appointmentPetsError) {
+    list.innerHTML = `<p class="ph-dash-error-text" role="alert">${escapeHtml(appointmentPetsError)}</p>`;
+    return;
+  }
+  if (!appointmentPetsLoaded) {
+    list.innerHTML = `<div class="dashboard-loading-state" role="status"><div class="dashboard-loading-spinner" aria-hidden="true"></div><p>Loading your pets...</p></div>`;
+    return;
+  }
+  if (currentUserPets.length === 0) {
+    list.innerHTML = `<div class="ph-dash-empty"><p class="ph-dash-empty-title">No pets registered yet</p><p class="ph-dash-empty-text">Add a pet profile before booking an appointment.</p><a href="pets.html" class="ph-btn ph-btn-primary ph-btn-sm">Register a pet</a></div>`;
+    return;
+  }
+  const selectedId = String(petSelect?.value || "");
+  list.innerHTML = currentUserPets.map(pet => {
+    const facts = [pet.species, pet.breed, Number.isFinite(Number(pet.age)) ? `${pet.age} years` : ""]
+      .filter(Boolean).join(" · ");
+    return `<button type="button" class="ph-pet-picker-option${String(pet.id) === selectedId ? " is-selected" : ""}" data-pet-picker-id="${escapeHtml(pet.id)}" aria-pressed="${String(pet.id) === selectedId}">
+      <span class="ph-pet-picker-icon" aria-hidden="true"><i class="${String(pet.species).toLowerCase() === "cat" ? "ri-mickey-line" : "ri-bear-smile-line"}"></i></span>
+      <span class="ph-pet-picker-copy"><strong>${escapeHtml(pet.name)}</strong><span>${escapeHtml(facts || "Species details not recorded")}</span></span>
+      <i class="ri-check-line ph-pet-picker-check" aria-hidden="true"></i>
+    </button>`;
+  }).join("");
 }
 
 // "Request an appointment" on My Pets names the pet's existing profile (?pet=<id>). Only one of the owner's own loaded
@@ -817,6 +876,7 @@ function updateAppointmentPetBookingState() {
   if (petSelect) {
     petSelect.disabled = shouldDisableBooking;
   }
+  renderPetPicker();
 
   if (submitButton && !appointmentSubmitInProgress && !isFormSubmitting(form)) {
     submitButton.disabled = shouldDisableSubmit;
@@ -959,6 +1019,39 @@ function getAppointmentStartMs(appointment) {
   return startTime ? startTime.getTime() : 0;
 }
 
+function isOwnerCancellationAllowed(appointment, now = Date.now()) {
+  return getOwnerCancellationState(appointment, now).canCancel;
+}
+
+function formatClinicDateTime(timestamp) {
+  if (!Number.isFinite(timestamp)) return '';
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: CLINIC_TIME_ZONE,
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }).format(new Date(timestamp));
+}
+
+function getOwnerCancellationState(appointment, now = Date.now()) {
+  const status = getAppointmentStatusLabel(appointment?.status);
+  if (!['Pending', 'Approved'].includes(status)) {
+    return { canCancel: false, reason: `Cancellation is unavailable because this appointment is ${status.toLowerCase()}.` };
+  }
+
+  const startMs = getAppointmentStartMs(appointment);
+  if (!startMs) return { canCancel: false, reason: 'Cancellation is unavailable because the scheduled clinic time could not be verified. Contact the clinic.' };
+
+  const deadlineMs = startMs - APPOINTMENT_CANCEL_CUTOFF_MS;
+  if (now > deadlineMs && now < startMs) {
+    return { canCancel: false, deadlineMs, reason: `The two-hour cancellation deadline passed at ${formatClinicDateTime(deadlineMs)} (${CLINIC_TIME_ZONE}). Contact the clinic for help.` };
+  }
+  if (now >= startMs) {
+    return { canCancel: false, deadlineMs, reason: 'The appointment has started or passed, so owner cancellation is unavailable. Contact the clinic for help.' };
+  }
+
+  return { canCancel: true, deadlineMs };
+}
+
 function setAppointmentListSummary(text) {
   const summary = document.getElementById("appointmentListSummary");
   if (summary) summary.textContent = text;
@@ -1006,6 +1099,7 @@ function renderAppointmentList() {
 function getAppointmentCardHtml(apt, isUpcoming) {
   const handledBy = getHandledByLabel(apt);
   const status = getAppointmentStatusLabel(apt.status);
+  const cancellation = getOwnerCancellationState(apt);
   const fact = (label, value) => `<div><dt>${escapeHtml(label)}</dt> <dd>${escapeHtml(value)}</dd></div>`;
   return `
     <article class="ph-dash-card">
@@ -1023,6 +1117,7 @@ function getAppointmentCardHtml(apt, isUpcoming) {
         ${handledBy ? fact("Handled by", handledBy) : ""}
       </dl>
       <p class="ph-dash-next"><i class="ri-arrow-right-circle-line" aria-hidden="true"></i><span>${escapeHtml(getAppointmentNextStep(status, isUpcoming))}</span></p>
+      ${cancellation.canCancel ? `<div class="ph-dash-card-actions"><button type="button" class="ph-btn ph-btn-secondary ph-btn-sm" data-appointment-cancel="${escapeHtml(apt.id)}"><i class="ri-close-circle-line" aria-hidden="true"></i>Cancel appointment</button><span class="ph-dash-note">Cancel by ${escapeHtml(formatClinicDateTime(cancellation.deadlineMs))} (${CLINIC_TIME_ZONE})</span></div>` : `<p class="ph-dash-note" role="status">${escapeHtml(cancellation.reason)}</p>`}
     </article>
   `;
 }
@@ -1051,6 +1146,53 @@ function setupAppointmentFilters() {
     appointmentListFilter.status = event.target.value;
     renderAppointmentList();
   });
+  document.getElementById("appointmentsList")?.addEventListener("click", handleAppointmentCancellationClick);
+}
+
+async function handleAppointmentCancellationClick(event) {
+  const button = event.target.closest("[data-appointment-cancel]");
+  if (!button) return;
+  const appointmentId = String(button.dataset.appointmentCancel || "");
+  if (!appointmentId || appointmentCancellationInProgress.has(appointmentId)) return;
+  const appointment = loadedAppointments.find(item => String(item.id) === appointmentId);
+  if (!isOwnerCancellationAllowed(appointment)) {
+    showAppointmentActionFeedback("The cancellation window has closed. Contact the clinic for help.", "error");
+    renderAppointmentList();
+    return;
+  }
+  const confirmed = window.confirm("Cancel this appointment? This will change its status to Cancelled.");
+  if (!confirmed) return;
+
+  appointmentCancellationInProgress.add(appointmentId);
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  try {
+    const response = await fetch(`${window.API_BASE_URL}/appointments/cancel/${encodeURIComponent(appointmentId)}`, { method: "POST" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.success === false) {
+      const error = new Error(data.error || "Could not cancel this appointment.");
+      error.status = response.status;
+      throw error;
+    }
+    showAppointmentActionFeedback(data.already_cancelled ? "This appointment was already cancelled." : "Appointment cancelled.", "success");
+    await loadAppointments(currentUser.id);
+  } catch (error) {
+    showAppointmentActionFeedback(error.message || "Could not cancel this appointment.", "error");
+    if (error.status === 409) await loadAppointments(currentUser.id);
+    else button.disabled = false;
+  } finally {
+    appointmentCancellationInProgress.delete(appointmentId);
+    button.removeAttribute("aria-busy");
+  }
+}
+
+function showAppointmentActionFeedback(message, type) {
+  const container = document.getElementById("appointmentActionFeedback");
+  if (!container) return;
+  container.textContent = message || "";
+  container.className = message
+    ? `mb-3 rounded-lg p-3 text-sm ${type === "error" ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`
+    : "mb-3";
 }
 
 function getHandledByLabel(appointment) {

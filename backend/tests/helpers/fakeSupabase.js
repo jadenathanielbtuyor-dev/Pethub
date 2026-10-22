@@ -152,7 +152,10 @@ class FakeDatabase {
   }
 
   client() {
-    return { from: tableName => new FakeQuery(this, tableName) };
+    return {
+      from: tableName => new FakeQuery(this, tableName),
+      rpc: (functionName, args) => this.runRpc(functionName, args)
+    };
   }
 
   table(name) {
@@ -190,6 +193,32 @@ class FakeDatabase {
     return { data: null, error: { code, message, details: null, hint: null } };
   }
 
+  async runRpc(functionName, args = {}) {
+    this.log.push({ table: 'appointments', action: 'rpc', functionName });
+    const interceptionIndex = this.interceptors.findIndex(entry => entry.table === 'appointments' && entry.action === 'rpc');
+    if (interceptionIndex >= 0) {
+      const [interception] = this.interceptors.splice(interceptionIndex, 1);
+      const outcome = await interception.handler({ functionName, payload: args, action: 'rpc' }, this);
+      if (outcome) return outcome;
+    }
+    if (functionName !== 'cancel_appointment_for_owner') {
+      return this.error('42883', `function ${functionName} does not exist`);
+    }
+
+    const appointment = this.rows.appointments.find(row =>
+      String(row.id) === String(args.p_appointment_id)
+      && String(row.user_id) === String(args.p_owner_id)
+      && String(row.status) === String(args.p_expected_status)
+    );
+    if (!appointment || !['Pending', 'Approved'].includes(String(args.p_expected_status))) return { data: false, error: null, status: 200 };
+
+    const { getAppointmentStartTimestamp } = require('../../validators/appointmentsValidator');
+    const start = getAppointmentStartTimestamp(appointment.appointment_date, appointment.appointment_time, 'Asia/Manila');
+    if (!Number.isFinite(start) || start - Date.now() < 2 * 60 * 60 * 1000) return { data: false, error: null, status: 200 };
+    appointment.status = 'Cancelled';
+    return { data: true, error: null, status: 200 };
+  }
+
   checkColumns(definition, columns, code) {
     const unknown = columns.find(column => !definition.columns.includes(column));
     if (!unknown) return null;
@@ -212,7 +241,7 @@ class FakeDatabase {
       const seen = new Set();
       for (const row of [...untouchedRows, ...candidateRows]) {
         if (index.where && !index.where(row)) continue;
-        const key = index.columns.map(column => row[column]);
+        const key = index.columns.map(column => index.normalize ? String(row[column]).trim().toLocaleLowerCase('en') : row[column]);
         if (key.some(part => part === null || part === undefined)) continue;
         const serialized = JSON.stringify(key);
         if (seen.has(serialized)) {
@@ -346,6 +375,17 @@ function createPetHubDatabase({ usersProfileColumns = true } = {}) {
       uuidColumns: ['id', 'user_id'],
       defaults: { id: uuid, created_at: now }
     },
+    pet_breed_catalog: {
+      columns: ['id', 'species', 'name', 'recognition_status', 'source_organization', 'source_url', 'source_reviewed_at', 'is_active', 'created_by', 'updated_by', 'created_at', 'updated_at'],
+      uuidColumns: ['id', 'created_by', 'updated_by'],
+      defaults: { id: uuid, recognition_status: () => 'unverified', is_active: () => true, created_at: now, updated_at: now },
+      uniqueIndexes: [{ name: 'pet_breed_catalog_species_name_ci_key', columns: ['species', 'name'], normalize: true }]
+    },
+    owner_pet_weight_reports: {
+      columns: ['id', 'pet_id', 'user_id', 'weight_kg', 'source', 'recorded_at', 'created_at'],
+      uuidColumns: ['id', 'pet_id', 'user_id'],
+      defaults: { id: uuid, source: () => 'owner_reported', recorded_at: now, created_at: now }
+    },
     appointments: {
       columns: [
         'id', 'user_id', 'pet_id', 'pet_name', 'service_type', 'estimated_duration_minutes', 'appointment_date',
@@ -383,9 +423,10 @@ function createPetHubDatabase({ usersProfileColumns = true } = {}) {
       defaults: { id: uuid, created_at: now }
     },
     medical_records: {
-      columns: ['id', 'pet_id', 'record_date', 'created_at', 'created_by', 'weight', 'vaccination_status', 'treatment', 'medical_notes'],
-      uuidColumns: ['id', 'pet_id'],
-      defaults: { id: uuid, created_at: now }
+      columns: ['id', 'pet_id', 'appointment_id', 'record_date', 'created_at', 'created_by', 'weight', 'vaccination_status', 'treatment', 'medical_notes'],
+      uuidColumns: ['id', 'pet_id', 'appointment_id', 'created_by'],
+      defaults: { id: uuid, created_at: now, appointment_id: () => null },
+      uniqueIndexes: [{ name: 'medical_records_one_per_appointment_key', columns: ['appointment_id'], where: row => row.appointment_id !== null && row.appointment_id !== undefined }]
     },
     contact_messages: {
       columns: ['id', 'fullname', 'email', 'message', 'status', 'created_at'],
@@ -394,7 +435,10 @@ function createPetHubDatabase({ usersProfileColumns = true } = {}) {
   };
 
   Object.entries(definitions).forEach(([name, definition]) => { definition.name = name; });
-  return new FakeDatabase(definitions);
+  const database = new FakeDatabase(definitions);
+  const { BREED_CATALOG_SEED } = require('../../constants/breedCatalog');
+  BREED_CATALOG_SEED.forEach(entry => database.seed('pet_breed_catalog', entry));
+  return database;
 }
 
 module.exports = {

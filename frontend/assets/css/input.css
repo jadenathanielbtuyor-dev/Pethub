@@ -5684,3 +5684,185 @@ body.dark-mode .ph-chip-link:focus-visible {
 body.dark-mode .ph-admin-history {
   border-top-color: #374151;
 }
+
+/* Compact pet choice for the appointment form */
+.ph-pet-picker-dialog {
+  width: min(34rem, calc(100vw - 2rem));
+  max-width: none;
+  max-height: min(42rem, calc(100dvh - 2rem));
+  padding: 0;
+  overflow: auto;
+  border: 2px solid var(--ph-peach);
+  border-radius: 1.25rem;
+  color: var(--ph-ink);
+  background: #ffffff;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.28);
+}
+
+.ph-pet-picker-dialog::backdrop {
+  background: rgba(15, 23, 42, 0.56);
+  backdrop-filter: blur(2px);
+}
+
+.ph-pet-picker-content {
+  padding: 1.25rem;
+}
+
+.ph-pet-picker-list,
+.ph-breed-catalog-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.ph-pet-picker-option {
+  display: flex;
+  width: 100%;
+  min-height: 4.5rem;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.75rem 1rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 0.875rem;
+  background: #ffffff;
+  color: var(--ph-ink);
+  text-align: left;
+}
+
+.ph-pet-picker-option:hover,
+.ph-pet-picker-option.is-selected {
+  border-color: var(--ph-orange-strong);
+  background: #fff7ed;
+}
+
+.ph-pet-picker-option:focus-visible {
+  outline: 3px solid var(--ph-orange-strong);
+  outline-offset: 2px;
+}
+
+.ph-pet-picker-icon {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 9999px;
+  background: #ffedd5;
+  color: #c2410c;
+  font-size: 1.35rem;
+}
+
+.ph-pet-picker-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.125rem;
+}
+
+.ph-pet-picker-copy span {
+  color: var(--ph-ink-muted);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.ph-pet-picker-check {
+  margin-left: auto;
+  color: #c2410c;
+  opacity: 0;
+  font-size: 1.25rem;
+}
+
+.ph-pet-picker-option.is-selected .ph-pet-picker-check {
+  opacity: 1;
+}
+
+.ph-breed-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: 1rem;
+}
+
+.ph-breed-form > button {
+  justify-self: start;
+}
+
+.ph-breed-edit-form {
+  max-width: 36rem;
+}
+
+.ph-breed-catalog-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.875rem;
+  background: #ffffff;
+}
+
+.ph-breed-catalog-main {
+  min-width: 0;
+}
+
+.ph-breed-catalog-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  margin-top: 0.375rem;
+  color: var(--ph-ink-muted);
+  font-size: 0.8125rem;
+}
+
+.ph-breed-catalog-meta a {
+  color: var(--ph-orange-deep);
+  font-weight: 700;
+}
+
+.ph-owner-measurement {
+  padding: 0.875rem;
+}
+
+body.dark-mode .ph-pet-picker-dialog,
+body.dark-mode .ph-pet-picker-option,
+body.dark-mode .ph-breed-catalog-row {
+  border-color: #374151;
+  color: #f3f4f6;
+  background: #111827;
+}
+
+body.dark-mode .ph-pet-picker-option:hover,
+body.dark-mode .ph-pet-picker-option.is-selected {
+  border-color: #fdba74;
+  background: #431407;
+}
+
+body.dark-mode .ph-pet-picker-icon {
+  background: #7c2d12;
+  color: #fed7aa;
+}
+
+body.dark-mode .ph-pet-picker-copy span,
+body.dark-mode .ph-breed-catalog-meta {
+  color: #d1d5db;
+}
+
+body.dark-mode .ph-breed-catalog-meta a,
+body.dark-mode .ph-pet-picker-check {
+  color: #fdba74;
+}
+
+@media (max-width: 640px) {
+  .ph-breed-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ph-breed-catalog-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ph-breed-catalog-row .ph-dash-card-actions {
+    justify-content: flex-start;
+  }
+}

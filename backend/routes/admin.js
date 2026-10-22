@@ -7,6 +7,7 @@ const apiResponse = require('../utils/apiResponse');
 const logger = require('../utils/logger');
 const asyncHandler = require('../middleware/asyncHandler');
 const { requireAuth } = require('../middleware/requireAuth');
+const breedCatalogController = require('../controllers/breedCatalogController');
 
 const router = express.Router();
 
@@ -58,6 +59,9 @@ router.get('/dashboard/users', adminController.getAllUsers);
  * Get all pets
  */
 router.get('/dashboard/pets', adminController.getAllPets);
+router.get('/breeds', breedCatalogController.getBreedCatalog);
+router.post('/breeds', breedCatalogController.createBreed);
+router.put('/breeds/:id', breedCatalogController.updateBreed);
 
 /**
  * GET /admin/dashboard/appointments

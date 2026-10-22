@@ -20,8 +20,8 @@
      - books: GET /appointments/services (the clinic's nine services) and POST /appointments/create. A service can only be
        booked once the clinic has confirmed its duration; until then the server refuses it (409) and the form keeps
        "Book Appointment" disabled. New bookings are always Pending until an administrator approves them.
-     Owners cannot cancel or reschedule online: only administrators change an appointment's status
-     (PUT /admin/dashboard/appointment-status), so the page points owners to the clinic for changes. -->
+     Owners can cancel their own Pending or Approved appointments at least two hours before the start; the backend
+     enforces ownership, status and the Asia/Manila cutoff. Rescheduling remains a clinic-managed change. -->
 <body class="ph-dash-page user-page" data-dashboard="owner" data-dashboard-section="appointments">
   <!-- Apply the saved theme before first paint; main.js still owns the toggle -->
   <script>try { if (localStorage.getItem('darkMode') === 'true') { document.documentElement.classList.add('dark'); document.body.classList.add('dark-mode'); } } catch (e) {}</script>
@@ -38,7 +38,7 @@
           <div>
             <p class="ph-dash-eyebrow">Pet Owner Dashboard</p>
             <h1 class="ph-dash-title">Appointments</h1>
-            <p class="ph-dash-lead">Follow each booking from Pending to Approved and Completed, and book a visit when online booking is open.</p>
+            <p class="ph-dash-lead">Follow each booking, cancel eligible requests, and book a visit when online booking is open.</p>
           </div>
         </header>
 
@@ -69,6 +69,7 @@
               </div>
             </div>
             <p id="appointmentListSummary" class="ph-dash-note mb-3 ph-dash-status" role="status" aria-live="polite"></p>
+            <div id="appointmentActionFeedback" class="mb-3" role="status" aria-live="polite"></div>
 
             <div id="appointmentsList" class="ph-dash-stack">
               <div class="dashboard-loading-state" role="status" aria-live="polite">
@@ -80,7 +81,7 @@
               </div>
             </div>
 
-            <p class="ph-dash-note mt-4"><i class="ri-information-line" aria-hidden="true"></i> Appointments can't be changed or cancelled online. To change or cancel one, <a href="../public/contact.html" class="ph-dash-link">contact the clinic</a> and quote its reference.</p>
+            <p class="ph-dash-note mt-4"><i class="ri-information-line" aria-hidden="true"></i> You can cancel a Pending or Approved appointment at least 2 hours before its scheduled start. Contact the clinic to reschedule or ask about a late cancellation.</p>
           </section>
 
           <!-- ================= BOOK AN APPOINTMENT ================= -->
@@ -102,9 +103,11 @@
 
             <form id="appointmentForm" class="space-y-4">
               <div>
-                <label for="petSelect" class="block text-gray-700 font-semibold text-sm mb-2">Pet</label>
-                <select id="petSelect" required
-                  class="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-colors">
+                <label class="block text-gray-700 font-semibold text-sm mb-2" for="choosePetButton">Pet</label>
+                <button id="choosePetButton" type="button" class="ph-btn ph-btn-secondary w-full justify-between" aria-haspopup="dialog" aria-controls="petPickerDialog">
+                  <span id="chosenPetLabel">Loading your pets...</span><i class="ri-arrow-down-s-line" aria-hidden="true"></i>
+                </button>
+                <select id="petSelect" tabindex="-1" aria-hidden="true" class="sr-only">
                   <option value="">Loading pets...</option>
                 </select>
                 <p id="petSelectHint" class="mt-2 hidden text-sm font-medium text-slate-500" aria-live="polite"></p>
@@ -170,6 +173,22 @@
               </button>
               <p id="bookingDetailsHint" class="hidden text-sm font-medium text-slate-500" aria-live="polite"></p>
             </form>
+
+            <dialog id="petPickerDialog" class="ph-pet-picker-dialog" aria-labelledby="petPickerTitle">
+              <div class="ph-pet-picker-content">
+                <div class="ph-dash-panel-head">
+                  <div>
+                    <h3 id="petPickerTitle" class="ph-dash-panel-title">Choose a pet</h3>
+                    <p class="ph-dash-note">Only pets registered to your account appear here.</p>
+                  </div>
+                  <button id="closePetPicker" type="button" class="ph-btn ph-btn-ghost ph-btn-sm" aria-label="Close pet selection"><i class="ri-close-line" aria-hidden="true"></i></button>
+                </div>
+                <div id="petPickerList" class="ph-pet-picker-list" aria-live="polite">
+                  <p role="status">Loading your pets...</p>
+                </div>
+                <p class="ph-dash-note mt-4">Need to add a pet? <a class="ph-dash-link" href="pets.html">Register a pet first</a>, then return here.</p>
+              </div>
+            </dialog>
           </section>
 
         </div>

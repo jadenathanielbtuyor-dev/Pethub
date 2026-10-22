@@ -11,7 +11,8 @@ const {
   PAST_APPOINTMENT_TIME_MESSAGE,
   SCHEDULE_CONFLICT_MESSAGE,
   OCCUPIED_APPOINTMENT_STATUSES,
-  VALID_APPOINTMENT_STATUSES
+  VALID_APPOINTMENT_STATUSES,
+  CLINIC_TIME_ZONE
 } = require('../constants/appointments');
 
 function normalizeAppointmentDate(value) {
@@ -72,6 +73,51 @@ function normalizeDurationMinutes(value) {
   return Number.isFinite(duration) && duration > 0 ? duration : null;
 }
 
+// Interpret the database's date and time as clinic wall-clock time, independent of the Railway host timezone.
+// The conversion round-trips through Intl so timezone rules (including DST where applicable) are honored.
+function getAppointmentStartTimestamp(appointmentDate, appointmentTime, timeZone = CLINIC_TIME_ZONE) {
+  const date = normalizeAppointmentDate(appointmentDate);
+  const time = parseAppointmentTime(appointmentTime);
+  if (!date || !time) return null;
+  const [year, month, day] = date.split('-').map(Number);
+  const targetWallMs = Date.UTC(year, month - 1, day, time.hours, time.minutes, time.seconds);
+  let candidateMs = targetWallMs;
+  const formatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+  });
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const parts = Object.fromEntries(formatter.formatToParts(new Date(candidateMs)).map(part => [part.type, part.value]));
+    const representedWallMs = Date.UTC(
+      Number(parts.year), Number(parts.month) - 1, Number(parts.day),
+      Number(parts.hour), Number(parts.minute), Number(parts.second)
+    );
+    const correction = targetWallMs - representedWallMs;
+    candidateMs += correction;
+    if (correction === 0) break;
+  }
+
+  const finalParts = Object.fromEntries(formatter.formatToParts(new Date(candidateMs)).map(part => [part.type, part.value]));
+  const matches = Number(finalParts.year) === year && Number(finalParts.month) === month &&
+    Number(finalParts.day) === day && Number(finalParts.hour) === time.hours &&
+    Number(finalParts.minute) === time.minutes && Number(finalParts.second) === time.seconds;
+  return matches ? candidateMs : null;
+}
+
+function validateOwnerCancellationRequest(params = {}, authenticatedUserId) {
+  const normalizedAppointmentId = trimValue(params.id);
+  const normalizedUserId = trimValue(authenticatedUserId);
+  if (!normalizedAppointmentId || !normalizedUserId) {
+    return { error: { statusCode: 400, body: { error: 'Appointment ID and authenticated owner are required.' } } };
+  }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normalizedAppointmentId)) {
+    return { error: { statusCode: 404, body: { error: 'Appointment not found.' } } };
+  }
+  return { normalizedAppointmentId, normalizedUserId };
+}
+
 function buildAppointmentDateTime(normalizedDate, parsedTime) {
   const dateParts = String(normalizedDate || '').split('-').map(Number);
   if (dateParts.length !== 3 || !parsedTime) return null;
@@ -85,21 +131,25 @@ function buildAppointmentDateTime(normalizedDate, parsedTime) {
 
 function getAppointmentDateTimeValidationError(appointmentDate, appointmentTime) {
   const normalizedDate = normalizeAppointmentDate(appointmentDate);
-  const today = getLocalDateValue();
   if (!normalizedDate) return INVALID_APPOINTMENT_DATE_MESSAGE;
 
   const parsedTime = parseAppointmentTime(appointmentTime);
   if (!parsedTime) return INVALID_APPOINTMENT_TIME_MESSAGE;
 
+  const clinicNow = new Date();
+  const clinicToday = new Intl.DateTimeFormat('en-CA', {
+    timeZone: CLINIC_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit'
+  }).format(clinicNow);
+  const today = clinicToday;
   if (normalizedDate < today) return PAST_APPOINTMENT_DATE_MESSAGE;
   if (normalizedDate > today) return '';
 
-  const selectedDateTime = buildAppointmentDateTime(normalizedDate, parsedTime);
-  if (!selectedDateTime || Number.isNaN(selectedDateTime.getTime())) {
+  const selectedDateTime = getAppointmentStartTimestamp(normalizedDate, appointmentTime);
+  if (!Number.isFinite(selectedDateTime)) {
     return INVALID_APPOINTMENT_DATE_MESSAGE;
   }
 
-  return selectedDateTime > new Date() ? '' : PAST_APPOINTMENT_TIME_MESSAGE;
+  return selectedDateTime > clinicNow.getTime() ? '' : PAST_APPOINTMENT_TIME_MESSAGE;
 }
 
 function getAppointmentTimeRange(appointmentDate, appointmentTime, estimatedDurationMinutes) {
@@ -236,6 +286,8 @@ module.exports = {
   normalizeAppointmentTime,
   parseAppointmentTime,
   normalizeDurationMinutes,
+  getAppointmentStartTimestamp,
+  validateOwnerCancellationRequest,
   getAppointmentTimeRange,
   validateCreateAppointment,
   validateUserAppointmentsQuery,

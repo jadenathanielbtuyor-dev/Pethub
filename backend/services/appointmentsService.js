@@ -3,12 +3,18 @@ const petsRepository = require('../repositories/petsRepository');
 const appointmentsRepository = require('../repositories/appointmentsRepository');
 const { isUserVerified, isAdminVerified } = require('../utils/accountVerification');
 const { logAdminActivity } = require('../utils/activityLogger');
+const { logUserActivity } = require('../utils/activityLogger');
 const { runExclusive } = require('../utils/keyedLock');
 const appointmentNotificationsService = require('./appointmentNotificationsService');
 const {
   hasValue
 } = require('../validators/commonValidator');
-const { INVALID_APPOINTMENT_DATE_MESSAGE, APPOINTMENT_STATUS_CHANGED_MESSAGE } = require('../constants/appointments');
+const {
+  INVALID_APPOINTMENT_DATE_MESSAGE,
+  APPOINTMENT_STATUS_CHANGED_MESSAGE,
+  APPOINTMENT_CANCELLATION_CUTOFF_HOURS,
+  APPOINTMENT_CANCELLATION_CUTOFF_MESSAGE
+} = require('../constants/appointments');
 const { SERVICE_SPECIES } = require('../constants/services');
 const { getService, isServiceAvailableForSpecies, describeSpecies, listServicesForClient } = require('../utils/serviceCatalog');
 const {
@@ -19,7 +25,9 @@ const {
   normalizeAppointmentTime,
   validateCreateAppointment,
   validateUserAppointmentsQuery,
-  validateUpdateStatusRequest
+  validateUpdateStatusRequest,
+  getAppointmentStartTimestamp,
+  validateOwnerCancellationRequest
 } = require('../validators/appointmentsValidator');
 
 async function getUserPetById(userId, petId) {
@@ -295,6 +303,85 @@ const getUserAppointments = async (req) => {
   }
 };
 
+// Owner cancellation is authenticated through requireAuth and scoped to the token owner. The server checks the
+// appointment against clinic-local date/time and then calls one database function that rechecks owner, status and the
+// exact two-hour cutoff against PostgreSQL's clock in the same conditional UPDATE.
+const cancelOwnAppointment = async (req) => {
+  const validation = validateOwnerCancellationRequest(req.params, req.authUserId);
+  if (validation.error) return validation.error;
+  const { normalizedAppointmentId, normalizedUserId } = validation;
+  try {
+    const verified = await isUserVerified(normalizedUserId);
+    if (!verified) return { statusCode: 403, body: { error: 'Please verify your email before changing appointments.' } };
+
+    const { data: appointment, error } = await appointmentsRepository.findByIdForUser(normalizedAppointmentId, normalizedUserId);
+    if (error) throw error;
+    if (!appointment) return { statusCode: 404, body: { error: 'Appointment not found.' } };
+    if (appointment.status === 'Cancelled') {
+      return { statusCode: 200, body: { success: true, already_cancelled: true, appointment } };
+    }
+    if (!['Pending', 'Approved'].includes(appointment.status)) {
+      return { statusCode: 409, body: { error: `A ${appointment.status || 'unknown'} appointment cannot be cancelled by its owner.` } };
+    }
+
+    const startMs = getAppointmentStartTimestamp(appointment.appointment_date, appointment.appointment_time);
+    if (!Number.isFinite(startMs)) {
+      return { statusCode: 409, body: { error: 'This appointment has an invalid scheduled date or time. Contact the clinic to change it.' } };
+    }
+    const cutoffMs = APPOINTMENT_CANCELLATION_CUTOFF_HOURS * 60 * 60 * 1000;
+    if (startMs - Date.now() < cutoffMs) {
+      return { statusCode: 409, body: {
+        error: APPOINTMENT_CANCELLATION_CUTOFF_MESSAGE,
+        code: 'APPOINTMENT_CANCELLATION_CUTOFF'
+      } };
+    }
+
+    const { data: cancelled, error: updateError } = await appointmentsRepository.cancelByUser(
+      normalizedAppointmentId, normalizedUserId, appointment.status
+    );
+    if (updateError) {
+      if (['PGRST202', '42883'].includes(updateError.code)) {
+        return { statusCode: 503, body: {
+          error: 'Secure cancellation is unavailable until the reviewed database rule is installed.',
+          code: 'CANCELLATION_DATABASE_RULE_UNAVAILABLE'
+        } };
+      }
+      throw updateError;
+    }
+
+    if (cancelled !== true) {
+      const { data: latest, error: latestError } = await appointmentsRepository.findByIdForUser(normalizedAppointmentId, normalizedUserId);
+      if (latestError) throw latestError;
+      if (!latest) return { statusCode: 404, body: { error: 'Appointment not found.' } };
+      if (latest.status === 'Cancelled') return { statusCode: 200, body: { success: true, already_cancelled: true, appointment: latest } };
+      if (latest.status !== appointment.status) {
+        return { statusCode: 409, body: { error: APPOINTMENT_STATUS_CHANGED_MESSAGE } };
+      }
+      const latestStart = getAppointmentStartTimestamp(latest.appointment_date, latest.appointment_time);
+      if (!Number.isFinite(latestStart)) {
+        return { statusCode: 409, body: { error: 'This appointment has an invalid scheduled date or time. Contact the clinic to change it.' } };
+      }
+      if (latestStart - Date.now() < cutoffMs) {
+        return { statusCode: 409, body: {
+          error: APPOINTMENT_CANCELLATION_CUTOFF_MESSAGE,
+          code: 'APPOINTMENT_CANCELLATION_CUTOFF'
+        } };
+      }
+      return { statusCode: 409, body: { error: APPOINTMENT_STATUS_CHANGED_MESSAGE } };
+    }
+
+    const { data: refreshedAppointment, error: refreshError } = await appointmentsRepository.findByIdForUser(normalizedAppointmentId, normalizedUserId);
+    if (refreshError) console.error('Unable to reload cancelled appointment:', { code: refreshError.code || 'unknown' });
+    const cancelledAppointment = refreshedAppointment || { ...appointment, status: 'Cancelled' };
+    await logUserActivity(normalizedUserId, 'appointment_cancelled', `Cancelled appointment ${normalizedAppointmentId}`);
+    appointmentNotificationsService.notifyOwnerCancelledAppointment(cancelledAppointment);
+    return { statusCode: 200, body: { success: true, message: 'Appointment cancelled.', appointment: cancelledAppointment } };
+  } catch (error) {
+    console.error('Owner cancellation error:', { code: error?.code || 'unknown' });
+    return { statusCode: 500, body: { error: 'Could not cancel this appointment. Please try again.' } };
+  }
+};
+
 /**
  * Get the booked schedule (used by the booking page to show slot availability).
  * Returns schedule fields only so other users' ids, pets, and handlers are not exposed;
@@ -435,6 +522,7 @@ module.exports = {
   listServices,
   createAppointment,
   getUserAppointments,
+  cancelOwnAppointment,
   getAllAppointments,
   updateStatus,
   attachHandledByNames

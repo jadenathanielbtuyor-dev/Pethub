@@ -45,8 +45,10 @@ describe('Booking page: summary and button', () => {
   it('has "Book Appointment" as the only submit action, disabled until the details are valid', () => {
     const form = getForm();
     const buttons = [...form.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)];
-    assert.equal(buttons.length, 1, 'one button in the booking form');
-    const [, attributes, label] = buttons[0];
+    const submitButtons = buttons.filter(([, attributes]) => /type="submit"/.test(attributes));
+    assert.equal(submitButtons.length, 1, 'one submit button in the booking form');
+    assert.ok(buttons.some(([, attributes]) => /id="choosePetButton"/.test(attributes)), 'the pet chooser is an ordinary button, not another submit action');
+    const [, attributes, label] = submitButtons[0];
     assert.match(attributes, /type="submit"/);
     assert.match(attributes, /\bdisabled\b/);
     assert.match(attributes, /\bbooking-submit-button\b/);
@@ -83,8 +85,8 @@ describe('Booking page: scripts and API wiring', () => {
 
   it('calls only the pet, appointment and booking endpoints that the backend mounts', () => {
     const script = read(path.join(FRONTEND, 'js', 'user', 'appointments.js'));
-    const calls = [...script.matchAll(/`\$\{window\.API_BASE_URL\}(\/[^`?$]*)/g)].map(match => match[1]).sort();
-    assert.deepEqual([...new Set(calls)], ['/appointments/all', '/appointments/create', '/appointments/services', '/appointments/userAppointments', '/pets/userPets']);
+    const calls = [...script.matchAll(/(?:`|\")\$\{window\.API_BASE_URL\}(\/[^`?$]*)/g)].map(match => match[1]).sort();
+    assert.deepEqual([...new Set(calls)], ['/appointments/all', '/appointments/cancel/', '/appointments/create', '/appointments/services', '/appointments/userAppointments', '/pets/userPets']);
     assert.doesNotMatch(script, PAYMENT_WORDING);
 
     const server = read(path.join(__dirname, '..', 'server.js'));
@@ -95,6 +97,7 @@ describe('Booking page: scripts and API wiring', () => {
     assert.match(appointmentRoutes, /router\.get\('\/services', listServices\)/);
     assert.match(appointmentRoutes, /router\.post\('\/create', createAppointment\)/);
     assert.match(appointmentRoutes, /router\.get\('\/userAppointments', getUserAppointments\)/);
+    assert.match(appointmentRoutes, /router\.post\('\/cancel\/:id', cancelOwnAppointment\)/);
     assert.match(appointmentRoutes, /router\.get\('\/all', getAllAppointments\)/);
   });
 });

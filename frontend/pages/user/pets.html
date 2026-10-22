@@ -114,7 +114,11 @@
 
                 <div class="ph-field">
                   <label for="petBreed" class="ph-label">Breed</label>
-                  <input type="text" id="petBreed" class="ph-input" placeholder="e.g., Golden Retriever" maxlength="50" aria-describedby="petBreedError">
+                  <input type="search" id="petBreed" class="ph-input" placeholder="Search breeds or choose Mixed Breed" maxlength="50" list="petBreedSuggestions" autocomplete="off" aria-describedby="petBreedHelp petBreedError">
+                  <datalist id="petBreedSuggestions"><option value="Mixed Breed"></option><option value="Other / Not Listed"></option></datalist>
+                  <p id="petBreedHelp" class="ph-help">Choose a suggestion, Mixed Breed, or Other / Not Listed.</p>
+                  <p id="petBreedCatalogState" class="ph-help" role="status" aria-live="polite">Choose Dog or Cat to load matching breeds.</p>
+                  <div id="petBreedOtherWrap" class="mt-2" hidden><label for="petBreedOther" class="ph-label">Describe the breed</label><input type="text" id="petBreedOther" class="ph-input" maxlength="50" autocomplete="off"></div>
                   <p id="petBreedError" class="ph-field-error" hidden></p>
                 </div>
 

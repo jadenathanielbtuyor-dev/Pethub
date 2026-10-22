@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PetHub | Breed Catalog</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800&amp;display=swap">
+  <link rel="stylesheet" href="../../assets/css/style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/remixicon.css">
+</head>
+<body class="ph-dash-page admin-dashboard-page" data-dashboard="admin" data-dashboard-section="breeds">
+  <a href="#main" class="ph-skip-link">Skip to main content</a>
+  <div class="ph-dash-shell">
+    <div id="dashboardNavRoot"></div>
+    <div class="ph-dash-content">
+      <main id="main" class="ph-dash-main" tabindex="-1">
+        <header class="ph-dash-header">
+          <div>
+            <p class="ph-dash-eyebrow">Admin Dashboard</p>
+            <h1 class="ph-dash-title" tabindex="-1">Breed Catalog</h1>
+            <p class="ph-dash-lead">Maintain the breed suggestions available when owners add or edit a pet. Existing pet profiles keep their saved breed if an option is disabled.</p>
+          </div>
+        </header>
+
+        <div id="breedCatalogFeedback" class="mb-4" role="status" aria-live="polite"></div>
+        <section class="ph-dash-panel mb-5" aria-labelledby="addBreedTitle">
+          <div class="ph-dash-panel-head"><h2 id="addBreedTitle" class="ph-dash-panel-title">Add a breed</h2></div>
+          <p class="ph-dash-note mb-4">New entries are marked Unverified. Adding a breed does not imply official recognition.</p>
+          <form id="breedCreateForm" class="ph-breed-form">
+            <div class="ph-field"><label for="breedSpecies" class="ph-label">Species</label><select id="breedSpecies" class="ph-input" required><option value="Dog">Dog</option><option value="Cat">Cat</option></select></div>
+            <div class="ph-field"><label for="breedName" class="ph-label">Display name</label><input id="breedName" class="ph-input" maxlength="50" required autocomplete="off"></div>
+            <div class="ph-field"><label for="breedSource" class="ph-label">Source organization (optional)</label><input id="breedSource" class="ph-input" maxlength="120" autocomplete="off"></div>
+            <div class="ph-field"><label for="breedSourceUrl" class="ph-label">Source link (optional)</label><input id="breedSourceUrl" type="url" class="ph-input" maxlength="500" autocomplete="url"></div>
+            <button type="submit" class="ph-btn ph-btn-primary"><i class="ri-add-line" aria-hidden="true"></i>Add breed</button>
+          </form>
+          <form id="breedEditForm" class="ph-breed-edit-form" hidden>
+            <input type="hidden" id="breedEditId">
+            <div class="ph-field"><label for="breedEditName" class="ph-label">Correct display name</label><input id="breedEditName" class="ph-input" maxlength="50" required></div>
+            <div class="ph-dash-card-actions"><button type="submit" class="ph-btn ph-btn-primary ph-btn-sm">Save name</button><button type="button" id="breedEditCancel" class="ph-btn ph-btn-secondary ph-btn-sm">Cancel</button></div>
+          </form>
+        </section>
+
+        <section class="ph-dash-panel" aria-labelledby="breedListTitle">
+          <div class="ph-dash-panel-head"><h2 id="breedListTitle" class="ph-dash-panel-title">Catalog entries</h2></div>
+          <div class="ph-dash-filters ph-dash-filters-3">
+            <div class="ph-field"><label for="breedSearch" class="ph-label">Search</label><input id="breedSearch" type="search" class="ph-input" placeholder="Search name or source"></div>
+            <div class="ph-field"><label for="breedSpeciesFilter" class="ph-label">Species</label><select id="breedSpeciesFilter" class="ph-input"><option value="all">Dogs and cats</option><option value="Dog">Dog</option><option value="Cat">Cat</option></select></div>
+            <div class="ph-field"><label for="breedStatusFilter" class="ph-label">Selection status</label><select id="breedStatusFilter" class="ph-input"><option value="active">Enabled</option><option value="inactive">Disabled</option><option value="all">All</option></select></div>
+          </div>
+          <p id="breedCount" class="ph-dash-note" role="status" aria-live="polite"></p>
+          <div id="breedCatalogList" class="ph-breed-catalog-list" aria-live="polite"><p role="status">Loading breed catalog...</p></div>
+        </section>
+      </main>
+    </div>
+  </div>
+  <button id="darkModeToggle" type="button" class="dark-mode-toggle" title="Toggle Dark Mode"><i class="ri-moon-line"></i></button>
+  <script src="../../js/core/api.js"></script>
+  <script src="../../js/core/utils.js"></script>
+  <script src="../../js/core/storage.js"></script>
+  <script src="../../js/main.js"></script>
+  <script src="../../js/shared/dashboard-shell.js"></script>
+  <script src="../../js/admin/breeds.js"></script>
+</body>
+</html>

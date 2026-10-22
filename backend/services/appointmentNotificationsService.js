@@ -8,7 +8,7 @@ const env = require('../config/env');
 const logger = require('../utils/logger');
 const { sendEmail } = require('../utils/email');
 const usersRepository = require('../repositories/usersRepository');
-const { buildAppointmentDecisionEmail } = require('../templates/email/appointmentDecisionEmail');
+const { buildAppointmentDecisionEmail, buildOwnerCancellationEmail } = require('../templates/email/appointmentDecisionEmail');
 const { APPOINTMENTS_PAGE_PATH } = require('../constants/email');
 
 // New appointment status -> email sent ('Completed' sends nothing)
@@ -83,6 +83,23 @@ async function sendAppointmentDecision(appointment, { decision, previousStatus }
   return 'sent';
 }
 
+async function sendOwnerCancellationConfirmation(appointment) {
+  const context = { appointment_id: appointment.id, decision: 'owner_cancelled' };
+  const customer = await loadCustomer(appointment.user_id);
+  if (!customer) {
+    logger.warn('appointments.owner_cancellation_email_skipped', { ...context, reason: 'no_customer_email' });
+    return 'skipped';
+  }
+  const email = buildOwnerCancellationEmail({
+    name: customer.fullname,
+    appointment,
+    appointmentsUrl: getAppointmentsPageUrl()
+  });
+  await sendEmail({ to: customer.email, ...email });
+  logger.info('appointments.owner_cancellation_email_sent', context);
+  return 'sent';
+}
+
 /**
  * Called by PUT /admin/dashboard/appointment-status and PUT /appointments/updateStatus after a status change was
  * stored. Approving or cancelling emails the customer; other changes send nothing. Never throws.
@@ -96,7 +113,15 @@ function notifyAppointmentStatusChanged(appointment, { previousStatus, newStatus
   ));
 }
 
+function notifyOwnerCancelledAppointment(appointment) {
+  if (!appointment) return;
+  runInBackground('appointments.owner_cancellation_email_failed', { appointment_id: appointment.id }, () => (
+    sendOwnerCancellationConfirmation(appointment)
+  ));
+}
+
 module.exports = {
   notifyAppointmentStatusChanged,
+  notifyOwnerCancelledAppointment,
   waitForBackgroundTasks
 };

@@ -71,7 +71,7 @@ describe('My Pets page: register a new pet or use an existing one', () => {
 
   it('calls only the owner\'s pet routes, never a medical-record write or an admin route', () => {
     const calls = [...new Set([...script.matchAll(/requestPetsApi\([`'](\/[A-Za-z0-9/_-]+)/g)].map(match => match[1]))].sort();
-    assert.deepEqual(calls, ['/pets/create', '/pets/delete/', '/pets/history/', '/pets/update/', '/pets/userPets']);
+    assert.deepEqual(calls, ['/pets/', '/pets/breeds', '/pets/create', '/pets/delete/', '/pets/history/', '/pets/update/', '/pets/userPets']);
     const code = script.replace(/^\s*\/\/.*$/gm, '');
     assert.doesNotMatch(code, /medical-records|\/admin\//);
     assert.equal(code.match(/\bfetch\(/g).length, 1, 'every request goes through requestPetsApi');

@@ -221,7 +221,8 @@ function escapeInlineHandlerValue(value) {
 function hasMedicalRecordCreateContext(appointment) {
   if (!getCurrentAdminUserId()) return false;
   if (!appointment || !appointment.id || !appointment.user_id) return false;
-  return getAppointmentOwnerPetsForMedicalRecord(appointment, adminPetsData).length > 0;
+  return Boolean(appointment.pet_id && getAppointmentOwnerPetsForMedicalRecord(appointment, adminPetsData)
+    .some(pet => String(pet.id) === String(appointment.pet_id)));
 }
 
 function hasAppointmentRecordedValue(value) {
@@ -229,21 +230,8 @@ function hasAppointmentRecordedValue(value) {
 }
 
 function hasCompletedMedicalRecordFlag(appointment) {
-  const positiveFlags = [
-    appointment?.has_medical_record,
-    appointment?.medical_record_action_completed,
-    appointment?.medical_record_created,
-    appointment?.medicalRecordCreated
-  ].some(value => value === true || value === 'true' || value === 1 || value === '1');
-
-  if (positiveFlags) return true;
-
-  return [
-    appointment?.medicalRecord?.id,
-    appointment?.medical_record?.id,
-    appointment?.medical_record_id,
-    appointment?.medicalRecordId
-  ].some(value => hasAppointmentRecordedValue(value));
+  return appointment?.medical_record_link_status === 'linked'
+    || hasAppointmentRecordedValue(appointment?.medical_record_id);
 }
 
 function getMedicalRecordCompletedActionHtml() {
@@ -265,6 +253,7 @@ function markAppointmentMedicalRecordCompleted(appointmentId, record = null) {
           ...appointment,
           has_medical_record: true,
           medical_record_action_completed: true,
+          medical_record_link_status: 'linked',
           medical_record_id: record?.id || appointment.medical_record_id || null
         }
       : appointment
@@ -291,6 +280,10 @@ function renderAppointmentActions(status, appointment) {
 
   if (isCompleted && hasCompletedMedicalRecordFlag(appointment)) {
     return getMedicalRecordCompletedActionHtml();
+  }
+
+  if (isCompleted && appointment?.medical_record_link_status === 'unresolved') {
+    return '<span class="text-xs text-amber-700" role="note" title="Review unlinked clinical records before associating this appointment.">Record link needs review</span>';
   }
 
   if (isCompleted && hasMedicalRecordCreateContext(appointment)) {
@@ -366,10 +359,11 @@ async function loadAdminPetsForMedicalRecords() {
 
 function getAppointmentOwnerPetsForMedicalRecord(appointment, pets) {
   const ownerId = String(appointment?.user_id || '').trim();
-  if (!ownerId) return [];
+  const appointmentPetId = String(appointment?.pet_id || '').trim();
+  if (!ownerId || !appointmentPetId) return [];
 
   return (Array.isArray(pets) ? pets : [])
-    .filter(pet => String(pet?.user_id || '').trim() === ownerId);
+    .filter(pet => String(pet?.user_id || '').trim() === ownerId && String(pet?.id || '') === appointmentPetId);
 }
 
 function getConfirmedAppointmentPetId(appointment, ownerPets) {
@@ -710,6 +704,9 @@ async function submitMedicalRecordForm(event) {
 
     if (!data.record) {
       throw new Error('Medical record save succeeded but no record was returned.');
+    }
+    if (appointmentId && String(data.record.appointment_id || '') !== String(appointmentId)) {
+      throw new Error('The saved medical record did not return an explicit appointment link. Refresh before taking another action.');
     }
 
     markAppointmentMedicalRecordCompleted(appointmentId, data.record);

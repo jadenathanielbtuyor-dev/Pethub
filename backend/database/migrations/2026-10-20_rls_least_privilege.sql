@@ -51,9 +51,36 @@ ORDER BY tablename, policyname;
 -- 1c. Table privileges of the API roles (Supabase grants these by default; with RLS ON and no policy they are inert).
 SELECT table_name, grantee, string_agg(privilege_type, ', ' ORDER BY privilege_type) AS privileges
 FROM information_schema.role_table_grants
-WHERE table_schema = 'public' AND grantee IN ('anon', 'authenticated')
+WHERE table_schema = 'public' AND grantee IN ('PUBLIC', 'anon', 'authenticated')
 GROUP BY table_name, grantee
 ORDER BY table_name, grantee;
+
+-- 1c.1. Column grants on sensitive tables. RLS controls rows; this lists direct grants that could expose a sensitive
+-- column if a row policy is permissive or RLS is later disabled. PUBLIC is included explicitly.
+SELECT table_name, column_name, grantee, privilege_type
+FROM information_schema.column_privileges
+WHERE table_schema = 'public'
+  AND table_name IN ('users', 'email_verifications', 'password_resets')
+  AND grantee IN ('PUBLIC', 'anon', 'authenticated')
+ORDER BY table_name, column_name, grantee;
+
+-- 1c.2. Effective SELECT access to sensitive columns (expect false after hardening).
+SELECT sensitive.role_name, sensitive.table_name, sensitive.column_name,
+       CASE WHEN columns.column_name IS NULL THEN NULL
+            ELSE has_column_privilege(sensitive.role_name, format('public.%I', sensitive.table_name), sensitive.column_name, 'SELECT')
+       END AS can_select
+FROM (VALUES
+  ('anon', 'users', 'password'),
+  ('authenticated', 'users', 'password'),
+  ('anon', 'email_verifications', 'verification_code'),
+  ('authenticated', 'email_verifications', 'verification_code'),
+  ('anon', 'password_resets', 'reset_token'),
+  ('authenticated', 'password_resets', 'reset_token')
+) AS sensitive(role_name, table_name, column_name)
+LEFT JOIN information_schema.columns
+  ON columns.table_schema = 'public'
+  AND columns.table_name = sensitive.table_name
+  AND columns.column_name = sensitive.column_name;
 
 -- 1d. Who bypasses RLS. Expected: service_role = true, anon = false, authenticated = false.
 SELECT rolname, rolbypassrls FROM pg_roles WHERE rolname IN ('anon', 'authenticated', 'service_role');
@@ -123,15 +150,18 @@ WHERE schemaname = 'public' AND roles && ARRAY['anon', 'authenticated', 'public'
 -- OPTIONAL, SEPARATE DECISION (defence in depth, not needed for the fix above)
 -- ---------------------------------------------------------------------------------
 -- With RLS ON and no policies the API roles already see nothing. Revoking their table privileges as well means a
--- policy added by mistake later still could not expose data:
---   REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated;
--- Undo: GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO anon, authenticated;
--- (compare with your saved PART 1c output; Supabase's defaults may include more privileges than these four)
+-- policy added by mistake later still could not expose data. Include PUBLIC, which is inherited by API roles:
+--   REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC, anon, authenticated;
+-- Restore privileges only from a reviewed/saved PART 1c result. Do not use a blanket GRANT to roll this back.
 
 
 -- ---------------------------------------------------------------------------------
 -- ROLLBACK (if the backend stops working after PART 2: it is then NOT using the service role key)
 -- ---------------------------------------------------------------------------------
+-- WARNING: Do not disable RLS as an application rollback on a public project. That reopens the exposure this migration
+-- is intended to stop. First fix the backend's SUPABASE_SERVICE_KEY and verify the role without printing the key. If
+-- that is impossible, use the reviewed policy/grant snapshot and an approved recovery plan; do not run the block below
+-- against production as-is.
 -- BEGIN;
 -- ALTER TABLE public.users DISABLE ROW LEVEL SECURITY;
 -- ALTER TABLE public.email_verifications DISABLE ROW LEVEL SECURITY;

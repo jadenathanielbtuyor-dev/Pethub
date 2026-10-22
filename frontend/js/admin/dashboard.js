@@ -2497,9 +2497,9 @@ function displayPetsTable(pets) {
 // The medical-record column: only a Completed appointment can have an official record
 function getAppointmentRecordCellHtml(appointment) {
   if (getAppointmentStatus(appointment.status) !== 'Completed') return '<span class="ph-dash-muted">Not applicable</span>';
-  return appointmentHasMedicalRecord(appointment)
-    ? '<span class="ph-badge ph-badge-official">Record added</span>'
-    : '<span class="ph-dash-muted">No record yet</span>';
+  if (appointmentHasMedicalRecord(appointment)) return '<span class="ph-badge ph-badge-official">Record linked</span>';
+  if (appointment?.medical_record_link_status === 'unresolved') return '<span class="ph-badge ph-badge-warning">Relationship unresolved</span>';
+  return '<span class="ph-dash-muted">No linked record</span>';
 }
 
 function getAppointmentStatusCellHtml(appointment) {
@@ -2659,6 +2659,7 @@ function getRecordableAppointmentsForPet(petId) {
   return asArray(adminDashboardData.appointments)
     .filter(appointment => String(appointment.pet_id) === String(petId)
       && getAppointmentStatus(appointment.status) === 'Completed'
+      && appointment.medical_record_link_status !== 'unresolved'
       && !appointmentHasMedicalRecord(appointment))
     .sort((a, b) => getAppointmentSortKey(b).localeCompare(getAppointmentSortKey(a)));
 }
@@ -2683,6 +2684,14 @@ function renderAdminPetDetail(pet) {
   const recordCards = records.length
     ? records.map(record => {
         const weight = hasRecordedValue(record.weight) ? `${record.weight} kg` : 'Not recorded';
+        const linkedAppointment = record.appointment_id
+          ? getMedicalRecordAppointment(record.appointment_id)
+          : null;
+        const appointmentLabel = record.appointment_id
+          ? linkedAppointment
+            ? `${getAppointmentReference(linkedAppointment)} (${getAppointmentStatus(linkedAppointment.status)})`
+            : `Linked appointment ${record.appointment_id} is not in the current list`
+          : 'No stored link; clinic review may be needed';
         return `
           <article class="ph-dash-card">
             <div class="ph-dash-card-head">
@@ -2694,6 +2703,7 @@ function renderAdminPetDetail(pet) {
               <div><dt>Vaccination status</dt> <dd>${escapeHtml(displayValue(record.vaccination_status))}</dd></div>
               <div><dt>Treatment</dt> <dd>${escapeHtml(displayValue(record.treatment))}</dd></div>
               <div><dt>Recorded by</dt> <dd>${escapeHtml(getMedicalRecordRecorderLabel(record))}</dd></div>
+              <div><dt>Appointment</dt> <dd>${escapeHtml(appointmentLabel)}</dd></div>
               <div class="is-wide"><dt>Medical notes</dt> <dd>${escapeHtml(displayValue(record.medical_notes))}</dd></div>
               <div class="is-wide"><dt>Saved</dt> <dd>${escapeHtml(record.created_at ? formatDateTime(record.created_at) : 'Not recorded')}</dd></div>
             </dl>
@@ -2714,7 +2724,7 @@ function renderAdminPetDetail(pet) {
         <button type="button" class="ph-btn ph-btn-primary ph-btn-sm" data-add-record><i class="ri-add-line" aria-hidden="true"></i>Add medical record</button>
       </div>
     `
-    : '<p class="ph-dash-note">A record is added for a completed appointment. This pet has no completed appointment without a record.</p>';
+    : '<p class="ph-dash-note">No completed appointment is currently available to link. Older unlinked clinical records are shown as unresolved until the clinic verifies their relationship.</p>';
 
   const otherPetsHtml = otherPets.length
     ? `
@@ -2878,25 +2888,13 @@ function getAppointmentTimeDisplay(appointment) {
 function hasMedicalRecordCreateContext(appointment) {
   if (!getCurrentAdminUserId()) return false;
   if (!appointment || !appointment.id || !appointment.user_id) return false;
-  return getAppointmentOwnerPetsForMedicalRecord(appointment).length > 0;
+  return Boolean(appointment.pet_id && getAppointmentOwnerPetsForMedicalRecord(appointment)
+    .some(pet => String(pet.id) === String(appointment.pet_id)));
 }
 
 function hasCompletedMedicalRecordFlag(appointment) {
-  const positiveFlags = [
-    appointment?.has_medical_record,
-    appointment?.medical_record_action_completed,
-    appointment?.medical_record_created,
-    appointment?.medicalRecordCreated
-  ].some(value => value === true || value === 'true' || value === 1 || value === '1');
-
-  if (positiveFlags) return true;
-
-  return [
-    appointment?.medicalRecord?.id,
-    appointment?.medical_record?.id,
-    appointment?.medical_record_id,
-    appointment?.medicalRecordId
-  ].some(value => hasRecordedValue(value));
+  return appointment?.medical_record_link_status === 'linked'
+    || hasRecordedValue(appointment?.medical_record_id);
 }
 
 function getLinkedMedicalRecordAppointmentId(record) {
@@ -2936,6 +2934,7 @@ function markAppointmentMedicalRecordCompleted(appointmentId, record = null) {
           ...appointment,
           has_medical_record: true,
           medical_record_action_completed: true,
+          medical_record_link_status: 'linked',
           medical_record_id: record?.id || appointment.medical_record_id || null
         }
       : appointment
@@ -2943,7 +2942,7 @@ function markAppointmentMedicalRecordCompleted(appointmentId, record = null) {
 
   if (record?.id && !asArray(adminDashboardData.medicalRecords).some(item => String(item?.id) === String(record.id))) {
     adminDashboardData.medicalRecords = [
-      { ...record, appointment_id: id },
+      { ...record },
       ...asArray(adminDashboardData.medicalRecords)
     ];
   }
@@ -2994,6 +2993,10 @@ function renderAppointmentActions(status, appointment) {
     return getMedicalRecordCompletedActionHtml();
   }
 
+  if (status === 'Completed' && appointment?.medical_record_link_status === 'unresolved') {
+    return '<span class="ph-dash-muted" role="note" title="Review unlinked clinical records before associating this appointment.">Record link needs review</span>';
+  }
+
   if (status === 'Completed' && hasMedicalRecordCreateContext(appointment)) {
     return `
       <div class="flex flex-wrap gap-2">
@@ -3018,10 +3021,11 @@ function getLocalDateInputValue() {
 
 function getAppointmentOwnerPetsForMedicalRecord(appointment) {
   const ownerId = String(appointment?.user_id || '').trim();
-  if (!ownerId) return [];
+  const appointmentPetId = String(appointment?.pet_id || '').trim();
+  if (!ownerId || !appointmentPetId) return [];
 
   return (adminDashboardData.pets || [])
-    .filter(pet => String(pet?.user_id || '').trim() === ownerId);
+    .filter(pet => String(pet?.user_id || '').trim() === ownerId && String(pet?.id || '') === appointmentPetId);
 }
 
 function getConfirmedAppointmentPetId(appointment, ownerPets) {
@@ -3362,6 +3366,9 @@ async function submitMedicalRecordForm(event) {
 
     if (!data.record) {
       throw new Error('Medical record save succeeded but no record was returned.');
+    }
+    if (appointmentId && String(data.record.appointment_id || '') !== String(appointmentId)) {
+      throw new Error('The saved medical record did not return an explicit appointment link. Refresh before taking another action.');
     }
 
     markAppointmentMedicalRecordCompleted(appointmentId, data.record);

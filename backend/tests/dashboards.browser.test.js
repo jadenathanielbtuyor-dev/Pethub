@@ -15,6 +15,13 @@ const day = offset => {
   const date = new Date(Date.now() + offset * 24 * 60 * 60 * 1000);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
+const clinicWallTime = offsetMs => {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+  }).formatToParts(new Date(Date.now() + offsetMs)).map(part => [part.type, part.value]));
+  return { date: `${parts.year}-${parts.month}-${parts.day}`, time: `${parts.hour}:${parts.minute}:00` };
+};
 const OWNER = { id: 'u1', role: 'user', email: 'owner@example.test', fullname: 'Test Owner', is_verified: true, created_at: '2026-01-15T08:00:00Z' };
 const ADMIN = { id: 'a1', role: 'admin', email: 'admin@example.test', fullname: 'Test Admin', is_verified: true, created_at: '2026-01-01T08:00:00Z' };
 const PETS = [
@@ -29,11 +36,11 @@ const appointment = (id, fields) => ({
 const APPOINTMENTS = [
   appointment('b0000000-0000-4000-8000-000000000001', {}),
   appointment('c0000000-0000-4000-8000-000000000002', { pet_id: 'p2', pet_name: 'Luna', service_type: 'Dog & Cat Full Check Up', estimated_duration_minutes: 45, appointment_date: day(8), status: 'Approved', handled_by: 'a1', handled_by_name: 'Test Admin' }),
-  appointment('d0000000-0000-4000-8000-000000000003', { service_type: 'Checkup', estimated_duration_minutes: 45, appointment_date: day(-10), status: 'Completed', handled_by: 'a1', handled_by_name: 'Test Admin' }),
+  appointment('d0000000-0000-4000-8000-000000000003', { service_type: 'Checkup', estimated_duration_minutes: 45, appointment_date: day(-10), status: 'Completed', handled_by: 'a1', handled_by_name: 'Test Admin', medical_record_link_status: 'linked', medical_record_id: 'r1' }),
   appointment('e0000000-0000-4000-8000-000000000004', { pet_id: 'p2', pet_name: 'Luna', service_type: 'Trim', appointment_date: day(-5), status: 'Cancelled', handled_by: 'a1', handled_by_name: 'Test Admin' })
 ];
 const RECORDS = [
-  { id: 'r1', pet_id: 'p1', pet_name: 'Mochi', record_date: day(-10), created_at: `${day(-10)}T10:00:00Z`, created_by: 'a1', created_by_name: 'Test Admin', weight: 12.5, vaccination_status: 'Up to date', treatment: 'Deworming', medical_notes: 'Test note one.' },
+  { id: 'r1', pet_id: 'p1', appointment_id: 'd0000000-0000-4000-8000-000000000003', pet_name: 'Mochi', record_date: day(-10), created_at: `${day(-10)}T10:00:00Z`, created_by: 'a1', created_by_name: 'Test Admin', weight: 12.5, vaccination_status: 'Up to date', treatment: 'Deworming', medical_notes: 'Test note one.' },
   { id: 'r2', pet_id: 'p1', pet_name: 'Mochi', record_date: day(-40), created_at: `${day(-40)}T10:00:00Z`, created_by: 'a1', created_by_name: 'Test Admin', weight: 12.1, vaccination_status: 'Due soon', treatment: null, medical_notes: 'Test note two.' }
 ];
 // The catalog as shipped: no duration confirmed, nothing bookable online
@@ -92,7 +99,7 @@ const OWNER_SECTIONS = [
   ['health', 'pages/user/health.html']
 ];
 const OWNER_LABELS = ['Overview', 'My Pets', 'Appointments', 'Pet Health & AI Assistant'];
-const ADMIN_LABELS = ['Overview', 'Appointment Management', 'Pet Owners & Records', 'System Management'];
+const ADMIN_LABELS = ['Overview', 'Appointment Management', 'Pet Owners & Records', 'System Management', 'Breed Catalog'];
 
 const navState = `(() => {
   const links = [...document.querySelectorAll('.ph-dash-nav-link')];
@@ -203,8 +210,8 @@ describe('Pet Owner Dashboard in a browser (mocked API)', { skip }, () => {
       assert.match(detail, /Official record/);
       assert.match(detail, /12\.5 kg/);
       assert.equal(await tab.evaluate(`document.querySelectorAll('#petHistory input, #petHistory textarea, #petHistory select, #petHistory form').length`), 0, 'the history cannot be edited');
-      assert.deepEqual(await tab.evaluate(`[...document.querySelectorAll('#petDetailPanel button')].map(b => b.textContent.trim())`), ['Back to all pets', 'Edit profile'],
-        'only the profile can be edited; Mochi has history, so it cannot be deleted');
+      assert.deepEqual(await tab.evaluate(`[...document.querySelectorAll('#petDetailPanel button')].map(b => b.textContent.trim())`), ['Back to all pets', 'Add owner-reported weight', 'Edit profile'],
+        'owner-reported weight and profile details are editable separately; Mochi has history, so it cannot be deleted');
       assert.equal(await tab.evaluate('document.activeElement.id'), 'petDetailTitle');
 
       await tab.evaluate(`document.querySelector('[data-pet-view="p2"]').click()`);
@@ -251,6 +258,26 @@ describe('Pet Owner Dashboard in a browser (mocked API)', { skip }, () => {
       assert.ok(await tab.waitFor(`!document.getElementById('bookingClosedNotice').hidden`));
       assert.equal(await tab.evaluate(`document.querySelector('#appointmentForm button[type=submit]').disabled`), true);
       assert.deepEqual(await tab.evaluate(requests('POST', '/appointments/create')), []);
+      assert.deepEqual(tab.errors, []);
+    } finally { await tab.close(); }
+  });
+
+  it('shows the clinic-time cancellation deadline and why a late cancellation is unavailable', async () => {
+    const eligible = clinicWallTime(3 * 60 * 60 * 1000);
+    const late = clinicWallTime(60 * 60 * 1000);
+    const appointments = [
+      appointment('11111111-1111-4111-8111-111111111111', { appointment_date: eligible.date, appointment_time: eligible.time, status: 'Pending' }),
+      appointment('22222222-2222-4222-8222-222222222222', { appointment_date: late.date, appointment_time: late.time, status: 'Approved' })
+    ];
+    const tab = await open('pages/user/appointments.html', '', OWNER, ownerRoutes({
+      '/appointments/userAppointments': ok({ appointments })
+    }));
+    try {
+      assert.ok(await tab.waitFor(`document.querySelectorAll('#appointmentsList [data-appointment-cancel]').length === 1`));
+      const list = await tab.evaluate(textOf('#appointmentsList'));
+      assert.match(list, /Cancel by .*Asia\/Manila/);
+      assert.match(list, /two-hour cancellation deadline passed/);
+      assert.match(list, /Contact the clinic for help/);
       assert.deepEqual(tab.errors, []);
     } finally { await tab.close(); }
   });
@@ -419,7 +446,7 @@ describe('Admin Dashboard in a browser (mocked API)', { skip }, () => {
     } finally { await tab.close(); }
   });
 
-  it('Pet Owners & Records shows each pet\'s records and offers a new record only for a completed appointment without one', async () => {
+  it('Pet Owners & Records uses explicit appointment links and does not offer duplicates', async () => {
     const tab = await open('pages/admin/dashboard.html', '#records', ADMIN, adminRoutes());
     try {
       assert.ok(await tab.waitFor(`document.querySelector('#petsTable [data-pet-view="p1"]') !== null`));
@@ -429,16 +456,13 @@ describe('Admin Dashboard in a browser (mocked API)', { skip }, () => {
       const detail = await tab.evaluate(textOf('#adminPetDetail'));
       assert.match(detail, /Entered by the owner/);
       assert.match(detail, /Official medical records \(2\)/);
-      assert.deepEqual(await tab.evaluate(`[...document.querySelectorAll('#adminPetRecordAppointment option')].map(o => o.value)`), ['d0000000-0000-4000-8000-000000000003']);
-      await tab.evaluate(`document.querySelector('[data-add-record]').click()`);
-      assert.ok(await tab.waitFor(`document.getElementById('adminMedicalRecordModal').classList.contains('flex')`));
-      assert.equal(await tab.evaluate(`document.getElementById('adminMedicalRecordPetId').value`), 'p1');
-      await tab.evaluate(`document.querySelector('#adminMedicalRecordModal [data-close-record-form]').click()`);
+      assert.equal(await tab.evaluate(`document.querySelector('[data-add-record]')`), null);
+      assert.match(await tab.evaluate(textOf('#adminPetDetailContent')), /Record linked/);
 
       // Luna belongs to the same owner: her profile is one click away
       await tab.evaluate(`document.querySelector('#adminPetDetail [data-other-pet="p2"]').click()`);
       assert.ok(await tab.waitFor(`document.getElementById('adminPetDetailName').textContent === 'Luna'`));
-      assert.match(await tab.evaluate(textOf('#adminPetDetailContent')), /no completed appointment without a record/);
+      assert.match(await tab.evaluate(textOf('#adminPetDetailContent')), /No completed appointment is currently available to link/);
       assert.equal(await tab.evaluate(`document.querySelector('[data-add-record]')`), null);
       assert.deepEqual(tab.errors, []);
     } finally { await tab.close(); }

@@ -109,7 +109,7 @@ const MINI_FAQ = {
   'does pethub guarantee treatment': "No. PetHub does not promise treatment outcomes. For medical concerns, consult a veterinarian.",
   
   // ==================== ADMIN FEATURES (if user asks) ====================
-  'what can admins do': "Admins use the **Admin Dashboard**: **Overview**, **Appointment Management**, **Pet Owners & Records**, and **System Management** (users, contact messages, activity logs and the service catalog).",
+  'what can admins do': "Admins use the **Admin Dashboard**: **Overview**, **Appointment Management**, **Pet Owners & Records**, and **System Management** (users, contact messages, activity logs and the service catalog). The separate **Breed Catalog** page manages breed suggestions.",
   'how do appointments get approved': "Admins review requests in **Appointment Management** on the **Admin Dashboard** and approve or cancel them. Approval depends on admin review and on the schedule being free.",
   'what is the admin dashboard': "The **Admin Dashboard** is the admin area with four sections: **Overview**, **Appointment Management**, **Pet Owners & Records**, and **System Management**.",
   
@@ -475,7 +475,8 @@ Guide perfect workflows with exact page names:
 - Pet Owner Dashboard: Overview, My Pets, Appointments, Pet Health & AI Assistant
 - Services
 - Contact
-- Admin Dashboard: Overview, Appointment Management, Pet Owners & Records, System Management
+  - Admin Dashboard: Overview, Appointment Management, Pet Owners & Records, System Management
+  - Breed Catalog: a separate Admin Dashboard page for maintaining pet breed choices
 
 NEW USER WORKFLOW:
 1. Register (Registration page)

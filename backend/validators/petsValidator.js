@@ -64,11 +64,13 @@ function validateSpecies(value) {
   return { value: species };
 }
 
-// Breed is optional: blank is saved as null
-function validateBreed(value) {
+// Breed is optional. Other / Not Listed requires an explicit owner-supplied description.
+function validateBreed(value, isOther = false) {
   const breed = hasValue(value) ? trimValue(value) : null;
+  if (breed === 'Other / Not Listed') return fieldError('breed', 'Describe the breed or choose Mixed Breed.');
+  if (isOther && !breed) return fieldError('breed', 'Enter the breed description.');
   if (breed && breed.length > PET_BREED_MAX_LENGTH) return fieldError('breed', `Breed must be ${PET_BREED_MAX_LENGTH} characters or fewer.`);
-  return { value: breed };
+  return { value: breed, isOther: Boolean(isOther && breed) };
 }
 
 function validateAge(value) {
@@ -95,7 +97,7 @@ function validateCreatePet(body = {}) {
   if (name.error) return name;
   const species = validateSpecies(body.species);
   if (species.error) return species;
-  const breed = validateBreed(body.breed);
+  const breed = validateBreed(body.breed, body.breed_other === true || body.breed_other === 'true');
   if (breed.error) return breed;
   const age = validateAge(body.age);
   if (age.error) return age;
@@ -105,6 +107,7 @@ function validateCreatePet(body = {}) {
     cleanName: name.value,
     cleanSpecies: species.value,
     cleanBreed: breed.value,
+    breedIsOther: breed.isOther,
     cleanAge: age.value,
     confirmNotDuplicate: isDuplicateConfirmed(body)
   };
@@ -170,7 +173,7 @@ function validateUpdatePet(params = {}, body = {}) {
     changes.species = species.value;
   }
   if (has('breed')) {
-    const breed = validateBreed(body.breed);
+    const breed = validateBreed(body.breed, body.breed_other === true || body.breed_other === 'true');
     if (breed.error) return breed;
     changes.breed = breed.value;
   }
@@ -190,6 +193,7 @@ function validateUpdatePet(params = {}, body = {}) {
     normalizedPetId,
     normalizedUserId,
     changes,
+    breedIsOther: Boolean(has('breed') && (body.breed_other === true || body.breed_other === 'true')),
     confirmNotDuplicate: isDuplicateConfirmed(body)
   };
 }
@@ -204,6 +208,23 @@ function validateMedicalRecordsQuery(query = {}) {
   };
 }
 
+function validateOwnerWeightReportRequest(params = {}, body = {}, authenticatedUserId = '') {
+  const petId = trimValue(params.id);
+  const userId = trimValue(authenticatedUserId);
+  if (!UUID_PATTERN.test(petId)) return { error: PET_NOT_FOUND };
+  if (!userId) return { error: { statusCode: 401, body: { error: 'Sign in to save an owner-reported measurement.' } } };
+  const rawWeight = body.weight_kg;
+  const text = typeof rawWeight === 'number' ? String(rawWeight) : trimValue(rawWeight);
+  if (!/^\d+(?:\.\d{1,2})?$/.test(text)) {
+    return { error: { statusCode: 400, body: { error: 'Enter a weight greater than zero with up to 2 decimal places.', field: 'weight_kg' } } };
+  }
+  const weightKg = Number(text);
+  if (!Number.isFinite(weightKg) || weightKg <= 0 || weightKg >= 100000) {
+    return { error: { statusCode: 400, body: { error: 'Enter a weight greater than zero that fits the saved range.', field: 'weight_kg' } } };
+  }
+  return { petId, userId, weightKg };
+}
+
 module.exports = {
   parsePetAge,
   isAgeInRange,
@@ -212,5 +233,6 @@ module.exports = {
   validateDeletePet,
   validatePetHistoryRequest,
   validateUpdatePet,
-  validateMedicalRecordsQuery
+  validateMedicalRecordsQuery,
+  validateOwnerWeightReportRequest
 };

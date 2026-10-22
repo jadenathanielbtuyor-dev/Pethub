@@ -73,6 +73,8 @@ function validateAdminMedicalRecord(body = {}, adminUserId) {
     created_by: normalizedCreatedBy
   };
 
+  if (normalizedAppointmentId) payload.appointment_id = normalizedAppointmentId;
+
   if (hasValue(body.weight)) {
     const numericWeight = Number(body.weight);
     if (!Number.isFinite(numericWeight) || numericWeight < 0) {

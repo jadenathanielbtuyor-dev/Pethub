@@ -285,6 +285,7 @@ function renderAdminSidebar() {
         { href: 'users.html', icon: 'ri-team-line', label: 'Users', view: 'users' },
         { href: 'pets.html', icon: 'ri-bear-smile-line', label: 'Pets', view: 'pets' },
         { href: 'appointments.html', icon: 'ri-calendar-event-line', label: 'Appointments', view: 'appointments' },
+        { href: 'breeds.html', icon: 'ri-list-check-2', label: 'Breed Catalog', view: 'breeds' },
         { href: 'dashboard.html#medicalRecordsSection', icon: 'ri-health-book-line', label: 'Medical Records', view: 'medicalRecords' }
       ];
 
@@ -457,6 +458,7 @@ function getSidebarAdminView() {
   if (currentPage === 'users.html') return 'users';
   if (currentPage === 'pets.html') return 'pets';
   if (currentPage === 'appointments.html') return 'appointments';
+  if (currentPage === 'breeds.html') return 'breeds';
 
   return 'dashboard';
 }

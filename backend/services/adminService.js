@@ -21,7 +21,6 @@ const {
   buildMedicalRecordContext,
   getMedicalRecordSummary,
   getAppointmentIdFromMedicalRecordAction,
-  getMedicalRecordCompletedAppointmentAction,
   applyMedicalRecordStateToAppointments
 } = require('../utils/medicalRecords');
 const { MEDICAL_RECORD_COMPLETED_APPOINTMENT_ACTION } = require('../constants/activityActions');
@@ -215,42 +214,45 @@ function normalizeAppointmentNames(appointments, userMap) {
   }));
 }
 
-async function getCompletedMedicalRecordAppointmentState(appointmentIds = []) {
-  const requestedIds = new Set((Array.isArray(appointmentIds) ? appointmentIds : [])
-    .map(id => String(id || '').trim())
-    .filter(Boolean));
+function applyMedicalRecordAssociationState(appointments = [], records = [], logs = []) {
+  const recordsByAppointment = new Map();
+  const unlinkedPetIds = new Set();
+  const loggedAppointmentIds = new Set();
 
-  try {
-    const { data: logs, error } = await activityLogsRepository.listCompletedMedicalRecordActions(
-      MEDICAL_RECORD_COMPLETED_APPOINTMENT_ACTION,
-      5000
-    );
+  (Array.isArray(records) ? records : []).forEach(record => {
+    const appointmentId = String(record?.appointment_id || '').trim();
+    const petId = String(record?.pet_id || '').trim();
+    if (appointmentId) recordsByAppointment.set(appointmentId, record);
+    else if (petId) unlinkedPetIds.add(petId);
+  });
 
-    if (error) {
-      console.warn('Unable to load completed medical record action state:', error);
-      return {};
+  (Array.isArray(logs) ? logs : []).forEach(log => {
+    const appointmentId = getAppointmentIdFromMedicalRecordAction(log?.action);
+    if (appointmentId) loggedAppointmentIds.add(appointmentId);
+  });
+
+  const state = {};
+  (Array.isArray(appointments) ? appointments : []).forEach(appointment => {
+    if (String(appointment?.status || '').toLowerCase() !== 'completed') return;
+    const id = String(appointment.id || '').trim();
+    const linkedRecord = recordsByAppointment.get(id);
+    if (linkedRecord) {
+      state[id] = {
+        has_medical_record: true,
+        medical_record_link_status: 'linked',
+        medical_record_id: linkedRecord.id || null
+      };
+      return;
     }
 
-    return (logs || []).reduce((state, log) => {
-      const appointmentId = getAppointmentIdFromMedicalRecordAction(log.action);
-      if (!appointmentId || (requestedIds.size && !requestedIds.has(appointmentId))) {
-        return state;
-      }
-
-      if (!state[appointmentId]) {
-        state[appointmentId] = {
-          has_medical_record: true,
-          medical_record_action_completed: true,
-          medical_record_id: log.target_id || null,
-          medical_record_log_id: log.id || null
-        };
-      }
-      return state;
-    }, {});
-  } catch (error) {
-    console.warn('Unable to load completed medical record action state:', error);
-    return {};
-  }
+    const petId = String(appointment.pet_id || '').trim();
+    const unresolved = !Array.isArray(logs) || !petId || unlinkedPetIds.has(petId) || loggedAppointmentIds.has(id);
+    state[id] = {
+      has_medical_record: false,
+      medical_record_link_status: unresolved ? 'unresolved' : 'none'
+    };
+  });
+  return applyMedicalRecordStateToAppointments(appointments, state);
 }
 
 async function logAdminActivity(req, targetTable, targetId, action) {
@@ -503,12 +505,14 @@ const getDashboardOverview = async (req) => {
       };
     });
 
-    const appointmentMedicalRecordState = await getCompletedMedicalRecordAppointmentState(
-      appointments.map(appointment => appointment.id)
+    const { data: legacyMedicalRecordLogs, error: legacyLogsError } = await activityLogsRepository.listCompletedMedicalRecordActions(
+      MEDICAL_RECORD_COMPLETED_APPOINTMENT_ACTION,
+      5000
     );
-    const normalizedAppointments = applyMedicalRecordStateToAppointments(
+    const normalizedAppointments = applyMedicalRecordAssociationState(
       normalizeAppointmentNames(appointments, userMap),
-      appointmentMedicalRecordState
+      medicalRecords || [],
+      legacyLogsError ? null : legacyMedicalRecordLogs || []
     );
 
     const totalUsers = users.length;
@@ -920,12 +924,18 @@ const getAllAppointments = async (req) => {
       }
     }
 
-    const appointmentMedicalRecordState = await getCompletedMedicalRecordAppointmentState(
-      appointmentsList.map(appointment => appointment.id)
-    );
-    const normalizedAppointments = applyMedicalRecordStateToAppointments(
+    const [recordLinks, legacyLogs] = await Promise.all([
+      medicalRecordsRepository.listAppointmentLinks(),
+      activityLogsRepository.listCompletedMedicalRecordActions(MEDICAL_RECORD_COMPLETED_APPOINTMENT_ACTION, 5000)
+    ]);
+    if (recordLinks.error) {
+      console.error('Error fetching medical record associations:', recordLinks.error);
+      return { statusCode: 500, body: { error: 'Failed to fetch medical record associations' } };
+    }
+    const normalizedAppointments = applyMedicalRecordAssociationState(
       normalizeAppointmentNames(appointmentsList, userMap),
-      appointmentMedicalRecordState
+      recordLinks.data || [],
+      legacyLogs.error ? null : legacyLogs.data || []
     );
 
     return { statusCode: 200, body: { success: true, appointments: normalizedAppointments } };
@@ -1261,15 +1271,49 @@ const createMedicalRecord = async (req) => {
         return { statusCode: 400, body: { success: false, error: 'Selected pet does not belong to the appointment owner.' } };
       }
 
-      if (hasValue(appointment.pet_id) && String(appointment.pet_id).trim() !== normalizedPetId) {
+      if (!hasValue(appointment.pet_id)) {
+        return { statusCode: 409, body: {
+          success: false,
+          error: 'This appointment is not linked to a pet profile. Review the appointment and pet records before associating them.'
+        } };
+      }
+
+      if (String(appointment.pet_id).trim() !== normalizedPetId) {
         return { statusCode: 400, body: { success: false, error: 'Selected pet does not match the appointment pet.' } };
       }
 
-      const existingMedicalRecordState = await getCompletedMedicalRecordAppointmentState([normalizedAppointmentId]);
-      if (existingMedicalRecordState[normalizedAppointmentId]?.has_medical_record) {
+      const { data: petRecords, error: petRecordsError } = await medicalRecordsRepository.listByPetIds([normalizedPetId]);
+      if (petRecordsError) {
+        console.error('Error checking existing medical records:', petRecordsError);
+        return { statusCode: 500, body: { success: false, error: 'Failed to verify existing medical records' } };
+      }
+
+      const { data: actionLogs, error: actionLogsError } = await activityLogsRepository.listCompletedMedicalRecordActions(
+        MEDICAL_RECORD_COMPLETED_APPOINTMENT_ACTION,
+        5000
+      );
+      if (actionLogsError) {
+        return { statusCode: 503, body: {
+          success: false,
+          error: 'Historical medical-record links cannot be checked right now. Try again later.'
+        } };
+      }
+
+      const existingAppointmentRecord = (petRecords || []).some(record => String(record.appointment_id || '') === normalizedAppointmentId);
+      if (existingAppointmentRecord) {
         return { statusCode: 409, body: {
           success: false,
           error: 'A medical record has already been added for this appointment.'
+        } };
+      }
+
+      const unresolvedLegacyRecord = (petRecords || []).some(record => !record.appointment_id)
+        || (actionLogs || []).some(log => getAppointmentIdFromMedicalRecordAction(log.action) === normalizedAppointmentId);
+      if (unresolvedLegacyRecord) {
+        return { statusCode: 409, body: {
+          success: false,
+          code: 'MEDICAL_RECORD_LINK_UNRESOLVED',
+          error: 'This pet has an existing unlinked medical record or a historical association that needs clinic review before a new appointment link can be saved.'
         } };
       }
     }
@@ -1277,6 +1321,12 @@ const createMedicalRecord = async (req) => {
     const { data, error } = await medicalRecordsRepository.createMedicalRecord(payload);
 
     if (error) {
+      if (error.code === '23505' && normalizedAppointmentId) {
+        return { statusCode: 409, body: {
+          success: false,
+          error: 'A medical record has already been linked to this appointment.'
+        } };
+      }
       console.error('Failed to create admin medical record:', error);
       return { statusCode: 500, body: {
         success: false,
@@ -1290,24 +1340,13 @@ const createMedicalRecord = async (req) => {
       req,
       'medical_records',
       record?.id || normalizedPetId,
-      normalizedAppointmentId
-        ? getMedicalRecordCompletedAppointmentAction(normalizedAppointmentId)
-        : `Created medical record for pet ${normalizedPetId}`
+      `Created official medical record for pet ${normalizedPetId}${normalizedAppointmentId ? ` linked to appointment ${normalizedAppointmentId}` : ''}`
     );
-
-    const responseRecord = record && normalizedAppointmentId
-      ? {
-          ...record,
-          appointment_id: normalizedAppointmentId,
-          has_medical_record: true,
-          medical_record_action_completed: true
-        }
-      : record;
 
     return { statusCode: 201, body: {
       success: true,
       message: 'Medical record created successfully',
-      record: responseRecord
+      record
     } };
   } catch (error) {
     console.error('Create admin medical record error:', error);

@@ -48,6 +48,7 @@ describe('Pet Owner Dashboard sections load only the signed-in owner\'s records'
       body: { pet_id: ownerPet.id, appointment_id: ownerVisit.id, record_date: t.manilaDate(6), weight: 10, vaccination_status: 'Up to date', treatment: 'Bath', medical_notes: 'Test note' }
     });
     assert.equal(created.status, 201);
+    assert.equal(created.body.record.appointment_id, ownerVisit.id, 'the appointment relationship is stored explicitly');
 
     const pets = await t.api('GET', `/pets/userPets?user_id=${other.id}`, { token: other.token });
     assert.deepEqual(pets.body.pets.map(pet => pet.name), ['Kuro']);
@@ -154,5 +155,7 @@ describe('Admin Dashboard operations are for administrators only', () => {
       ['created_at', 'created_by', 'medical_notes', 'pet_id', 'record_date', 'treatment', 'vaccination_status', 'weight'],
       'only the medical_records columns are stored'
     );
+    assert.equal(created.body.record.appointment_id, visit.id);
+    assert.equal(created.body.record.has_medical_record, undefined, 'the response does not synthesize a status flag');
   });
 });

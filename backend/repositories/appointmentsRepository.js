@@ -110,6 +110,15 @@ function findById(appointmentId) {
     .maybeSingle();
 }
 
+function findByIdForUser(appointmentId, userId) {
+  return supabase
+    .from('appointments')
+    .select(APPOINTMENT_SELECT)
+    .eq('id', appointmentId)
+    .eq('user_id', userId)
+    .maybeSingle();
+}
+
 function findStatusById(appointmentId) {
   return supabase
     .from('appointments')
@@ -139,6 +148,14 @@ function updateStatus(appointmentId, status, handledBy, expectedCurrentStatus) {
   }
 
   return query.select(APPOINTMENT_SELECT);
+}
+
+function cancelByUser(appointmentId, userId, expectedCurrentStatus) {
+  return supabase.rpc('cancel_appointment_for_owner', {
+    p_appointment_id: appointmentId,
+    p_owner_id: userId,
+    p_expected_status: expectedCurrentStatus
+  });
 }
 
 function listServiceTypes() {
@@ -177,9 +194,11 @@ module.exports = {
   countByPetId,
   listAllAppointments,
   findById,
+  findByIdForUser,
   findStatusById,
   findForMedicalRecord,
   updateStatus,
+  cancelByUser,
   listServiceTypes,
   listAppointmentDatesBetween,
   listUsersByAppointmentIds

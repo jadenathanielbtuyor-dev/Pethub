@@ -28,6 +28,7 @@ let petsLoadError = '';
 let openPetId = '';
 let petSubmitInProgress = false;
 let petEditInProgress = false;
+let ownerWeightSubmitInProgress = false;
 let petEditing = false;
 // The open pet's history (GET /pets/history/:id): { petId, status: 'loading' | 'loaded' | 'error', data, error }
 let petHistory = { petId: '', status: 'loading', data: null, error: '' };
@@ -38,13 +39,18 @@ let pendingNewPet = null;
 let pendingPetChanges = null;
 
 const PET_FIELD_IDS = {
-  create: { name: 'petName', species: 'petType', breed: 'petBreed', age: 'petAge' },
-  edit: { name: 'petEditName', species: 'petEditSpecies', breed: 'petEditBreed', age: 'petEditAge' }
+  create: { name: 'petName', species: 'petType', breed: 'petBreed', breedOther: 'petBreedOther', age: 'petAge' },
+  edit: { name: 'petEditName', species: 'petEditSpecies', breed: 'petEditBreed', breedOther: 'petEditBreedOther', age: 'petEditAge' }
 };
 const PET_NAME_MAX_LENGTH = 50;
 const PET_BREED_MAX_LENGTH = 50;
 const PET_SPECIES = ['Dog', 'Cat'];
 const POSSIBLE_DUPLICATE_PET_CODE = 'POSSIBLE_DUPLICATE_PET';
+const OTHER_BREED_OPTION = 'Other / Not Listed';
+const MIXED_BREED_OPTION = 'Mixed Breed';
+const breedChoicesBySpecies = { Dog: [], Cat: [] };
+const breedChoicesLoaded = { Dog: false, Cat: false };
+const breedChoicesErrors = { Dog: '', Cat: '' };
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
@@ -79,6 +85,7 @@ async function initializePets() {
 
   // Bind the forms before loading data so an early submit is handled instead of reloading the page.
   setupFormHandler();
+  setupBreedInputs();
   setupAddModeChoice();
   setupPetListActions();
   setupPetDetailActions();
@@ -96,6 +103,86 @@ async function requestPetsApi(path, options = {}) {
   const response = await fetch(`${window.API_BASE_URL}${path}`, options);
   const data = await response.json().catch(() => ({}));
   return { ok: response.ok, status: response.status, data };
+}
+
+function setupBreedInputs() {
+  setupBreedInput('create');
+  loadBreedChoices(document.getElementById(PET_FIELD_IDS.create.species)?.value, 'create');
+}
+
+function setupBreedInput(kind) {
+  const ids = PET_FIELD_IDS[kind];
+  const speciesInput = document.getElementById(ids.species);
+  const breedInput = document.getElementById(ids.breed);
+  if (!speciesInput || !breedInput) return;
+  speciesInput.addEventListener('change', () => {
+    const species = speciesInput.value;
+    const currentBreed = breedInput.value.trim();
+    const allowed = breedChoicesBySpecies[species] || [];
+    if (currentBreed && currentBreed !== MIXED_BREED_OPTION && currentBreed !== OTHER_BREED_OPTION &&
+        !allowed.some(item => item.name.toLowerCase() === currentBreed.toLowerCase())) {
+      breedInput.value = '';
+      const other = document.getElementById(ids.breedOther);
+      if (other) other.value = '';
+    }
+    renderBreedSuggestions(kind);
+    updateOtherBreedVisibility(kind);
+    loadBreedChoices(species, kind);
+  });
+  breedInput.addEventListener('input', () => updateOtherBreedVisibility(kind));
+  breedInput.addEventListener('change', () => updateOtherBreedVisibility(kind));
+  renderBreedSuggestions(kind);
+  updateOtherBreedVisibility(kind);
+}
+
+async function loadBreedChoices(species, kind) {
+  if (!PET_SPECIES.includes(species)) return;
+  renderBreedSuggestions(kind);
+  if (breedChoicesLoaded[species]) return;
+  try {
+    const { ok, data } = await requestPetsApi(`/pets/breeds?species=${encodeURIComponent(species)}`);
+    if (!ok) throw new Error(data.error || 'Breed catalog unavailable.');
+    breedChoicesBySpecies[species] = Array.isArray(data.breeds) ? data.breeds.filter(entry => entry?.name) : [];
+    breedChoicesLoaded[species] = true;
+    breedChoicesErrors[species] = '';
+    renderBreedSuggestions(kind);
+  } catch (error) {
+    breedChoicesErrors[species] = 'Breed choices could not be loaded. Try again, or use Mixed Breed / Other.';
+    renderBreedSuggestions(kind);
+    console.warn('Breed catalog unavailable:', error.message);
+  }
+}
+
+function renderBreedSuggestions(kind) {
+  const ids = PET_FIELD_IDS[kind];
+  const species = document.getElementById(ids.species)?.value;
+  const datalistId = kind === 'edit' ? 'petEditBreedSuggestions' : 'petBreedSuggestions';
+  const datalist = document.getElementById(datalistId);
+  if (!datalist) return;
+  const options = [MIXED_BREED_OPTION, OTHER_BREED_OPTION, ...(breedChoicesBySpecies[species] || []).map(entry => entry.name)];
+  datalist.innerHTML = [...new Set(options)].map(name => `<option value="${escapeHtml(name)}"></option>`).join('');
+  const state = document.getElementById(kind === 'edit' ? 'petEditBreedCatalogState' : 'petBreedCatalogState');
+  if (state) {
+    state.textContent = !PET_SPECIES.includes(species)
+      ? 'Choose Dog or Cat to load matching breeds.'
+      : breedChoicesErrors[species]
+        ? breedChoicesErrors[species]
+        : breedChoicesLoaded[species] && breedChoicesBySpecies[species].length === 0
+          ? 'No breeds are listed for this species yet. Use Mixed Breed or Other / Not Listed.'
+          : breedChoicesLoaded[species]
+            ? 'Type to search the available breeds.'
+            : 'Loading breed choices...';
+  }
+}
+
+function updateOtherBreedVisibility(kind) {
+  const ids = PET_FIELD_IDS[kind];
+  const input = document.getElementById(ids.breed);
+  const wrapper = document.getElementById(kind === 'edit' ? 'petEditBreedOtherWrap' : 'petBreedOtherWrap');
+  const other = document.getElementById(ids.breedOther);
+  const isOther = input?.value.trim().toLowerCase() === OTHER_BREED_OPTION.toLowerCase();
+  if (wrapper) wrapper.hidden = !isOther;
+  if (isOther) other?.focus({ preventScroll: true });
 }
 
 function getOwnerQuery() {
@@ -406,6 +493,21 @@ function renderPetDetail(petId) {
           <div><dt>Latest recorded weight</dt> <dd id="petDetailWeight">${escapeHtml(getLatestWeightText(pet.latest_weight, { withDate: true }))}</dd></div>
         </dl>
         <p class="ph-dash-note mt-2">Weight comes only from official records the clinic has added.</p>
+        <section class="ph-pet-owner-measurements mt-5" aria-labelledby="ownerMeasurementsTitle">
+          <h4 id="ownerMeasurementsTitle" class="ph-dash-card-title">Owner-reported weight</h4>
+          <p class="ph-dash-note">Your measurements are labeled as owner-provided and kept as dated entries. They do not replace or change the clinic's official medical record.</p>
+          <div id="ownerWeightReports" class="ph-dash-stack mt-3" aria-live="polite"></div>
+          <form id="ownerWeightReportForm" class="ph-form mt-3" novalidate>
+            <div class="ph-field">
+              <label for="ownerWeightKg" class="ph-label">Weight (kg)</label>
+              <input id="ownerWeightKg" name="weight_kg" class="ph-input" type="number" min="0.01" max="99999.99" step="0.01" inputmode="decimal" required aria-describedby="ownerWeightHelp ownerWeightError">
+              <p id="ownerWeightHelp" class="ph-help">Enter a weight you measured. PetHub saves it with the date and labels it as owner-reported.</p>
+              <p id="ownerWeightError" class="ph-field-error" hidden></p>
+            </div>
+            <div id="ownerWeightReportMessage" class="ph-dash-status" role="status" aria-live="polite"></div>
+            <div class="ph-form-actions"><button type="submit" class="ph-btn ph-btn-secondary ph-btn-sm"><i class="ri-add-line" aria-hidden="true"></i>Add owner-reported weight</button></div>
+          </form>
+        </section>
         <div id="petEditRegion"></div>
         <div class="ph-dash-card-actions" id="petProfileActions">
           <button type="button" id="petEditOpen" class="ph-btn ph-btn-secondary ph-btn-sm"><i class="ri-edit-line" aria-hidden="true"></i>Edit profile</button>
@@ -510,7 +612,42 @@ function renderPetHistory() {
     if (weight && petHistory.data) weight.textContent = getLatestWeightText(petHistory.data.latest_weight, { withDate: true });
   }
 
+  renderOwnerWeightReports();
   renderPetRemoveRegion();
+}
+
+function renderOwnerWeightReports() {
+  const container = document.getElementById('ownerWeightReports');
+  const form = document.getElementById('ownerWeightReportForm');
+  if (!container || !form) return;
+  const historyAvailable = petHistory.petId === openPetId && petHistory.status === 'loaded' &&
+    petHistory.data?.owner_measurement_history_available !== false;
+  const reports = petHistory.petId === openPetId && petHistory.status === 'loaded'
+    ? (petHistory.data?.owner_reported_measurements || []) : [];
+
+  if (!historyAvailable) {
+    const statusText = petHistory.status === 'loading' || petHistory.petId !== openPetId
+      ? 'Loading owner-reported measurements...'
+      : petHistory.status === 'error'
+        ? 'Owner-reported measurements could not be loaded. Try again from Veterinary history.'
+        : 'Owner-reported measurement history is unavailable until the database update is applied.';
+    container.innerHTML = `<p class="ph-dash-note">${statusText}</p>`;
+    form.querySelector('button[type="submit"]')?.setAttribute('disabled', '');
+    return;
+  }
+  form.querySelector('button[type="submit"]')?.removeAttribute('disabled');
+  container.innerHTML = reports.length ? reports.map(report => `
+    <article class="ph-dash-card ph-owner-measurement">
+      <div class="ph-dash-card-head"><p class="ph-dash-card-title">${escapeHtml(`${Number(report.weight_kg).toFixed(2)} kg`)}</p><span class="ph-badge">Owner-reported</span></div>
+      <p class="ph-dash-note">Reported ${escapeHtml(formatOwnerWeightDate(report.recorded_at))} by you</p>
+    </article>
+  `).join('') : `<div class="ph-dash-empty"><p class="ph-dash-empty-title">No owner-reported weights yet</p><p class="ph-dash-empty-text">Add a measurement above to keep a dated personal record.</p></div>`;
+}
+
+function formatOwnerWeightDate(value) {
+  const date = new Date(value);
+  if (!value || Number.isNaN(date.getTime())) return 'date not recorded';
+  return `${new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(date)} (Asia/Manila)`;
 }
 
 function getAppointmentStatusLabel(status) {
@@ -593,10 +730,16 @@ function renderPetRemoveRegion() {
 
   const appointments = (petHistory.data?.appointments || []).length;
   const records = (petHistory.data?.medical_records || []).length;
-  if (appointments > 0 || records > 0) {
+  const ownerMeasurements = (petHistory.data?.owner_reported_measurements || []).length;
+  if (petHistory.data?.owner_measurement_history_available === false && petHistory.data?.owner_measurement_history_supported !== false) {
+    region.innerHTML = `${title}<p class="ph-dash-note">Deleting is unavailable because owner-reported measurement history could not be verified. Try loading history again.</p>`;
+    return;
+  }
+  if (appointments > 0 || records > 0 || ownerMeasurements > 0) {
     const held = [
       appointments ? `${appointments} appointment${appointments === 1 ? '' : 's'}` : '',
-      records ? `${records} official medical record${records === 1 ? '' : 's'}` : ''
+      records ? `${records} official medical record${records === 1 ? '' : 's'}` : '',
+      ownerMeasurements ? `${ownerMeasurements} owner-reported measurement${ownerMeasurements === 1 ? '' : 's'}` : ''
     ].filter(Boolean).join(' and ');
     region.innerHTML = `
       ${title}
@@ -607,7 +750,7 @@ function renderPetRemoveRegion() {
 
   region.innerHTML = `
     ${title}
-    <p class="ph-dash-note">${name} has no appointments or official medical records in PetHub. Deleting removes this profile from your account and can't be undone.</p>
+    <p class="ph-dash-note">${name} has no appointments, official medical records, or owner-reported measurements in PetHub. Deleting removes this profile from your account and can't be undone.</p>
     <div id="petRemoveMessage" class="ph-dash-status mt-3"></div>
     <div class="ph-dash-card-actions">
       <button type="button" id="petDeleteButton" class="ph-btn ph-btn-ghost ph-btn-sm" data-pet-delete="${escapeHtml(String(pet.id))}">
@@ -646,6 +789,11 @@ function setupPetDetailActions() {
   });
 
   content.addEventListener('submit', event => {
+    if (event.target.id === 'ownerWeightReportForm') {
+      event.preventDefault();
+      saveOwnerWeightReport(event.target);
+      return;
+    }
     if (event.target.id !== 'petEditForm') return;
     event.preventDefault();
     savePetEdits();
@@ -658,6 +806,58 @@ function setupPetDetailActions() {
       hidePetDuplicateNotice('edit');
     }
   });
+}
+
+async function saveOwnerWeightReport(form) {
+  if (ownerWeightSubmitInProgress || !form || !getPetById(openPetId)) return;
+  const input = document.getElementById('ownerWeightKg');
+  const errorElement = document.getElementById('ownerWeightError');
+  const message = document.getElementById('ownerWeightReportMessage');
+  const rawWeight = String(input?.value || '').trim();
+  const validWeight = /^\d+(?:\.\d{1,2})?$/.test(rawWeight) && Number.isFinite(Number(rawWeight)) && Number(rawWeight) > 0;
+  if (!validWeight) {
+    if (input) input.setAttribute('aria-invalid', 'true');
+    if (errorElement) {
+      errorElement.textContent = 'Enter a weight greater than zero with up to 2 decimal places.';
+      errorElement.hidden = false;
+    }
+    input?.focus();
+    return;
+  }
+  input?.removeAttribute('aria-invalid');
+  if (errorElement) errorElement.hidden = true;
+  if (message) clearMessage(message);
+
+  const petId = openPetId;
+  const submitButton = form.querySelector('button[type="submit"]');
+  ownerWeightSubmitInProgress = true;
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.setAttribute('aria-busy', 'true');
+    submitButton.textContent = 'Saving measurement...';
+  }
+  try {
+    const { ok, status, data } = await requestPetsApi(`/pets/${encodeURIComponent(petId)}/weight-reports`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ weight_kg: Number(rawWeight) })
+    });
+    if (!ok) throw new Error(data.error || `Could not save measurement (${status}).`);
+    form.reset();
+    if (message) displayMessage(message, 'Owner-reported weight saved with today’s date.', 'success');
+    await loadPetHistory(petId);
+  } catch (error) {
+    console.error('Error saving owner-reported weight:', error);
+    if (message) displayMessage(message, error.message || 'Could not save this measurement.', 'error');
+  } finally {
+    ownerWeightSubmitInProgress = false;
+    if (document.body.contains(form) && submitButton) {
+      submitButton.disabled = false;
+      submitButton.removeAttribute('aria-busy');
+      submitButton.innerHTML = '<i class="ri-add-line" aria-hidden="true"></i>Add owner-reported weight';
+      renderOwnerWeightReports();
+    }
+  }
 }
 
 /**
@@ -736,7 +936,11 @@ function renderPetEditForm(pet) {
       </div>
       <div class="ph-field">
         <label for="petEditBreed" class="ph-label">Breed</label>
-        <input type="text" id="petEditBreed" class="ph-input" maxlength="${PET_BREED_MAX_LENGTH}" aria-describedby="petEditBreedError" value="${escapeHtml(pet.breed || '')}">
+        <input type="search" id="petEditBreed" class="ph-input" maxlength="${PET_BREED_MAX_LENGTH}" list="petEditBreedSuggestions" autocomplete="off" aria-describedby="petEditBreedHelp petEditBreedError" value="${escapeHtml(pet.breed || '')}">
+        <datalist id="petEditBreedSuggestions"><option value="${MIXED_BREED_OPTION}"></option><option value="${OTHER_BREED_OPTION}"></option></datalist>
+        <p id="petEditBreedHelp" class="ph-help">Choose a suggestion, Mixed Breed, or Other / Not Listed.</p>
+        <p id="petEditBreedCatalogState" class="ph-help" role="status" aria-live="polite">Loading breed choices...</p>
+        <div id="petEditBreedOtherWrap" class="mt-2" hidden><label for="petEditBreedOther" class="ph-label">Describe the breed</label><input type="text" id="petEditBreedOther" class="ph-input" maxlength="${PET_BREED_MAX_LENGTH}" autocomplete="off"></div>
         <p id="petEditBreedError" class="ph-field-error" hidden></p>
       </div>
       <div class="ph-field">
@@ -757,6 +961,8 @@ function renderPetEditForm(pet) {
   `;
   const species = document.getElementById('petEditSpecies');
   if (species) species.value = String(pet.species || '').trim();
+  setupBreedInput('edit');
+  loadBreedChoices(species?.value, 'edit');
 }
 
 function closePetEditForm({ focus = false } = {}) {
@@ -812,6 +1018,7 @@ async function savePetEdits({ confirmNotDuplicate = false } = {}) {
 
   const body = { user_id: currentUser.id, ...changes };
   if (body.age !== undefined) body.age = Number(body.age);
+  if (changes.breed !== undefined && values.breedIsOther) body.breed_other = true;
   if (confirmNotDuplicate) body.confirm_not_duplicate = true;
 
   petEditInProgress = true;
@@ -852,10 +1059,13 @@ async function savePetEdits({ confirmNotDuplicate = false } = {}) {
 function readPetFormValues(kind) {
   const ids = PET_FIELD_IDS[kind];
   const ageInput = document.getElementById(ids.age);
+  const rawBreed = (document.getElementById(ids.breed)?.value || '').trim();
+  const breedIsOther = rawBreed.toLowerCase() === OTHER_BREED_OPTION.toLowerCase();
   return {
     name: (document.getElementById(ids.name)?.value || '').trim().replace(/\s+/g, ' '),
     species: (document.getElementById(ids.species)?.value || '').trim(),
-    breed: (document.getElementById(ids.breed)?.value || '').trim(),
+    breed: breedIsOther ? (document.getElementById(ids.breedOther)?.value || '').trim() : rawBreed,
+    breedIsOther,
     // A number field the browser cannot read ("e", "--") reports '' with validity.badInput
     age: (ageInput?.value || '').trim(),
     ageBadInput: Boolean(ageInput?.validity?.badInput)
@@ -875,6 +1085,9 @@ function getPetFieldErrors(values, { fields = ['name', 'species', 'breed', 'age'
   }
   if (fields.includes('breed') && values.breed.length > PET_BREED_MAX_LENGTH) {
     errors.breed = `Breed must be ${PET_BREED_MAX_LENGTH} characters or fewer.`;
+  } else if (fields.includes('breed') && values.breed && !values.breedIsOther && values.breed !== MIXED_BREED_OPTION &&
+      breedChoicesLoaded[values.species] && !breedChoicesBySpecies[values.species].some(item => item.name.toLowerCase() === values.breed.toLowerCase())) {
+    errors.breed = 'Choose a listed breed, Mixed Breed, or Other / Not Listed.';
   }
   if (fields.includes('age') || requireAge) {
     const ageValidation = values.ageBadInput ? validateAge('not a number') : validateAge(values.age);
@@ -1054,6 +1267,7 @@ async function submitNewPet({ confirmNotDuplicate = false } = {}) {
     breed: values.breed || null,
     age: Number(values.age)
   };
+  if (values.breedIsOther) newPet.breed_other = true;
   const body = confirmNotDuplicate && pendingNewPet ? { ...pendingNewPet, confirm_not_duplicate: true } : newPet;
 
   petSubmitInProgress = true;

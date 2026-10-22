@@ -2,8 +2,11 @@ const usersRepository = require('../repositories/usersRepository');
 const petsRepository = require('../repositories/petsRepository');
 const appointmentsRepository = require('../repositories/appointmentsRepository');
 const medicalRecordsRepository = require('../repositories/medicalRecordsRepository');
+const breedCatalogRepository = require('../repositories/breedCatalogRepository');
+const ownerWeightReportsRepository = require('../repositories/ownerWeightReportsRepository');
 const { attachHandledByNames } = require('./appointmentsService');
 const { isUserVerified } = require('../utils/accountVerification');
+const { logUserActivity } = require('../utils/activityLogger');
 const { runExclusive } = require('../utils/keyedLock');
 const {
   buildMedicalRecordContext,
@@ -26,11 +29,31 @@ const {
   validateDeletePet,
   validatePetHistoryRequest,
   validateUpdatePet,
-  validateMedicalRecordsQuery
+  validateMedicalRecordsQuery,
+  validateOwnerWeightReportRequest
 } = require('../validators/petsValidator');
 
 const VERIFY_EMAIL_FIRST = { statusCode: 403, body: { error: 'Please verify your email first before accessing PetHub features.' } };
 const PET_NOT_FOUND = { statusCode: 404, body: { error: 'Pet not found' } };
+
+function isMissingWeightReportTable(error) {
+  return ['42P01', 'PGRST205'].includes(String(error?.code || ''));
+}
+
+function normalizeBreed(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en');
+}
+
+async function validateSelectedBreed(species, breed, { isOther = false } = {}) {
+  const name = String(breed || '').trim();
+  if (!name || isOther || normalizeBreed(name) === 'mixed breed') return null;
+  const { data, error } = await breedCatalogRepository.list({ species, activeOnly: true });
+  if (error) return { statusCode: 503, body: { error: 'Breed choices are temporarily unavailable. Try again later.', field: 'breed' } };
+  const matches = (data || []).some(entry => normalizeBreed(entry.name) === normalizeBreed(name));
+  return matches ? null : { statusCode: 400, body: {
+    error: 'Choose a listed breed, Mixed Breed, or Other / Not Listed and enter a description.', field: 'breed'
+  } };
+}
 
 function possibleDuplicateResult(duplicates) {
   return { statusCode: 409, body: {
@@ -86,11 +109,14 @@ const createPet = async (req) => {
     const validation = validateCreatePet(req.body);
     if (validation.error) return validation.error;
 
-    const { normalizedUserId, cleanName, cleanSpecies, cleanBreed, cleanAge, confirmNotDuplicate } = validation;
+    const { normalizedUserId, cleanName, cleanSpecies, cleanBreed, cleanAge, confirmNotDuplicate, breedIsOther } = validation;
 
     const verified = await isUserVerified(normalizedUserId);
 
     if (!verified) return VERIFY_EMAIL_FIRST;
+
+    const breedError = await validateSelectedBreed(cleanSpecies, cleanBreed, { isOther: breedIsOther });
+    if (breedError) return breedError;
 
     const newPet = {
       user_id: normalizedUserId,
@@ -134,7 +160,7 @@ const updatePet = async (req) => {
     const validation = validateUpdatePet(req.params, req.body);
     if (validation.error) return validation.error;
 
-    const { normalizedPetId, normalizedUserId, changes, confirmNotDuplicate } = validation;
+    const { normalizedPetId, normalizedUserId, changes, confirmNotDuplicate, breedIsOther } = validation;
 
     const verified = await isUserVerified(normalizedUserId);
 
@@ -144,6 +170,15 @@ const updatePet = async (req) => {
       const { data: pet, error: findError } = await petsRepository.findProfileForUser(normalizedUserId, normalizedPetId);
       if (findError) return { failure: findError };
       if (!pet) return { refused: PET_NOT_FOUND };
+
+      const speciesChanged = changes.species !== undefined && changes.species !== pet.species;
+      const breedChanged = changes.breed !== undefined;
+      if (speciesChanged || breedChanged) {
+        const selectedSpecies = changes.species || pet.species;
+        const selectedBreed = breedChanged ? changes.breed : pet.breed;
+        const breedError = await validateSelectedBreed(selectedSpecies, selectedBreed, { isOther: breedChanged && breedIsOther });
+        if (breedError) return { refused: breedError };
+      }
 
       if (changes.species !== undefined && changes.age === undefined && !isAgeInRange(pet.age)) {
         return { refused: { statusCode: 400, body: {
@@ -267,10 +302,11 @@ const getPetHistory = async (req) => {
 
     if (!pet) return PET_NOT_FOUND;
 
-    const [appointmentsResult, recordsResult, unlinkedResult] = await Promise.all([
+    const [appointmentsResult, recordsResult, unlinkedResult, ownerWeightReportsResult] = await Promise.all([
       appointmentsRepository.listByUserIdAndPetId(normalizedUserId, normalizedPetId),
       medicalRecordsRepository.listByPetIds([normalizedPetId]),
-      appointmentsRepository.countUnlinkedByUserId(normalizedUserId)
+      appointmentsRepository.countUnlinkedByUserId(normalizedUserId),
+      ownerWeightReportsRepository.listByPetIdForUser(normalizedPetId, normalizedUserId)
     ]);
 
     if (appointmentsResult.error || recordsResult.error) {
@@ -280,6 +316,9 @@ const getPetHistory = async (req) => {
 
     if (unlinkedResult.error) {
       console.warn('Unable to count unlinked appointments:', unlinkedResult.error);
+    }
+    if (ownerWeightReportsResult.error && !isMissingWeightReportTable(ownerWeightReportsResult.error)) {
+      console.warn('Unable to load owner-reported measurements:', { code: ownerWeightReportsResult.error.code });
     }
 
     const records = (recordsResult.data || []).slice().sort(compareRecordsNewestFirst);
@@ -294,6 +333,9 @@ const getPetHistory = async (req) => {
       latest_weight: getLatestRecordedWeight(records),
       appointments,
       medical_records: medicalRecords.map(record => ({ ...record, pet_name: pet.name })),
+      owner_reported_measurements: ownerWeightReportsResult.error ? [] : (ownerWeightReportsResult.data || []),
+      owner_measurement_history_available: !ownerWeightReportsResult.error,
+      owner_measurement_history_supported: !isMissingWeightReportTable(ownerWeightReportsResult.error),
       unlinked_appointment_count: unlinkedResult.error ? null : (unlinkedResult.count || 0)
     } };
   } catch (error) {
@@ -325,16 +367,20 @@ const deletePet = async (req) => {
       if (findError) return { failure: findError };
       if (!pet) return { refused: { statusCode: 404, body: { error: 'Pet not found or not authorized' } } };
 
-      const [appointmentCount, recordCount] = await Promise.all([
+      const [appointmentCount, recordCount, weightReportCount] = await Promise.all([
         appointmentsRepository.countByPetId(normalizedPetId),
-        medicalRecordsRepository.countByPetId(normalizedPetId)
+        medicalRecordsRepository.countByPetId(normalizedPetId),
+        ownerWeightReportsRepository.countByPetId(normalizedPetId)
       ]);
-      if (appointmentCount.error || recordCount.error) return { failure: appointmentCount.error || recordCount.error };
+      if (appointmentCount.error || recordCount.error || (weightReportCount.error && !isMissingWeightReportTable(weightReportCount.error))) {
+        return { failure: appointmentCount.error || recordCount.error || weightReportCount.error };
+      }
 
       const appointments = appointmentCount.count || 0;
       const records = recordCount.count || 0;
-      if (appointments > 0 || records > 0) {
-        const held = [appointments ? plural(appointments, 'appointment') : '', records ? plural(records, 'official medical record') : '']
+      const ownerWeightReports = weightReportCount.error ? 0 : (weightReportCount.count || 0);
+      if (appointments > 0 || records > 0 || ownerWeightReports > 0) {
+        const held = [appointments ? plural(appointments, 'appointment') : '', records ? plural(records, 'official medical record') : '', ownerWeightReports ? plural(ownerWeightReports, 'owner-reported measurement') : '']
           .filter(Boolean).join(' and ');
         return { refused: { statusCode: 409, body: {
           success: false,
@@ -342,7 +388,8 @@ const deletePet = async (req) => {
           error: `This pet profile can't be deleted because PetHub holds ${held} for it. The profile is kept so that history stays linked to it. Contact the clinic if it needs to be removed.`,
           code: PET_HAS_HISTORY_CODE,
           appointment_count: appointments,
-          medical_record_count: records
+          medical_record_count: records,
+          owner_measurement_count: ownerWeightReports
         } } };
       }
 
@@ -436,6 +483,31 @@ const createMedicalRecord = async (req) => {
   } };
 };
 
+// Owner-reported weight is an append-only personal measurement, separate from clinical medical_records.weight.
+const createOwnerWeightReport = async (req) => {
+  const validation = validateOwnerWeightReportRequest(req.params, req.body, req.authUserId);
+  if (validation.error) return validation.error;
+  const { petId, userId, weightKg } = validation;
+  try {
+    const verified = await isUserVerified(userId);
+    if (!verified) return VERIFY_EMAIL_FIRST;
+    const { data: pet, error: petError } = await petsRepository.findProfileForUser(userId, petId);
+    if (petError) return { statusCode: 500, body: { error: 'Could not verify pet ownership.' } };
+    if (!pet) return PET_NOT_FOUND;
+    const { data, error } = await ownerWeightReportsRepository.create({ pet_id: petId, user_id: userId, weight_kg: weightKg });
+    if (error) {
+      if (isMissingWeightReportTable(error)) return { statusCode: 503, body: { error: 'Owner-reported measurements are not available until the database update is applied.' } };
+      return { statusCode: 500, body: { error: 'Could not save this owner-reported measurement.' } };
+    }
+    const measurement = data?.[0] || null;
+    await logUserActivity(userId, 'owner_weight_reported', `Added an owner-reported weight for pet ${petId}`);
+    return { statusCode: 201, body: { success: true, measurement } };
+  } catch (error) {
+    console.error('Create owner weight report error:', { code: error?.code || 'unknown' });
+    return { statusCode: 500, body: { error: 'Could not save this owner-reported measurement.' } };
+  }
+};
+
 module.exports = {
   createPet,
   updatePet,
@@ -443,5 +515,6 @@ module.exports = {
   getPetHistory,
   deletePet,
   getUserMedicalRecords,
-  createMedicalRecord
+  createMedicalRecord,
+  createOwnerWeightReport
 };

@@ -65,7 +65,9 @@ function getSupabaseKeyRole(key) {
 // before. A public key pasted into SUPABASE_SERVICE_KEY by mistake is ignored.
 function selectSupabaseKey() {
   const serviceKey = readEnv('SUPABASE_SERVICE_KEY');
-  const serviceKeyUsable = serviceKey && getSupabaseKeyRole(serviceKey) !== 'anon' && serviceKey !== readEnv('SUPABASE_ANON_KEY');
+  const serviceKeyUsable = serviceKey
+    && getSupabaseKeyRole(serviceKey) === 'service_role'
+    && serviceKey !== readEnv('SUPABASE_ANON_KEY');
   if (serviceKeyUsable) return { name: 'SUPABASE_SERVICE_KEY', value: serviceKey };
   return readFirstEnv(['SUPABASE_ANON_KEY', 'SUPABASE_KEY']);
 }
@@ -110,6 +112,10 @@ env.isProduction = env.nodeEnv === 'production';
 function requireSupabaseConfig() {
   if (!env.supabase.url || !env.supabase.key) {
     throw new Error('Missing Supabase configuration. Set SUPABASE_URL and SUPABASE_SERVICE_KEY (or SUPABASE_ANON_KEY) in Railway/backend environment variables.');
+  }
+
+  if (env.isProduction && env.supabase.keyRole !== 'service_role') {
+    throw new Error('Production requires a service-role Supabase key in SUPABASE_SERVICE_KEY. The public anon key is not accepted.');
   }
 
   return env.supabase;

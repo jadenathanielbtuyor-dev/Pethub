@@ -41,9 +41,10 @@ const MOCHI_HISTORY = {
     { id: 'r1', pet_id: MOCHI_ID, record_date: day(-10), created_at: `${day(-10)}T10:00:00Z`, created_by: 'a1', created_by_name: 'Test Admin', weight: null, vaccination_status: 'Up to date', treatment: 'Deworming', medical_notes: 'Test note one.' },
     { id: 'r2', pet_id: MOCHI_ID, record_date: day(-20), created_at: `${day(-20)}T10:00:00Z`, created_by: 'a1', created_by_name: 'Test Admin', weight: 12.5, vaccination_status: 'Due soon', treatment: null, medical_notes: 'Test note two.' }
   ],
-  unlinked_appointment_count: 1
+  unlinked_appointment_count: 1,
+  owner_reported_measurements: [], owner_measurement_history_available: true, owner_measurement_history_supported: true
 };
-const LUNA_HISTORY = { success: true, pet: PETS[1], latest_weight: null, appointments: [], medical_records: [], unlinked_appointment_count: 0 };
+const LUNA_HISTORY = { success: true, pet: PETS[1], latest_weight: null, appointments: [], medical_records: [], owner_reported_measurements: [], owner_measurement_history_available: true, owner_measurement_history_supported: true, unlinked_appointment_count: 0 };
 const DUPLICATE = {
   status: 409,
   body: { success: false, code: 'POSSIBLE_DUPLICATE_PET', error: 'You already have a pet profile with these details. Open that profile, or confirm this is a different pet.',
@@ -58,6 +59,8 @@ const ok = body => ({ body: { success: true, ...body } });
 const routes = (overrides = {}) => ({
   '/auth/user-status': ok({ user: OWNER }),
   '/pets/userPets': ok({ pets: PETS }),
+  '/pets/breeds?species=Dog': ok({ breeds: [{ species: 'Dog', name: 'Beagle' }, { species: 'Dog', name: 'Aspin' }] }),
+  '/pets/breeds?species=Cat': ok({ breeds: [{ species: 'Cat', name: 'Siamese' }, { species: 'Cat', name: 'Puspin' }] }),
   [`/pets/history/${MOCHI_ID}`]: { body: MOCHI_HISTORY },
   [`/pets/history/${LUNA_ID}`]: { body: LUNA_HISTORY },
   '/pets/create': { status: 201, body: { success: true, pet: { ...PETS[0], id: 'a1b2c3d4-0000-4000-8000-00000000000c' } } },
@@ -91,6 +94,27 @@ async function fillNewPet(tab, { name = 'Mochi', species = 'Dog', breed = 'Aspin
 describe('My Pets in a browser (mocked API)', { skip }, () => {
   before(startBrowser);
   after(stopBrowser);
+
+  it('searches the chosen species catalog, preserves Mixed Breed and Other, and clears an incompatible selection', async () => {
+    const tab = await open();
+    try {
+      await tab.evaluate(setValue('#petType', 'Dog'));
+      assert.ok(await tab.waitFor(`document.querySelector('#petBreedSuggestions option[value="Beagle"]')`));
+      let options = await tab.evaluate(`[...document.querySelectorAll('#petBreedSuggestions option')].map(option => option.value)`);
+      assert.deepEqual(options, ['Mixed Breed', 'Other / Not Listed', 'Beagle', 'Aspin']);
+      await tab.evaluate(setValue('#petBreed', 'Beagle'));
+      await tab.evaluate(setValue('#petType', 'Cat'));
+      assert.equal(await tab.evaluate(`document.getElementById('petBreed').value`), '', 'switching species clears the old selection');
+      assert.ok(await tab.waitFor(`document.querySelector('#petBreedSuggestions option[value="Siamese"]')`));
+      options = await tab.evaluate(`[...document.querySelectorAll('#petBreedSuggestions option')].map(option => option.value)`);
+      assert.deepEqual(options, ['Mixed Breed', 'Other / Not Listed', 'Siamese', 'Puspin']);
+      await tab.evaluate(setValue('#petBreed', 'Other / Not Listed'));
+      assert.equal(await tab.evaluate(`document.getElementById('petBreedOtherWrap').hidden`), false);
+      assert.equal(await tab.evaluate(`document.activeElement.id`), 'petBreedOther');
+      await tab.evaluate(setValue('#petBreedOther', 'Blue Puspin'));
+      assert.deepEqual(tab.errors, []);
+    } finally { await tab.close(); }
+  });
 
   it('Add a pet offers Register a new pet and Use an existing pet; choosing an existing pet creates nothing', async () => {
     const tab = await open();
@@ -247,7 +271,7 @@ describe('My Pets in a browser (mocked API)', { skip }, () => {
     const tab = await open(`?pet=${LUNA_ID}`, { [`/pets/delete/${LUNA_ID}`]: { body: { success: true, message: 'Pet deleted successfully' } } });
     try {
       assert.ok(await tab.waitFor(`document.querySelector('[data-pet-delete]') !== null`));
-      assert.match(await tab.evaluate(textOf('#petRemoveRegion')), /Luna has no appointments or official medical records in PetHub/);
+      assert.match(await tab.evaluate(textOf('#petRemoveRegion')), /Luna has no appointments, official medical records, or owner-reported measurements in PetHub/);
       await tab.click('[data-pet-delete]');
       assert.deepEqual(await tab.evaluate(requests('DELETE', `/pets/delete/${LUNA_ID}`)), [], 'the first click only asks again');
       await tab.click('[data-pet-delete]');

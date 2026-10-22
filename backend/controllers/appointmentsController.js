@@ -6,11 +6,13 @@ const createAppointment = createControllerHandler(appointmentsService.createAppo
 const getUserAppointments = createControllerHandler(appointmentsService.getUserAppointments, 'getUserAppointments', 'appointments');
 const getAllAppointments = createControllerHandler(appointmentsService.getAllAppointments, 'getAllAppointments', 'appointments');
 const updateStatus = createControllerHandler(appointmentsService.updateStatus, 'updateStatus', 'appointments');
+const cancelOwnAppointment = createControllerHandler(appointmentsService.cancelOwnAppointment, 'cancelOwnAppointment', 'appointments');
 
 module.exports = {
   listServices,
   createAppointment,
   getUserAppointments,
   getAllAppointments,
-  updateStatus
+  updateStatus,
+  cancelOwnAppointment
 };

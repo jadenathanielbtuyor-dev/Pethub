@@ -67,6 +67,53 @@ describe('Owner, pet and appointment links in the admin records', () => {
     assert.deepEqual(t.appointmentRow(legacy.id), before, 'the stored row is untouched');
   });
 
+  it('does not treat an activity-log entry as a medical-record link and flags unresolved history', async () => {
+    const admin = t.createUser({ role: 'admin' });
+    const owner = t.createUser();
+    const pet = t.createPet(owner, 'Mochi');
+    const visit = t.createAppointment(owner, { pet, daysAhead: -8, status: 'Completed' });
+    const record = t.db.seed('medical_records', {
+      pet_id: pet.id, record_date: t.manilaDate(-8), created_by: admin.id, medical_notes: 'Historical clinical entry'
+    });
+    t.db.seed('activity_logs', {
+      actor_id: admin.id, user_id: admin.id, target_table: 'medical_records', target_id: record.id,
+      action: `Created medical record for completed appointment ${visit.id}`
+    });
+
+    const listed = await t.api('GET', `/admin/dashboard/appointments?user_id=${admin.id}`, { token: admin.token });
+    assert.equal(listed.status, 200);
+    const shown = listed.body.appointments.find(item => item.id === visit.id);
+    assert.equal(shown.medical_record_link_status, 'unresolved');
+    assert.equal(shown.has_medical_record, false);
+    assert.equal(shown.medical_record_id, undefined);
+
+    const refused = await t.api('POST', `/admin/dashboard/medical-records/create?user_id=${admin.id}`, {
+      token: admin.token,
+      body: { pet_id: pet.id, appointment_id: visit.id, record_date: t.manilaDate(-8), medical_notes: 'Another record' }
+    });
+    assert.equal(refused.status, 409);
+    assert.equal(refused.body.code, 'MEDICAL_RECORD_LINK_UNRESOLVED');
+    assert.equal(t.db.table('medical_records').length, 1);
+  });
+
+  it('appointment approval and completion do not create an official medical record', async () => {
+    const admin = t.createUser({ role: 'admin' });
+    const owner = t.createUser();
+    const pet = t.createPet(owner, 'Mochi');
+    const visit = t.createAppointment(owner, { pet, daysAhead: 100 });
+    const recordsBefore = t.db.table('medical_records').length;
+    const change = status => t.api('PUT', `/admin/dashboard/appointment-status?user_id=${admin.id}`, {
+      token: admin.token, body: { id: visit.id, status }
+    });
+
+    assert.equal((await change('Approved')).status, 200);
+    assert.equal(t.db.table('medical_records').length, recordsBefore);
+    assert.equal((await change('Completed')).status, 200);
+    assert.equal(t.db.table('medical_records').length, recordsBefore);
+    assert.equal(t.appointmentRow(visit.id).status, 'Completed');
+    await t.settleEmails();
+  });
+
   it('account rows never carry a password, verification code or other sign-in secret', async () => {
     const admin = t.createUser({ role: 'admin' });
     const owner = t.createUser({ name: 'Owner E', password: 'scrypt$not-a-real-hash-but-secret' });

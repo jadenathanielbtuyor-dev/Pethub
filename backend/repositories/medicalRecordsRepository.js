@@ -1,7 +1,7 @@
 const supabase = require('../config/supabase');
 
-const MEDICAL_RECORD_SELECT = 'id, pet_id, record_date, created_at, created_by, weight, vaccination_status, treatment, medical_notes';
-const MEDICAL_RECORD_SUMMARY_SELECT = 'id, pet_id, record_date, created_at, medical_notes, treatment, vaccination_status, weight';
+const MEDICAL_RECORD_SELECT = 'id, pet_id, appointment_id, record_date, created_at, created_by, weight, vaccination_status, treatment, medical_notes';
+const MEDICAL_RECORD_SUMMARY_SELECT = 'id, pet_id, appointment_id, record_date, created_at, medical_notes, treatment, vaccination_status, weight';
 
 function countAll() {
   return supabase
@@ -14,6 +14,12 @@ function listAllRecords() {
     .from('medical_records')
     .select(MEDICAL_RECORD_SELECT)
     .order('record_date', { ascending: false });
+}
+
+function listAppointmentLinks() {
+  return supabase
+    .from('medical_records')
+    .select('id, pet_id, appointment_id');
 }
 
 function listSummariesByPetIds(petIds) {
@@ -49,6 +55,7 @@ module.exports = {
   MEDICAL_RECORD_SELECT,
   countAll,
   listAllRecords,
+  listAppointmentLinks,
   listSummariesByPetIds,
   listByPetIds,
   countByPetId,

@@ -152,12 +152,12 @@ describe('Age: whole years from 1 to 25, checked by the server', () => {
     assert.equal((await updatePet(owner, pet.id, { name: 'Rex' })).status, 200);
     assert.equal(petRow(pet.id).age, 30, 'a name change leaves the saved age alone');
 
-    const speciesOnly = await updatePet(owner, pet.id, { species: 'Cat' });
+    const speciesOnly = await updatePet(owner, pet.id, { species: 'Cat', breed: 'Puspin' });
     assert.equal(speciesOnly.status, 400, 'a new species needs an age in the range');
     assert.equal(speciesOnly.body.field, 'age');
     assert.equal(petRow(pet.id).species, 'Dog');
 
-    assert.equal((await updatePet(owner, pet.id, { species: 'Cat', age: 12 })).status, 200);
+    assert.equal((await updatePet(owner, pet.id, { species: 'Cat', breed: 'Puspin', age: 12 })).status, 200);
     assert.deepEqual([petRow(pet.id).species, petRow(pet.id).age], ['Cat', 12]);
   });
 });
@@ -263,6 +263,34 @@ describe('One pet\'s history', () => {
     const listed = await t.api('GET', `/pets/userPets?user_id=${owner.id}`, { token: owner.token });
     assert.deepEqual(listed.body.pets[0].latest_weight, { value: 12.4, unit: 'kg', record_date: t.manilaDate(-3), record_id: listed.body.pets[0].latest_weight.record_id });
     assert.equal(listed.body.pets[0].medical_record_count, 2);
+  });
+
+  it('owner-reported weight is dated, owner-scoped, and separate from official clinical weight', async () => {
+    const owner = t.createUser();
+    const other = t.createUser();
+    const pet = seedPet(owner);
+    seedRecord(pet, { weight: 8.3, record_date: t.manilaDate(-2) });
+    const medicalRecordCount = t.db.table('medical_records').length;
+
+    const saved = await t.api('POST', `/pets/${pet.id}/weight-reports`, { token: owner.token, body: { weight_kg: 9.45 } });
+    assert.equal(saved.status, 201, JSON.stringify(saved.body));
+    assert.equal(saved.body.measurement.pet_id, pet.id);
+    assert.equal(saved.body.measurement.user_id, owner.id);
+    assert.equal(Number(saved.body.measurement.weight_kg), 9.45);
+    assert.equal(saved.body.measurement.source, 'owner_reported');
+    assert.ok(saved.body.measurement.recorded_at);
+    assert.equal(t.db.table('medical_records').length, medicalRecordCount, 'the clinical table was not changed or appended to');
+
+    const history = await getHistory(owner, pet.id);
+    assert.equal(history.body.owner_measurement_history_available, true);
+    assert.equal(history.body.owner_measurement_history_supported, true);
+    assert.equal(Number(history.body.owner_reported_measurements[0].weight_kg), 9.45);
+    assert.deepEqual(history.body.latest_weight, { value: 8.3, unit: 'kg', record_date: t.manilaDate(-2), record_id: history.body.latest_weight.record_id });
+
+    const denied = await t.api('POST', `/pets/${pet.id}/weight-reports`, { token: other.token, body: { weight_kg: 12 } });
+    assert.equal(denied.status, 404);
+    assert.equal(t.db.table('owner_pet_weight_reports').length, 1);
+    assert.equal((await t.api('POST', `/pets/${pet.id}/weight-reports`, { token: owner.token, body: { weight_kg: 0 } })).status, 400);
   });
 
   it('another owner\'s pet history is not found, and another account\'s id or a signed-out request is refused', async () => {
@@ -378,6 +406,16 @@ describe('Deleting a pet profile', () => {
     assert.ok(petRow(booked.id) && petRow(recorded.id), 'both profiles are kept');
     assert.ok(t.appointmentRow(visit.id));
     assert.ok(t.db.find('medical_records', row => row.id === record.id));
+  });
+
+  it('a profile with owner-reported measurement history is also kept', async () => {
+    const owner = t.createUser();
+    const pet = seedPet(owner);
+    assert.equal((await t.api('POST', `/pets/${pet.id}/weight-reports`, { token: owner.token, body: { weight_kg: 5.5 } })).status, 201);
+    const deleted = await t.api('DELETE', `/pets/delete/${pet.id}?user_id=${owner.id}`, { token: owner.token });
+    assert.equal(deleted.status, 409);
+    assert.equal(deleted.body.owner_measurement_count, 1);
+    assert.ok(petRow(pet.id));
   });
 
   it('another owner cannot delete the pet, and an id that is not a pet is not found', async () => {

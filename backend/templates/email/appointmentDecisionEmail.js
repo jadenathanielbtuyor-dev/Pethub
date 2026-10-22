@@ -37,6 +37,22 @@ function buildAppointmentDecisionEmail({ name, appointment, decision, previousSt
   });
 }
 
+function buildOwnerCancellationEmail({ name, appointment, appointmentsUrl = '' }) {
+  return buildAppointmentEmail({
+    subject: APPOINTMENT_CANCELLED_EMAIL_SUBJECT,
+    heading: 'Appointment Cancelled',
+    name,
+    intro: 'You cancelled the appointment below in PetHub.',
+    details: [
+      ...getAppointmentDetails(appointment),
+      ['Appointment status', 'Cancelled']
+    ],
+    paragraphs: ['If you did not request this cancellation, contact the clinic.'],
+    appointmentsUrl
+  });
+}
+
 module.exports = {
-  buildAppointmentDecisionEmail
+  buildAppointmentDecisionEmail,
+  buildOwnerCancellationEmail
 };

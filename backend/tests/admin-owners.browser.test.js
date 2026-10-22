@@ -36,16 +36,16 @@ const appointment = (id, fields) => ({
 const APPOINTMENTS = [
   appointment('b0000000-0000-4000-8000-000000000001', {}),
   appointment('c0000000-0000-4000-8000-000000000002', { pet_id: 'p2', pet_name: 'Luna', service_type: 'Dog & Cat Full Check Up', estimated_duration_minutes: 45, appointment_date: day(8), status: 'Approved', handled_by: 'a1', handled_by_name: 'Test Admin' }),
-  appointment('d0000000-0000-4000-8000-000000000003', { service_type: 'Checkup', estimated_duration_minutes: 45, appointment_date: day(-10), status: 'Completed', handled_by: 'a1', handled_by_name: 'Test Admin', has_medical_record: true }),
+  appointment('d0000000-0000-4000-8000-000000000003', { service_type: 'Checkup', estimated_duration_minutes: 45, appointment_date: day(-10), status: 'Completed', handled_by: 'a1', handled_by_name: 'Test Admin', medical_record_link_status: 'linked', medical_record_id: 'r1' }),
   // An older booking that kept only the typed pet name
-  appointment('e0000000-0000-4000-8000-000000000004', { pet_id: null, pet_name: 'Max', service_type: 'Checkup', appointment_date: day(-40), status: 'Completed', handled_by: 'a1', handled_by_name: 'Test Admin' }),
+  appointment('e0000000-0000-4000-8000-000000000004', { pet_id: null, pet_name: 'Max', service_type: 'Checkup', appointment_date: day(-40), status: 'Completed', handled_by: 'a1', handled_by_name: 'Test Admin', medical_record_link_status: 'unresolved' }),
   // Approved, its time has passed, and nobody completed or cancelled it
   appointment('f0000000-0000-4000-8000-000000000005', { user_id: 'u2', pet_id: 'p3', pet_name: 'Kuro', owner_fullname: 'Second Owner', service_type: 'Trim', appointment_date: day(-3), status: 'Approved', handled_by: 'a1', handled_by_name: 'Test Admin' }),
   // Booked from u2 for u1's pet: a data problem to review
   appointment('a0000000-0000-4000-8000-000000000006', { user_id: 'u2', pet_id: 'p1', pet_name: 'Mochi', owner_fullname: 'Second Owner', service_type: 'Nail Cutting', appointment_date: day(-20), status: 'Cancelled', handled_by: 'a1', handled_by_name: 'Test Admin' })
 ];
 const RECORDS = [
-  { id: 'r1', pet_id: 'p1', pet_name: 'Mochi', record_date: day(-10), created_at: `${day(-10)}T10:00:00Z`, created_by: 'a1', created_by_name: 'Test Admin', weight: 12.5, vaccination_status: 'Up to date', treatment: 'Deworming', medical_notes: 'Test note one.' },
+  { id: 'r1', pet_id: 'p1', appointment_id: 'd0000000-0000-4000-8000-000000000003', pet_name: 'Mochi', record_date: day(-10), created_at: `${day(-10)}T10:00:00Z`, created_by: 'a1', created_by_name: 'Test Admin', weight: 12.5, vaccination_status: 'Up to date', treatment: 'Deworming', medical_notes: 'Test note one.' },
   { id: 'r2', pet_id: 'p1', pet_name: 'Mochi', record_date: day(-5), created_at: `${day(-5)}T10:00:00Z`, created_by: 'a1', created_by_name: 'Test Admin', weight: null, vaccination_status: 'Due soon', treatment: null, medical_notes: 'Test note two.' }
 ];
 const SERVICES = SERVICE_CATALOG.map(entry => ({
@@ -129,8 +129,8 @@ describe('Admin Dashboard: Pet Owners & Records in a browser (mocked API)', { sk
       const history = await tab.evaluate(rowsOf('#adminOwnerDetailContent .ph-admin-history tbody tr'));
       assert.equal(history.length, 4, 'the four appointments booked from this account');
       assert.match(history[0], /Luna .*Approved/, 'newest first');
-      assert.match(history.find(row => row.includes('Max')), /Max Not linked to a pet profile .*Completed No record yet/);
-      assert.match(history.find(row => row.includes('Checkup') && row.includes('Mochi')), /Completed Record added/);
+      assert.match(history.find(row => row.includes('Max')), /Max Not linked to a pet profile .*Completed Relationship unresolved/);
+      assert.match(history.find(row => row.includes('Checkup') && row.includes('Mochi')), /Completed Record linked/);
       assert.match(history.find(row => row.includes('Bath')), /Pending Not applicable/);
       assert.match(account, /1 not linked/);
       assert.match(account, /never matched to a pet by name/);
