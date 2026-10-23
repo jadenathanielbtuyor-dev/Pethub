@@ -98,7 +98,13 @@ async function stopBrowser() {
     await Promise.race([exited, sleep(5000)]);
   }
   await sleep(300);
-  if (profileDir) fs.rmSync(profileDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+  if (profileDir) {
+    try {
+      fs.rmSync(profileDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+    } catch (error) {
+      console.warn(`Could not remove the temporary browser profile ${profileDir}: ${error.code || error.message}`);
+    }
+  }
 }
 
 async function openTab({ url, scenario = {}, dark = false, width = 1280, signedIn = false }) {
@@ -327,7 +333,9 @@ describe('Registration page in a browser (mocked API)', { skip }, () => {
   });
 
   it('shows problems in the personal details beside each field', async () => {
-    const tab = await openTab({ url: REGISTER_PAGE });
+    // A slow reply keeps the page here long enough to read the request: on success it moves to the verify-email page,
+    // which starts a new request list (under a heavy parallel test load the read below sometimes came after that move)
+    const tab = await openTab({ url: REGISTER_PAGE, scenario: { registerDelay: 2000 } });
     try {
       await tab.evaluate(fill({ ...REQUIRED, postalCode: '12', phoneNumber: '12345', dateOfBirth: '2999-01-01', province: '---' }));
       await tab.click(SUBMIT);

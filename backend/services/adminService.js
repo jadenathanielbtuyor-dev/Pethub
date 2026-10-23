@@ -244,6 +244,8 @@ function normalizeAppointmentNames(appointments, userMap) {
   }));
 }
 
+// records is null when the medical records could not be read: completed appointments are then marked 'unavailable'
+// instead of 'none', so the dashboard never offers to add a record that may already exist
 function applyMedicalRecordAssociationState(appointments = [], records = [], logs = []) {
   const recordsByAppointment = new Map();
   const unlinkedPetIds = new Set();
@@ -265,6 +267,10 @@ function applyMedicalRecordAssociationState(appointments = [], records = [], log
   (Array.isArray(appointments) ? appointments : []).forEach(appointment => {
     if (String(appointment?.status || '').toLowerCase() !== 'completed') return;
     const id = String(appointment.id || '').trim();
+    if (!Array.isArray(records)) {
+      state[id] = { has_medical_record: false, medical_record_link_status: 'unavailable' };
+      return;
+    }
     const linkedRecord = recordsByAppointment.get(id);
     if (linkedRecord) {
       state[id] = {
@@ -337,7 +343,7 @@ const getDashboardStats = async (req) => {
     const { verifiedUsers, unverifiedUsers } = await getVerifiedTotals(usersData);
     const pendingVerifications = pendingVerificationsResult.count;
     const activityLogCount = activityLogsResult.count;
-    const totalMedicalRecords = medicalRecordsResult.count || 0;
+    const totalMedicalRecords = medicalRecordsResult.error ? null : medicalRecordsResult.count || 0;
 
     const today = getClinicDateValue();
     const configuredServices = await loadConfiguredServices();
@@ -365,7 +371,7 @@ const getDashboardStats = async (req) => {
         totalPets: totalPets || 0,
         totalAppointments: totalAppointments || 0,
         pendingAppointments: pendingAppointments || 0,
-        totalMedicalRecords: totalMedicalRecords || 0
+        totalMedicalRecords
       },
       summary: {
         totalUsers: totalUsers || 0,
@@ -380,7 +386,7 @@ const getDashboardStats = async (req) => {
         unverifiedUsers: unverifiedUsers || 0,
         pendingVerifications: pendingVerifications || 0,
         activityLogCount: activityLogCount || 0,
-        totalMedicalRecords: totalMedicalRecords || 0
+        totalMedicalRecords
       }
     } };
   } catch (error) {
@@ -441,7 +447,7 @@ const getAnalyticsSummary = async (req) => {
     const { verifiedUsers, unverifiedUsers } = await getVerifiedTotals(usersData);
     const pendingVerifications = pendingVerificationsResult.count;
     const activityLogCount = activityLogsResult.count;
-    const totalMedicalRecords = medicalRecordsResult.count || 0;
+    const totalMedicalRecords = medicalRecordsResult.error ? null : medicalRecordsResult.count || 0;
 
     const completedAppointmentPercentage = totalAppointments > 0
       ? Math.round(((completedAppointments || 0) / totalAppointments) * 100)
@@ -462,7 +468,7 @@ const getAnalyticsSummary = async (req) => {
         unverifiedUsers: unverifiedUsers || 0,
         pendingVerifications: pendingVerifications || 0,
         activityLogCount: activityLogCount || 0,
-        totalMedicalRecords: totalMedicalRecords || 0
+        totalMedicalRecords
       }
     } };
   } catch (error) {
@@ -496,6 +502,8 @@ const getDashboardOverview = async (req) => {
 
     const { data: medicalRecords, error: medicalRecordsError } = await medicalRecordsRepository.listAllRecords();
 
+    // The rest of the dashboard still loads, but records that could not be read are reported as unavailable, never as zero
+    const medicalRecordsAvailable = !medicalRecordsError;
     if (medicalRecordsError) {
       console.warn('Unable to load medical records for dashboard overview:', medicalRecordsError);
     }
@@ -533,7 +541,7 @@ const getDashboardOverview = async (req) => {
       return {
         ...pet,
         owner_name: userMap[String(pet.user_id)] || 'Unknown',
-        medical_record_count: recordCountsByPet[String(pet.id)] || 0,
+        medical_record_count: medicalRecordsAvailable ? recordCountsByPet[String(pet.id)] || 0 : null,
         latest_medical_record_summary: getMedicalRecordSummary(latestRecord),
         latest_medical_record_date: latestRecord?.record_date || latestRecord?.created_at || null
       };
@@ -545,7 +553,7 @@ const getDashboardOverview = async (req) => {
     );
     const normalizedAppointments = applyMedicalRecordAssociationState(
       normalizeAppointmentNames(appointments, userMap),
-      medicalRecords || [],
+      medicalRecordsAvailable ? medicalRecords || [] : null,
       legacyLogsError ? null : legacyMedicalRecordLogs || []
     );
 
@@ -609,7 +617,7 @@ const getDashboardOverview = async (req) => {
         totalPets,
         totalAppointments,
         pendingAppointments,
-        totalMedicalRecords: (medicalRecords || []).length
+        totalMedicalRecords: medicalRecordsAvailable ? (medicalRecords || []).length : null
       },
       summary: {
         totalUsers,
@@ -624,12 +632,13 @@ const getDashboardOverview = async (req) => {
         unverifiedUsers,
         pendingVerifications,
         activityLogCount,
-        totalMedicalRecords: (medicalRecords || []).length
+        totalMedicalRecords: medicalRecordsAvailable ? (medicalRecords || []).length : null
       },
       users,
       pets: normalizedPets,
       appointments: normalizedAppointments,
       medicalRecords: normalizedMedicalRecords,
+      medicalRecordsAvailable,
       petTypes: {
         labels: Object.keys(petTypeCounts),
         values: Object.values(petTypeCounts)

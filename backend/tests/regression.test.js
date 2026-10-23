@@ -8,6 +8,7 @@ const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('crypto');
 const { startTestApp } = require('./helpers/harness');
+const { PASSWORD_RESET_MAX_ATTEMPTS } = require('../constants/email');
 
 let t;
 let admin;
@@ -103,6 +104,31 @@ describe('Password reset', () => {
     assert.equal((await t.api('POST', '/auth/login', { body: { email: user.email, password: 'Old#Password1' } })).status, 403);
     assert.equal((await t.api('POST', '/auth/login', { body: { email: user.email, password: 'New#Password1' } })).status, 200);
     assert.equal((await t.api('POST', '/auth/reset-password', { body: { email: user.email, code, password: 'Another#Pass1' } })).status, 400, 'a code works once');
+  });
+
+  it(`after ${PASSWORD_RESET_MAX_ATTEMPTS} wrong codes even the right code is refused, and the password is unchanged`, async () => {
+    const user = t.createUser({ password: 'Old#Password1' });
+    assert.equal((await t.api('POST', '/auth/forgot-password', { body: { email: user.email } })).status, 200);
+    const code = codeIn(await waitFor(() => t.emailsTo(user.email).find(email => /reset code/i.test(email.text)), 'the reset email'));
+    const wrongCode = code === '000000' ? '111111' : '000000';
+
+    for (let attempt = 0; attempt < PASSWORD_RESET_MAX_ATTEMPTS; attempt += 1) {
+      assert.equal((await t.api('POST', '/auth/reset-password', { body: { email: user.email, code: wrongCode, password: 'New#Password1' } })).status, 400);
+    }
+    assert.equal((await t.api('POST', '/auth/reset-password', { body: { email: user.email, code, password: 'New#Password1' } })).status, 400, 'the code is locked');
+    assert.equal((await t.api('POST', '/auth/login', { body: { email: user.email, password: 'Old#Password1' } })).status, 200);
+  });
+
+  it('refuses an expired code, and the password is unchanged', async () => {
+    const user = t.createUser({ password: 'Old#Password1' });
+    assert.equal((await t.api('POST', '/auth/forgot-password', { body: { email: user.email } })).status, 200);
+    const code = codeIn(await waitFor(() => t.emailsTo(user.email).find(email => /reset code/i.test(email.text)), 'the reset email'));
+    t.db.table('password_resets')
+      .filter(row => row.user_id === user.id)
+      .forEach(row => { row.expires_at = new Date(Date.now() - 1000).toISOString(); });
+
+    assert.equal((await t.api('POST', '/auth/reset-password', { body: { email: user.email, code, password: 'New#Password1' } })).status, 400);
+    assert.equal((await t.api('POST', '/auth/login', { body: { email: user.email, password: 'Old#Password1' } })).status, 200);
   });
 
   it('answers unknown emails the same way and sends nothing', async () => {

@@ -293,6 +293,19 @@ describe('My Pets in a browser (mocked API)', { skip }, () => {
     } finally { await refused.close(); }
   });
 
+  it('when the clinic records cannot be read, each pet says so instead of showing zero records or no weight', async () => {
+    const unavailable = PETS.map(pet => ({ ...pet, medical_records_available: false, medical_record_count: null, latest_weight: null }));
+    const tab = await open('', { '/pets/userPets': ok({ pets: unavailable }) });
+    try {
+      const cards = await tab.evaluate(textOf('#petsList'));
+      assert.equal((cards.match(/Records unavailable/g) || []).length, 2);
+      assert.equal((cards.match(/Unavailable right now/g) || []).length, 2);
+      assert.ok(!/\d+ medical records?/.test(cards), 'no record count is shown');
+      assert.ok(!cards.includes('No weight recorded yet'), 'an unknown weight is not shown as missing');
+      assert.deepEqual(tab.errors, []);
+    } finally { await tab.close(); }
+  });
+
   it('on a phone the details, history and duplicate notice fit without sideways scrolling', async () => {
     const tab = await open(`?pet=${MOCHI_ID}`, { '/pets/create': DUPLICATE }, { width: 375, height: 760 });
     try {

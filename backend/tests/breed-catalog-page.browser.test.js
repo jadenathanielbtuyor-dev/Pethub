@@ -62,4 +62,20 @@ describe('Admin breed catalog page in a browser (mocked API)', { skip }, () => {
       assert.deepEqual(tab.errors, []);
     } finally { await tab.close(); }
   });
+
+  // The API only accepts http(s) source links, but a row written straight into the database is not checked by it
+  it('links only http(s) sources: a stored javascript: address is not made clickable', async () => {
+    const unsafe = { ...initialBreeds[0], id: 'breed-unsafe', name: 'Unsafe Source', source_url: 'javascript:window.__clicked=1//' };
+    const tab = await openTab({
+      url: pageUrl('pages/admin/breeds.html'),
+      session: ADMIN,
+      scenario: { routes: { '/admin/breeds': response({ breeds: [...initialBreeds, unsafe] }) } }
+    });
+    try {
+      assert.ok(await tab.waitFor(`document.querySelector('[data-breed-edit="breed-unsafe"]')`), 'the catalog loads');
+      const hrefs = await tab.evaluate(`[...document.querySelectorAll('#breedCatalogList a')].map(link => link.getAttribute('href'))`);
+      assert.deepEqual(hrefs, ['https://cfa.org/breeds/'], 'only the https source is a link');
+      assert.deepEqual(tab.errors, []);
+    } finally { await tab.close(); }
+  });
 });

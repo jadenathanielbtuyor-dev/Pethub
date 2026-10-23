@@ -299,6 +299,12 @@ function displayPetsList(pets) {
     const id = escapeHtml(String(pet.id || ''));
     const name = escapeHtml(pet.name || 'Pet');
     const recordCount = Number(pet.medical_record_count) || 0;
+    // The server sends medical_records_available: false when it could not read the records: unknown, not zero
+    const recordsUnavailable = pet.medical_records_available === false;
+    const recordBadge = recordsUnavailable
+      ? '<span class="ph-badge ph-badge-warning">Records unavailable</span>'
+      : `<span class="ph-badge">${recordCount} medical record${recordCount === 1 ? '' : 's'}</span>`;
+    const weightText = recordsUnavailable ? 'Unavailable right now' : getLatestWeightText(pet.latest_weight);
     return `
       <article class="ph-dash-card" aria-labelledby="pet-${id}-name">
         <div class="ph-dash-card-head">
@@ -306,14 +312,14 @@ function displayPetsList(pets) {
             <p id="pet-${id}-name" class="ph-dash-card-title">${name}</p>
             <div class="ph-badges mt-1">
               ${getSpeciesBadgeHtml(pet.species)}
-              <span class="ph-badge">${recordCount} medical record${recordCount === 1 ? '' : 's'}</span>
+              ${recordBadge}
             </div>
           </div>
         </div>
         <dl class="ph-dash-facts ph-dash-facts-3">
           <div><dt>Breed</dt> <dd>${escapeHtml(pet.breed || 'Not recorded')}</dd></div>
           <div><dt>Age</dt> <dd>${escapeHtml(getPetAgeText(pet))}</dd></div>
-          <div><dt>Latest weight</dt> <dd>${escapeHtml(getLatestWeightText(pet.latest_weight))}</dd></div>
+          <div><dt>Latest weight</dt> <dd>${escapeHtml(weightText)}</dd></div>
         </dl>
         <div class="ph-dash-card-actions">
           <button type="button" class="ph-btn ph-btn-secondary ph-btn-sm" data-pet-view="${id}" aria-controls="petDetailPanel">
@@ -490,7 +496,7 @@ function renderPetDetail(petId) {
           <div><dt>Breed</dt> <dd>${escapeHtml(pet.breed || 'Not recorded')}</dd></div>
           <div><dt>Age (as entered)</dt> <dd>${escapeHtml(getPetAgeText(pet))}</dd></div>
           <div><dt>Added</dt> <dd>${pet.created_at ? escapeHtml(formatDate(pet.created_at)) : 'Unknown'}</dd></div>
-          <div><dt>Latest recorded weight</dt> <dd id="petDetailWeight">${escapeHtml(getLatestWeightText(pet.latest_weight, { withDate: true }))}</dd></div>
+          <div><dt>Latest recorded weight</dt> <dd id="petDetailWeight">${escapeHtml(pet.medical_records_available === false ? 'Unavailable right now' : getLatestWeightText(pet.latest_weight, { withDate: true }))}</dd></div>
         </dl>
         <p class="ph-dash-note mt-2">Weight comes only from official records the clinic has added.</p>
         <section class="ph-pet-owner-measurements mt-5" aria-labelledby="ownerMeasurementsTitle">

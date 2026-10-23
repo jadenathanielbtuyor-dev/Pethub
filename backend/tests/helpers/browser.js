@@ -80,7 +80,15 @@ async function stopBrowser() {
     await Promise.race([exited, sleep(5000)]);
   }
   await sleep(300);
-  if (profileDir) fs.rmSync(profileDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+  // Removing the temporary profile is housekeeping, not something under test: if Windows still holds a file after the
+  // retries, the folder is left in the temp directory instead of failing the whole suite
+  if (profileDir) {
+    try {
+      fs.rmSync(profileDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+    } catch (error) {
+      console.warn(`Could not remove the temporary browser profile ${profileDir}: ${error.code || error.message}`);
+    }
+  }
 }
 
 // session: a user object to sign in as (sessionStorage user + a placeholder token)

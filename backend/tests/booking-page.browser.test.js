@@ -123,7 +123,13 @@ async function stopBrowser() {
     await Promise.race([exited, sleep(5000)]);
   }
   await sleep(300);
-  if (profileDir) fs.rmSync(profileDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+  if (profileDir) {
+    try {
+      fs.rmSync(profileDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+    } catch (error) {
+      console.warn(`Could not remove the temporary browser profile ${profileDir}: ${error.code || error.message}`);
+    }
+  }
 }
 
 // One tab with the fetch stub, blocked network and recorded paymongo.com navigations (there should never be any)

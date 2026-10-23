@@ -33,6 +33,17 @@ async function loadBreedCatalog() {
   }
 }
 
+// Only http(s) links become clickable, like the API's own check (validators/breedCatalogValidator.js): escaping alone
+// would still let a javascript: address saved directly in the database run when an administrator clicks "Source"
+function getSafeSourceUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
+  } catch (error) {
+    return '';
+  }
+}
+
 function renderBreedCatalog() {
   const container = document.getElementById('breedCatalogList');
   const count = document.getElementById('breedCount');
@@ -55,7 +66,8 @@ function renderBreedCatalog() {
     const source = entry.source_organization
       ? `<span>${escapeHtml(entry.source_organization)}${entry.source_reviewed_at ? ` · reviewed ${escapeHtml(entry.source_reviewed_at)}` : ''}</span>`
       : '<span>No source recorded</span>';
-    const link = entry.source_url ? `<a href="${escapeHtml(entry.source_url)}" target="_blank" rel="noopener noreferrer">Source</a>` : '';
+    const sourceUrl = getSafeSourceUrl(entry.source_url);
+    const link = sourceUrl ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">Source</a>` : '';
     const modified = entry.updated_at ? new Date(entry.updated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'Date not recorded';
     const activeText = entry.is_active ? 'Enabled for new pets' : 'Disabled for new pets';
     return `<article class="ph-breed-catalog-row">

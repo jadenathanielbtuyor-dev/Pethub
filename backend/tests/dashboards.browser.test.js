@@ -489,6 +489,39 @@ describe('Admin Dashboard in a browser (mocked API)', { skip }, () => {
     } finally { await tab.close(); }
   });
 
+  it('when the server could not read the medical records, they are shown as unavailable and no record can be added', async () => {
+    const overview = adminRoutes()['/admin/dashboard/overview'].body;
+    const completedUnlinked = appointment('f0000000-0000-4000-8000-000000000005', { pet_id: 'p2', pet_name: 'Luna', appointment_date: day(-3), status: 'Completed', handled_by: 'a1', handled_by_name: 'Test Admin' });
+    const unavailable = ok({
+      ...overview,
+      summary: { ...overview.summary, totalMedicalRecords: null },
+      pets: overview.pets.map(pet => ({ ...pet, medical_record_count: null })),
+      appointments: [...APPOINTMENTS.slice(0, 2), { ...completedUnlinked, medical_record_link_status: 'unavailable', has_medical_record: false }],
+      medicalRecords: [],
+      medicalRecordsAvailable: false
+    });
+    const tab = await open('pages/admin/dashboard.html', '#records', ADMIN, adminRoutes({ '/admin/dashboard/overview': unavailable }));
+    try {
+      assert.ok(await tab.waitFor(`document.querySelector('#petsTable [data-pet-view="p2"]') !== null`));
+      assert.equal(await tab.evaluate(`document.getElementById('alertMedicalRecords').textContent`), 'Unavailable');
+      await tab.evaluate(`document.querySelector('[data-records-list="pets"]').click()`);
+      assert.doesNotMatch(await tab.evaluate(textOf('#petsTable')), /\d+ records?/, 'no record count in the pets list');
+      await tab.evaluate(`document.querySelector('#petsTable [data-pet-view="p2"]').click()`);
+      assert.ok(await tab.waitFor(`!document.getElementById('adminPetDetail').hidden`));
+      const detail = await tab.evaluate(textOf('#adminPetDetailContent'));
+      assert.match(detail, /Official medical records \(unavailable\)/);
+      assert.match(detail, /Unable to load medical records/);
+      assert.match(detail, /Unavailable: medical records could not be loaded/, 'the official weight is not shown as missing');
+      assert.doesNotMatch(detail, /No medical records yet|No weight recorded yet/);
+      assert.equal(await tab.evaluate(`document.querySelector('[data-add-record]')`), null, 'no record can be added');
+
+      await tab.evaluate(`location.hash = '#appointments'`);
+      assert.ok(await tab.waitFor(`document.getElementById('appointmentsTable').innerText.includes('Records unavailable')`));
+      assert.equal(await tab.evaluate(`document.querySelector('#appointmentsTable [data-record-appointment]')`), null, 'no Add Medical Record button');
+      assert.deepEqual(tab.errors, []);
+    } finally { await tab.close(); }
+  });
+
   it('System Management lists editable catalog cards and says online booking is closed', async () => {
     const tab = await open('pages/admin/dashboard.html', '#services', ADMIN, adminRoutes());
     try {

@@ -239,11 +239,14 @@ const getUserPets = async (req) => {
     let recordCounts = {};
     let latestRecordsByPet = {};
     let recordsByPet = {};
+    // The pets still load when the records can't be read, but their record figures are then unknown (null), not zero
+    let medicalRecordsAvailable = true;
     if (petIds.length > 0) {
       const { data: records, error: recordsError } = await medicalRecordsRepository.listSummariesByPetIds(petIds);
 
       if (recordsError) {
         console.warn('Unable to load medical record counts:', recordsError);
+        medicalRecordsAvailable = false;
       }
 
       const recordContext = buildMedicalRecordContext(records || []);
@@ -259,9 +262,20 @@ const getUserPets = async (req) => {
     }
 
     const annotatedPets = (pets || []).map(pet => {
+      if (!medicalRecordsAvailable) {
+        return {
+          ...pet,
+          medical_records_available: false,
+          medical_record_count: null,
+          latest_medical_record_summary: null,
+          latest_medical_record_date: null,
+          latest_weight: null
+        };
+      }
       const latestRecord = latestRecordsByPet[String(pet.id)];
       return {
         ...pet,
+        medical_records_available: true,
         medical_record_count: recordCounts[String(pet.id)] || 0,
         latest_medical_record_summary: getMedicalRecordSummary(latestRecord),
         latest_medical_record_date: latestRecord?.record_date || latestRecord?.created_at || null,

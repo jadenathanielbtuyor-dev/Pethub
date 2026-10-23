@@ -89,6 +89,7 @@ let adminDashboardData = {
   pets: [],
   appointments: [],
   medicalRecords: [],
+  medicalRecordsAvailable: true,
   activityLogs: [],
   activityLogsLoaded: false,
   activityLogsLoading: false,
@@ -851,6 +852,12 @@ function getMedicalRecordsForPet(petId) {
     .sort((a, b) => getRecordDateTime(b) - getRecordDateTime(a));
 }
 
+// False when the server loaded the overview but could not read the medical records (medicalRecordsAvailable: false):
+// record counts and official weights are then unknown, so they are shown as unavailable, never as zero
+function areMedicalRecordsAvailable() {
+  return adminDashboardData.medicalRecordsAvailable !== false;
+}
+
 function getMedicalRecordPetLabel(record) {
   const petName = getPetNameById(record?.pet_id);
   if (petName) return petName;
@@ -984,6 +991,7 @@ function getLatestOfficialWeight(petId) {
 }
 
 function getLatestOfficialWeightText(petId) {
+  if (!areMedicalRecordsAvailable()) return 'Unavailable: medical records could not be loaded';
   const weight = getLatestOfficialWeight(petId);
   if (!weight) return 'No weight recorded yet';
   return weight.date ? `${weight.value} kg, recorded ${formatDate(weight.date)}` : `${weight.value} kg`;
@@ -1222,7 +1230,7 @@ function displayDashboardAlerts(summary = adminDashboardData.summary || {}) {
       : String(asArray(adminDashboardData.appointments).filter(appointment => isAwaitingOutcome(appointment)).length);
   }
   if (medicalRecords) {
-    medicalRecords.textContent = adminDashboardData.overviewError
+    medicalRecords.textContent = adminDashboardData.overviewError || !areMedicalRecordsAvailable()
       ? 'Unavailable'
       : String(asArray(adminDashboardData.medicalRecords).length);
   }
@@ -1435,14 +1443,14 @@ function displayMedicalRecordsSection(records) {
   const recordsContainer = document.getElementById('recentMedicalRecordsContainer');
 
   if (summaryEl) {
-    summaryEl.textContent = adminDashboardData.overviewError
+    summaryEl.textContent = adminDashboardData.overviewError || !areMedicalRecordsAvailable()
       ? 'Records unavailable'
       : `${sortedRecords.length} medical record${sortedRecords.length === 1 ? '' : 's'}`;
   }
 
   if (!recordsContainer) return;
 
-  if (adminDashboardData.overviewError && !sortedRecords.length) {
+  if ((adminDashboardData.overviewError || !areMedicalRecordsAvailable()) && !sortedRecords.length) {
     recordsContainer.innerHTML = getAdminErrorBlock('Unable to load medical records', 'medical records');
     return;
   }
@@ -1895,6 +1903,7 @@ function storeOverviewData(data) {
   adminDashboardData.pets = asArray(data.pets);
   adminDashboardData.appointments = asArray(data.appointments);
   adminDashboardData.medicalRecords = asArray(data.medicalRecords);
+  adminDashboardData.medicalRecordsAvailable = data.medicalRecordsAvailable !== false;
   adminDashboardData.messages = getOverviewMessages(data);
   adminDashboardData.activityLogs = getOverviewActivityLogs(data);
   adminDashboardData.stats = data.stats || {};
@@ -1907,6 +1916,7 @@ function clearDashboardData() {
   adminDashboardData.pets = [];
   adminDashboardData.appointments = [];
   adminDashboardData.medicalRecords = [];
+  adminDashboardData.medicalRecordsAvailable = true;
   adminDashboardData.messages = [];
   adminDashboardData.activityLogs = [];
   adminDashboardData.stats = {};
@@ -2482,7 +2492,7 @@ function displayPetsTable(pets) {
       <td>${escapeHtml(formatPetAge(pet.age))}</td>
       <td>${owner ? `<a class="ph-dash-link" href="${getOwnerHref(owner.id)}">${ownerLabel}</a>` : `${ownerLabel}<p class="ph-dash-muted">Owner account not found</p>`}</td>
       <td>
-        ${records.length} record${records.length === 1 ? '' : 's'}
+        ${areMedicalRecordsAvailable() ? `${records.length} record${records.length === 1 ? '' : 's'}` : 'Unavailable'}
         ${latestRecordDateRaw ? `<p class="ph-dash-muted">Latest ${escapeHtml(formatDate(latestRecordDateRaw))}</p>` : ''}
       </td>
       <td>
@@ -2502,6 +2512,7 @@ function getAppointmentRecordCellHtml(appointment) {
   if (getAppointmentStatus(appointment.status) !== 'Completed') return '<span class="ph-dash-muted">Not applicable</span>';
   if (appointmentHasMedicalRecord(appointment)) return '<span class="ph-badge ph-badge-official">Record linked</span>';
   if (appointment?.medical_record_link_status === 'unresolved') return '<span class="ph-badge ph-badge-warning">Relationship unresolved</span>';
+  if (appointment?.medical_record_link_status === 'unavailable') return '<span class="ph-badge ph-badge-warning">Records unavailable</span>';
   return '<span class="ph-dash-muted">No linked record</span>';
 }
 
@@ -2603,7 +2614,9 @@ function renderOwnerAccount(owner) {
           <article class="ph-dash-card">
             <div class="ph-dash-card-head">
               <p class="ph-dash-card-title">${escapeHtml(petName)}</p>
-              <span class="ph-badge">${petRecords} official record${petRecords === 1 ? '' : 's'}</span>
+              ${areMedicalRecordsAvailable()
+                ? `<span class="ph-badge">${petRecords} official record${petRecords === 1 ? '' : 's'}</span>`
+                : '<span class="ph-badge ph-badge-warning">Records unavailable</span>'}
             </div>
             <dl class="ph-dash-facts">
               <div><dt>Species and breed</dt> <dd>${escapeHtml([displayValue(pet.species), displayValue(pet.breed, 'Breed not recorded')].join(' · '))}</dd></div>
@@ -2629,7 +2642,7 @@ function renderOwnerAccount(owner) {
           <div><dt>Account created</dt> <dd>${escapeHtml(formatTableDate(owner.created_at))}</dd></div>
           <div><dt>Registered pets</dt> <dd>${pets.length}</dd></div>
           <div class="is-wide"><dt>Appointments</dt> <dd>${appointments.length ? `${appointments.length} (${escapeHtml(statusCounts)})` : '0'}</dd></div>
-          <div><dt>Official medical records</dt> <dd>${recordCount}</dd></div>
+          <div><dt>Official medical records</dt> <dd>${areMedicalRecordsAvailable() ? recordCount : 'Unavailable'}</dd></div>
           ${awaiting ? `<div class="is-wide"><dt>Awaiting an outcome</dt> <dd>${awaiting} appointment${awaiting === 1 ? '' : 's'} whose time has passed</dd></div>` : ''}
         </dl>
         <p class="ph-dash-note mt-3">Passwords and sign-in codes are never shown. Roles are changed under System Management &gt; Users.</p>
@@ -2662,7 +2675,7 @@ function getRecordableAppointmentsForPet(petId) {
   return asArray(adminDashboardData.appointments)
     .filter(appointment => String(appointment.pet_id) === String(petId)
       && getAppointmentStatus(appointment.status) === 'Completed'
-      && appointment.medical_record_link_status !== 'unresolved'
+      && !['unresolved', 'unavailable'].includes(appointment.medical_record_link_status)
       && !appointmentHasMedicalRecord(appointment))
     .sort((a, b) => getAppointmentSortKey(b).localeCompare(getAppointmentSortKey(a)));
 }
@@ -2713,7 +2726,9 @@ function renderAdminPetDetail(pet) {
           </article>
         `;
       }).join('')
-    : getAdminEmptyBlock('No medical records yet', 'Records for this pet appear here once an administrator adds one.');
+    : areMedicalRecordsAvailable()
+      ? getAdminEmptyBlock('No medical records yet', 'Records for this pet appear here once an administrator adds one.')
+      : getAdminErrorBlock('Unable to load medical records', 'medical records');
 
   const addRecordHtml = recordable.length
     ? `
@@ -2727,7 +2742,9 @@ function renderAdminPetDetail(pet) {
         <button type="button" class="ph-btn ph-btn-primary ph-btn-sm" data-add-record><i class="ri-add-line" aria-hidden="true"></i>Add medical record</button>
       </div>
     `
-    : '<p class="ph-dash-note">No completed appointment is currently available to link. Older unlinked clinical records are shown as unresolved until the clinic verifies their relationship.</p>';
+    : areMedicalRecordsAvailable()
+      ? '<p class="ph-dash-note">No completed appointment is currently available to link. Older unlinked clinical records are shown as unresolved until the clinic verifies their relationship.</p>'
+      : '<p class="ph-dash-note">Medical records could not be loaded, so a record cannot be added right now. Refresh the dashboard to try again.</p>';
 
   const otherPetsHtml = otherPets.length
     ? `
@@ -2761,7 +2778,7 @@ function renderAdminPetDetail(pet) {
       </div>
       <div>
         <div class="ph-dash-card-head">
-          <h3 class="ph-dash-card-title">Official medical records (${records.length})</h3>
+          <h3 class="ph-dash-card-title">Official medical records (${areMedicalRecordsAvailable() ? records.length : 'unavailable'})</h3>
           <span class="ph-badge ph-badge-official"><i class="ri-shield-check-line" aria-hidden="true"></i>Entered by administrators</span>
         </div>
         <div class="ph-dash-stack mt-3">${recordCards}</div>
@@ -2998,6 +3015,10 @@ function renderAppointmentActions(status, appointment) {
 
   if (status === 'Completed' && appointment?.medical_record_link_status === 'unresolved') {
     return '<span class="ph-dash-muted" role="note" title="Review unlinked clinical records before associating this appointment.">Record link needs review</span>';
+  }
+
+  if (status === 'Completed' && appointment?.medical_record_link_status === 'unavailable') {
+    return '<span class="ph-dash-muted" role="note" title="Medical records could not be loaded. Refresh before adding a record.">Records unavailable</span>';
   }
 
   if (status === 'Completed' && hasMedicalRecordCreateContext(appointment)) {
