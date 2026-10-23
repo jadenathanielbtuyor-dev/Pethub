@@ -101,3 +101,35 @@ True concurrency (two simultaneous connections) is not testable on single-connec
 - **Data retention.** Deleting a `users` row (for example from the Supabase dashboard) cascades to that owner's pets, appointments and **official medical records**. Decide whether clinical history must be kept (`ON DELETE RESTRICT`) before anyone deletes an account. There is no account-deletion feature in PetHub.
 - **One official record per appointment.** The admin UI only adds a record from a completed appointment, and the database will allow one per appointment. If a visit can produce several records, the unique index must be revisited before such a workflow is built.
 - **The six unused tables** (`notifications`, `payments`, `appointment_status_history`, `email_logs`, `reminder_logs`, `system_settings`). Keep them, which is the default since `payments` holds 1 historical row, or retire them later with a reviewed backup.
+
+## Re-verified 2026-10-24: still not applied, ready to run
+
+Claude could not apply either file. The Supabase MCP is read-only (`supabase_read_only_user`, `transaction_read_only = on`, no migration tool). No browser-automation tool is connected to a signed-in Supabase Dashboard. No Supabase CLI or `psql` is installed. Everything below was read-only.
+
+| Check | Result |
+| --- | --- |
+| Target project | The backend's `SUPABASE_URL` host and the MCP's project ref are the same project: `crudvruwaptsvesheijv` |
+| Reconcile PART 0 preflight, run live | **Passes**: no object exists yet, column types match, no user has two open reset codes |
+| Backend key | All 282 PostgREST requests in the last 24 h used the `service_role` key (both `apikey` and `Authorization`); none used the public key. This satisfies the RLS file's step 0/1. |
+| RLS PART 1a | RLS off on all 14 tables; none forced |
+| RLS PART 1b | 0 policies. **PART 3b is not needed.** |
+| RLS PART 1c (effective privileges, via `has_table_privilege`) | `anon` and `authenticated`: SELECT, INSERT, UPDATE, DELETE and TRUNCATE on all 14 tables. `information_schema.role_table_grants` lists nothing to a read-only role, so use `has_table_privilege` to see this. |
+| RLS PART 1c.2 | `anon` can SELECT `users.password`, `email_verifications.verification_code` and `password_resets.reset_token` |
+| RLS PART 1d / 1e | Only `service_role` bypasses RLS. 0 functions and 0 views in `public`. |
+
+**Note on TRUNCATE.** RLS does not govern TRUNCATE. The public API (PostgREST) has no way to issue a TRUNCATE, and no callable function exists, so PART 2 closes every reachable path. The optional `REVOKE` at the end of the RLS file is what removes the privilege itself.
+
+**Operator checklist (Supabase Dashboard → project `crudvruwaptsvesheijv` → SQL Editor):**
+
+1. Note the latest backup under Database → Backups.
+2. New query: paste the **whole** `2026-10-23_reconcile_live_schema.sql` and run it once.
+   - Success shows no error.
+   - `PetHub reconciliation stopped` or `post-check failed` means nothing changed. Copy the message and stop.
+3. Tell Claude. Claude verifies the result read-only through the MCP: objects, seeds, grants, functions, and that existing rows are intact.
+4. Smoke test with clinic-controlled accounts (step 3 of the runbook above).
+5. New query: paste **only** PART 2 of `2026-10-20_rls_least_privilege.sql` (from `BEGIN;` to `COMMIT;`) and run it.
+6. Tell Claude again. Claude verifies:
+   - RLS is on for all 17 tables, with 0 policies;
+   - a request made with the public key returns no rows (row counts only; no data is printed);
+   - the backend still answers through the `service_role` key.
+7. Repeat the smoke test, including forgot-password.
