@@ -3205,6 +3205,12 @@ body.ph-site {
   scroll-margin-top: 6rem;
 }
 
+@media (max-width: 767px) {
+  .ph-site main [id] {
+    scroll-margin-top: 10rem;
+  }
+}
+
 .ph-container {
   width: 100%;
   max-width: 72rem;
@@ -3714,33 +3720,6 @@ body.ph-site {
   color: #ffffff;
 }
 
-/* Development placeholders: clinic facts that have not been confirmed yet. They must be replaced before deployment
-   (search the pages for data-placeholder). */
-.ph-placeholder {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.3rem 0.6rem;
-  border: 2px dashed #b45309;
-  border-radius: 0.5rem;
-  background-color: #fffbeb;
-  color: #78350f;
-  font-size: 0.875rem;
-  font-weight: 600;
-}
-
-.ph-placeholder-tag {
-  padding: 0.05rem 0.4rem;
-  border-radius: 0.25rem;
-  background-color: #92400e;
-  color: #ffffff;
-  font-size: 0.6875rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
 .ph-info-list {
   display: grid;
   gap: 1.25rem;
@@ -4033,17 +4012,6 @@ body.dark-mode .ph-badge-dog {
 body.dark-mode .ph-badge-cat {
   background-color: #831843;
   color: #fce7f3;
-}
-
-body.dark-mode .ph-placeholder {
-  border-color: #f59e0b;
-  background-color: #451a03;
-  color: #fde68a;
-}
-
-body.dark-mode .ph-placeholder-tag {
-  background-color: #fbbf24;
-  color: #451a03;
 }
 
 body.dark-mode .footer.ph-footer {

@@ -176,10 +176,10 @@ describe('Dashboard data: real API routes and no invented figures', () => {
     assert.match(read('js/admin/dashboard.js'), /return unavailable \? 'Unavailable' : formatDashboardValue\(value\)/);
   });
 
-  it('the AI assistant is sent only the question and the page name; the Pet Health page opens that same assistant', () => {
+  it('the AI assistant sends the question, page and bounded in-memory history; the Pet Health page opens that assistant', () => {
     const widget = read('js/shared/ai-widget.js');
-    const bodies = [...widget.matchAll(/body: JSON\.stringify\(\{([^}]*)\}\)/g)].map(match => match[1].replace(/\s+/g, ' ').trim());
-    assert.deepEqual(bodies, ['message, currentPage']);
+    assert.match(widget, /history:\s*inMemoryChatHistory\.slice\(-10\)/);
+    assert.match(widget, /text:\s*String\(entry\.text \|\| ''\)\.slice\(0, 1200\)/);
     assert.match(widget, /window\.PetHubAI = Object\.freeze\(\{ open: openAssistant, ask: askAssistant \}\)/);
     const health = read('js/user/health.js');
     assert.deepEqual(getCalledPaths(health).sort(), ['/pets/medical-records', '/pets/userPets'], 'the page calls no chat endpoint of its own');

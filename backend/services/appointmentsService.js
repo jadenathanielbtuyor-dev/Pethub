@@ -1,10 +1,10 @@
 const usersRepository = require('../repositories/usersRepository');
 const petsRepository = require('../repositories/petsRepository');
 const appointmentsRepository = require('../repositories/appointmentsRepository');
+const serviceCatalogRepository = require('../repositories/serviceCatalogRepository');
 const { isUserVerified, isAdminVerified } = require('../utils/accountVerification');
 const { logAdminActivity } = require('../utils/activityLogger');
 const { logUserActivity } = require('../utils/activityLogger');
-const { runExclusive } = require('../utils/keyedLock');
 const appointmentNotificationsService = require('./appointmentNotificationsService');
 const {
   hasValue
@@ -16,7 +16,7 @@ const {
   APPOINTMENT_CANCELLATION_CUTOFF_MESSAGE
 } = require('../constants/appointments');
 const { SERVICE_SPECIES } = require('../constants/services');
-const { getService, isServiceAvailableForSpecies, describeSpecies, listServicesForClient } = require('../utils/serviceCatalog');
+const { isServiceAvailableForSpecies, describeSpecies } = require('../utils/serviceCatalog');
 const {
   SCHEDULE_CONFLICT_MESSAGE,
   OCCUPIED_APPOINTMENT_STATUSES,
@@ -42,20 +42,6 @@ async function getUserPetById(userId, petId) {
   return Array.isArray(data) && data.length > 0 ? data[0] : null;
 }
 
-// The customer's Pending appointment for the same pet, service, date and time, if there is one
-async function findSamePendingAppointment(appointmentRecord) {
-  const { data, error } = await appointmentsRepository.listByUserId(appointmentRecord.user_id);
-  if (error) throw error;
-
-  return (data || []).find(appointment => (
-    appointment.status === 'Pending' &&
-    String(appointment.pet_id) === appointmentRecord.pet_id &&
-    appointment.service_type === appointmentRecord.service_type &&
-    normalizeAppointmentDate(appointment.appointment_date) === appointmentRecord.appointment_date &&
-    normalizeAppointmentTime(appointment.appointment_time) === appointmentRecord.appointment_time
-  )) || null;
-}
-
 function appointmentRangesOverlap(first, second) {
   if (!first || !second || first.date !== second.date) return false;
   return first.startMs < second.endMs && second.startMs < first.endMs;
@@ -73,13 +59,14 @@ function formatSuggestedAppointmentTime(timeMs) {
   return `${hours}:${minutes}`;
 }
 
-function getActiveAppointmentRanges(appointments, excludedAppointmentId = '') {
+function getActiveAppointmentRanges(appointments, excludedAppointmentId = '', includePending = true) {
   const excludedId = String(excludedAppointmentId || '').trim();
   return (appointments || [])
     .filter(appointment => {
       const appointmentId = String(appointment?.id || '').trim();
       const status = String(appointment?.status || '').trim().toLowerCase();
-      return (!excludedId || appointmentId !== excludedId) && OCCUPIED_APPOINTMENT_STATUSES.has(status);
+      const occupiesSchedule = OCCUPIED_APPOINTMENT_STATUSES.has(status) && (includePending || status !== 'pending');
+      return (!excludedId || appointmentId !== excludedId) && occupiesSchedule;
     })
     .map(appointment => {
       const range = getAppointmentTimeRange(
@@ -123,7 +110,7 @@ function getSuggestedTimeAfterConflict(requestedRange, existingRanges) {
   };
 }
 
-async function getScheduleConflict(appointmentDate, appointmentTime, estimatedDurationMinutes, excludedAppointmentId = '') {
+async function getScheduleConflict(appointmentDate, appointmentTime, estimatedDurationMinutes, excludedAppointmentId = '', includePending = true) {
   const requestedRange = getAppointmentTimeRange(appointmentDate, appointmentTime, estimatedDurationMinutes);
   if (!requestedRange) return { hasConflict: false, error: '' };
 
@@ -133,7 +120,7 @@ async function getScheduleConflict(appointmentDate, appointmentTime, estimatedDu
     throw error;
   }
 
-  const existingRanges = getActiveAppointmentRanges(appointments, excludedAppointmentId);
+  const existingRanges = getActiveAppointmentRanges(appointments, excludedAppointmentId, includePending);
   const conflict = getSuggestedTimeAfterConflict(requestedRange, existingRanges);
   if (!conflict.hasConflict) {
     return { hasConflict: false, error: '' };
@@ -179,17 +166,37 @@ async function attachHandledByNames(appointments) {
  */
 const createAppointment = async (req) => {
   try {
-    const validation = validateCreateAppointment(req.body);
+    const body = req.body || {};
+    const serviceId = String(body.service_id || '').trim();
+    const serviceName = String(body.service_type || '').trim();
+    if (!serviceId && !serviceName) {
+      const validation = validateCreateAppointment(body, null);
+      return validation.error;
+    }
+
+    const serviceResult = serviceId
+      ? await serviceCatalogRepository.findById(serviceId)
+      : await serviceCatalogRepository.findByName(serviceName);
+    if (serviceResult.error) {
+      if (['42P01', 'PGRST205'].includes(String(serviceResult.error.code || ''))) {
+        return { statusCode: 503, body: { error: 'Service configuration is unavailable until the reviewed database migration is applied.' } };
+      }
+      throw serviceResult.error;
+    }
+
+    const validation = validateCreateAppointment(body, serviceResult.data);
     if (validation.error) return validation.error;
 
     const {
       normalizedUserId,
       normalizedPetId,
+      service,
       serviceType,
       estimatedDurationMinutes,
       normalizedAppointmentDate,
       normalizedAppointmentTime
     } = validation;
+    const catalogServiceId = validation.serviceId;
 
     const verified = await isUserVerified(normalizedUserId);
     if (!verified) {
@@ -207,20 +214,11 @@ const createAppointment = async (req) => {
     }
 
     // Checked here, not only by hiding options on the booking page
-    if (!isServiceAvailableForSpecies(serviceType, pet.species)) {
-      return { statusCode: 400, body: { error: `${serviceType} is offered for ${describeSpecies(getService(serviceType).species)} only.` } };
-    }
-
-    const conflict = await getScheduleConflict(
-      normalizedAppointmentDate,
-      normalizedAppointmentTime,
-      estimatedDurationMinutes
-    );
-    if (conflict.hasConflict) {
-      return { statusCode: 400, body: {
-        error: conflict.error || SCHEDULE_CONFLICT_MESSAGE,
-        suggested_time: conflict.suggested_time || null
-      } };
+    if (!isServiceAvailableForSpecies(service, pet.species)) {
+      const offeredSpecies = describeSpecies(service.species || []);
+      return { statusCode: 400, body: { error: offeredSpecies
+        ? `${serviceType} is offered for ${offeredSpecies} only.`
+        : 'The clinic has not confirmed which species this service is for yet.' } };
     }
 
     const appointmentRecord = {
@@ -234,30 +232,55 @@ const createAppointment = async (req) => {
       status: 'Pending'
     };
 
-    // The same booking can arrive more than once (a double click, a second tab, a refresh after submitting): if the
-    // customer already has this exact Pending appointment, it is returned instead of creating a duplicate
-    const insertAppointment = async () => {
-      const existing = await findSamePendingAppointment(appointmentRecord);
-      if (existing) return { existing };
-      return appointmentsRepository.createAppointment(appointmentRecord);
-    };
-
-    // Copies that arrive at the same moment run one at a time per customer, so a copy finds the first booking
-    // instead of creating a second one
-    const inserted = await runExclusive(`booking:${normalizedUserId}`, insertAppointment);
-
-    if (inserted.existing) {
-      return { statusCode: 200, body: { success: true, appointment: inserted.existing, already_booked: true } };
+    const duplicate = await appointmentsRepository.findPendingDuplicate(appointmentRecord);
+    if (duplicate.error) throw duplicate.error;
+    if (duplicate.data) {
+      return { statusCode: 200, body: { success: true, appointment: duplicate.data, already_booked: true } };
     }
 
+    // The database function serializes reservations for a date, checks overlap, and returns an existing identical
+    // Pending request idempotently. A process-local lock cannot protect other Railway instances.
+    const inserted = await appointmentsRepository.createIfAvailable(appointmentRecord, catalogServiceId);
     const { data, error } = inserted;
 
     if (error) {
+      if (['PGRST202', '42883'].includes(String(error.code || ''))) {
+        return { statusCode: 503, body: { error: 'Secure booking is unavailable until the reviewed database rule is installed.' } };
+      }
+      if (String(error.code || '') === 'P0001') {
+        return { statusCode: 409, body: { error: 'The service or pet details changed. Refresh the service list and try again.' } };
+      }
+      if (String(error.code || '') === '22023') {
+        return { statusCode: 400, body: { error: 'The appointment request is invalid. Refresh the page and try again.' } };
+      }
       console.error('Error creating appointment:', error);
       return { statusCode: 500, body: { error: 'Failed to create appointment' } };
     }
 
-    return { statusCode: 201, body: { success: true, appointment: data[0] } };
+    if (data?.outcome === 'conflict') {
+      const conflict = await getScheduleConflict(
+        normalizedAppointmentDate,
+        normalizedAppointmentTime,
+        estimatedDurationMinutes
+      );
+      return { statusCode: 409, body: {
+        error: conflict.error || SCHEDULE_CONFLICT_MESSAGE,
+        suggested_time: conflict.suggested_time || null
+      } };
+    }
+    if (data?.outcome === 'existing') {
+      const existing = await appointmentsRepository.findByIdForUser(data.appointment_id, normalizedUserId);
+      if (existing.error || !existing.data) throw existing.error || new Error('Reserved appointment could not be loaded');
+      return { statusCode: 200, body: { success: true, appointment: existing.data, already_booked: true } };
+    }
+    if (data?.outcome !== 'created' || !data.appointment_id) {
+      console.error('Appointment reservation returned an unexpected result.');
+      return { statusCode: 500, body: { error: 'Failed to create appointment' } };
+    }
+
+    const created = await appointmentsRepository.findByIdForUser(data.appointment_id, normalizedUserId);
+    if (created.error || !created.data) throw created.error || new Error('Reserved appointment could not be loaded');
+    return { statusCode: 201, body: { success: true, appointment: created.data } };
   } catch (error) {
     console.error('Create appointment error:', error);
     return { statusCode: 500, body: { error: 'Server error' } };
@@ -268,10 +291,7 @@ const createAppointment = async (req) => {
  * The clinic's services for the booking page: name, category, description, species, and the confirmed duration
  * (null, with bookable false, until the clinic confirms it)
  */
-const listServices = async () => ({
-  statusCode: 200,
-  body: { success: true, services: listServicesForClient(), species: [...SERVICE_SPECIES] }
-});
+const listServices = async () => require('./serviceCatalogService').listServices();
 
 /**
  * Get all appointments for a specific user
@@ -467,7 +487,8 @@ const updateStatus = async (req) => {
           existingAppointment.appointment_date,
           existingAppointment.appointment_time,
           existingAppointment.estimated_duration_minutes,
-          normalizedAppointmentId
+          normalizedAppointmentId,
+          false
         );
 
         if (conflict.hasConflict) {
@@ -476,16 +497,36 @@ const updateStatus = async (req) => {
             suggested_time: conflict.suggested_time || null
           } } };
         }
+
+        const reserved = await appointmentsRepository.updateStatusIfAvailable(
+          normalizedAppointmentId,
+          normalizedStatus,
+          normalizedAdminId,
+          currentStatus
+        );
+        if (reserved.error) {
+          if (['PGRST202', '42883'].includes(String(reserved.error.code || ''))) {
+            return { refused: { statusCode: 503, body: { error: 'Secure approval is unavailable until the reviewed database rule is installed.' } } };
+          }
+          return reserved;
+        }
+        if (reserved.data?.outcome === 'conflict') {
+          return { refused: { statusCode: 409, body: { error: SCHEDULE_CONFLICT_MESSAGE, suggested_time: null } } };
+        }
+        if (!['updated', 'stale', 'not_found'].includes(reserved.data?.outcome)) {
+          return { error: { code: 'PETHUB_UNEXPECTED_APPOINTMENT_STATUS_RESULT' } };
+        }
+        if (reserved.data.outcome !== 'updated') return { data: [], error: null };
+
+        const updated = await appointmentsRepository.findById(normalizedAppointmentId);
+        return { data: updated.data ? [updated.data] : [], error: updated.error };
       }
 
       return appointmentsRepository.updateStatus(normalizedAppointmentId, normalizedStatus, normalizedAdminId, currentStatus);
     };
 
-    // Approvals on the same date run one at a time (same key as adminService.updateAppointmentStatus), so two admins
-    // approving overlapping appointments at once cannot both pass the schedule check
-    const outcome = normalizedStatus === 'Approved'
-      ? await runExclusive(`schedule:${normalizeAppointmentDate(existingAppointment.appointment_date)}`, applyStatus)
-      : await applyStatus();
+    // Approval and reservation use a shared date lock in the database across all backend instances.
+    const outcome = await applyStatus();
     if (outcome.refused) return outcome.refused;
 
     const { data, error } = outcome;

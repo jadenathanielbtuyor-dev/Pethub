@@ -73,8 +73,8 @@ describe('Booking without payments', () => {
     PAYMENT_SETTINGS.forEach(name => assert.equal(process.env[name], undefined, `${name} is not set`));
     const user = t.createUser();
     const pet = t.createPet(user);
-    let insertPayload = null;
-    t.db.interceptNext({ table: 'appointments', action: 'insert' }, query => { insertPayload = query.payload; });
+    let reservation = null;
+    t.db.interceptNext({ table: 'appointments', action: 'rpc' }, query => { reservation = query; });
     t.db.log.length = 0;
 
     const response = await book(user, bookingBody(user, pet));
@@ -85,10 +85,13 @@ describe('Booking without payments', () => {
     assertNoPaymentFields(response.body, 'the booking response');
     assertNoPaymentFields(response.body.appointment, 'the booked appointment');
 
-    // Only appointment columns are written; the legacy payment columns keep their database defaults
-    assert.deepEqual(Object.keys(insertPayload[0]).sort(), [
-      'appointment_date', 'appointment_time', 'estimated_duration_minutes', 'pet_id', 'pet_name', 'service_type', 'status', 'user_id'
+    // The reviewed RPC receives only the catalog id and appointment fields; legacy payment fields are untouched.
+    assert.equal(reservation.functionName, 'create_appointment_if_available');
+    assert.deepEqual(Object.keys(reservation.payload).sort(), [
+      'p_appointment_date', 'p_appointment_time', 'p_estimated_duration_minutes', 'p_pet_id', 'p_pet_name',
+      'p_service_id', 'p_service_type', 'p_user_id'
     ]);
+    assertNoPaymentFields(reservation.payload, 'the reservation request');
     assert.equal(appointmentsOf(user).length, 1);
     assert.equal(paymentQueries().length, 0, 'the payments table is never queried');
     assert.equal(t.db.table('payments').length, 0, 'no payment record is created');
@@ -184,13 +187,13 @@ describe('Booking without payments', () => {
     });
 
     const overlapping = await book(user, bookingBody(user, pet, { appointment_date: date, appointment_time: '14:30:00' }));
-    assert.equal(overlapping.status, 400);
+    assert.equal(overlapping.status, 409);
     assert.equal(overlapping.body.error, 'Selected time is unavailable.');
     assert.equal(overlapping.body.suggested_time, '14:45');
 
     // Full Grooming takes 4 hours in these tests (test-only durations), so 11:00 runs into the 14:00 appointment
     const longService = await book(user, bookingBody(user, pet, { appointment_date: date, appointment_time: '11:00:00', service_type: 'Full Grooming' }));
-    assert.equal(longService.status, 400);
+    assert.equal(longService.status, 409);
 
     // 13:15 + 45 minutes ends exactly when the approved appointment starts
     const adjacent = await book(user, bookingBody(user, pet, { appointment_date: date, appointment_time: '13:15:00' }));
@@ -214,8 +217,8 @@ describe('Booking without payments', () => {
     // A different time, pet or service, or the same booking after the earlier copy was cancelled, is a new appointment
     const otherPet = t.createPet(user, 'Kuro');
     assert.equal((await book(user, { ...body, appointment_time: '15:00:00' })).status, 201);
-    assert.equal((await book(user, { ...body, pet_id: otherPet.id, pet_name: otherPet.name })).status, 201);
-    assert.equal((await book(user, { ...body, service_type: 'Bath' })).status, 201);
+    assert.equal((await book(user, { ...body, pet_id: otherPet.id, pet_name: otherPet.name, appointment_time: '11:00:00' })).status, 201);
+    assert.equal((await book(user, { ...body, service_type: 'Bath', appointment_time: '12:00:00' })).status, 201);
     t.appointmentRow(first.body.appointment.id).status = 'Cancelled';
     const rebooked = await book(user, body);
     assert.equal(rebooked.status, 201);
@@ -329,7 +332,7 @@ describe('Appointment management without payment checks', () => {
     const user = t.createUser();
     for (const endpoint of ['admin', 'legacy']) {
       const appointment = t.createAppointment(user, { daysAhead: nextDay() });
-      t.db.interceptNext({ table: 'appointments', action: 'update' }, (query, database) => {
+      t.db.interceptNext({ table: 'appointments', action: 'rpc' }, (query, database) => {
         database.find('appointments', row => row.id === appointment.id).status = 'Cancelled';
       });
       const response = await setStatusVia(endpoint, admin, appointment.id, 'Approved');

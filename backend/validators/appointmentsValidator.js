@@ -3,7 +3,11 @@ const {
   trimValue,
   getLocalDateValue
 } = require('./commonValidator');
-const { getService, getServiceDurationMinutes } = require('../utils/serviceCatalog');
+const {
+  getServiceUnavailableReason,
+  MIN_SERVICE_DURATION_MINUTES,
+  MAX_SERVICE_DURATION_MINUTES
+} = require('../utils/serviceCatalog');
 const {
   INVALID_APPOINTMENT_DATE_MESSAGE,
   INVALID_APPOINTMENT_TIME_MESSAGE,
@@ -163,15 +167,16 @@ function getAppointmentTimeRange(appointmentDate, appointmentTime, estimatedDura
   return { date: normalizedDate, startMs, endMs };
 }
 
-function validateCreateAppointment(body = {}) {
+function validateCreateAppointment(body = {}, service = null) {
   const normalizedUserId = trimValue(body.user_id);
   const normalizedPetId = trimValue(body.pet_id);
-  const serviceType = trimValue(body.service_type);
+  const requestedServiceId = trimValue(body.service_id);
+  const requestedServiceType = trimValue(body.service_type);
 
   if (
     !normalizedUserId ||
     !normalizedPetId ||
-    !serviceType ||
+    (!requestedServiceId && !requestedServiceType) ||
     !hasValue(body.appointment_date) ||
     !hasValue(body.appointment_time)
   ) {
@@ -180,17 +185,26 @@ function validateCreateAppointment(body = {}) {
     };
   }
 
-  // Only the clinic's services (constants/services.js), with the duration the server holds for them
-  if (!getService(serviceType)) {
+  if (!service) {
     return {
       error: { statusCode: 400, body: { error: 'Select a valid service type.' } }
     };
   }
 
-  const estimatedDurationMinutes = getServiceDurationMinutes(serviceType);
-  if (!Number.isFinite(estimatedDurationMinutes)) {
+  const serviceType = String(service.name || '').trim();
+  if (requestedServiceType && requestedServiceType !== serviceType) {
     return {
-      error: { statusCode: 409, body: { error: `${serviceType} cannot be booked online yet because the clinic has not confirmed how long it takes. Please contact the clinic to book it.` } }
+      error: { statusCode: 409, body: { error: 'The service configuration changed. Refresh the service list and try again.' } }
+    };
+  }
+
+  const unavailableReason = getServiceUnavailableReason(service);
+  const estimatedDurationMinutes = Number(service.duration_minutes);
+  if (unavailableReason || !Number.isInteger(estimatedDurationMinutes)
+      || estimatedDurationMinutes < MIN_SERVICE_DURATION_MINUTES
+      || estimatedDurationMinutes > MAX_SERVICE_DURATION_MINUTES) {
+    return {
+      error: { statusCode: 409, body: { error: unavailableReason || 'This service has no valid clinic-confirmed duration.' } }
     };
   }
 
@@ -204,6 +218,8 @@ function validateCreateAppointment(body = {}) {
   return {
     normalizedUserId,
     normalizedPetId,
+    serviceId: String(service.id),
+    service,
     serviceType,
     estimatedDurationMinutes,
     normalizedAppointmentDate: normalizeAppointmentDate(body.appointment_date),

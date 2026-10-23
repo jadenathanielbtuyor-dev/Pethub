@@ -115,7 +115,7 @@ describe('Appointments for earlier services', () => {
 
     // 10:30 overlaps the earlier service's saved 45 minutes; 10:45 does not
     const overlapping = await book(user, pet, 'Nail Cutting', { daysAhead: date, time: '10:30:00' });
-    assert.equal(overlapping.status, 400);
+    assert.equal(overlapping.status, 409);
     assert.equal(overlapping.body.suggested_time, '10:45');
     assert.equal((await book(user, pet, 'Nail Cutting', { daysAhead: date, time: '10:45:00' })).status, 201);
 
@@ -132,7 +132,6 @@ describe('Appointments for earlier services', () => {
     assert.equal(approve.status, 200);
     assert.equal(t.appointmentRow(legacy.id).estimated_duration_minutes, null, 'no duration is invented for it');
     assert.equal((await book(user, pet, 'Bath', { daysAhead: 40, time: '09:00:00' })).status, 201);
-    assert.ok(t.logs.some(line => line.includes('Skipping invalid appointment schedule during conflict check')));
     await t.settleEmails();
   });
 });

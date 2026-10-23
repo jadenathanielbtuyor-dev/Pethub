@@ -50,8 +50,10 @@ const RECORDS = [
 ];
 const SERVICES = SERVICE_CATALOG.map(entry => ({
   name: entry.name, category: entry.category, category_label: SERVICE_CATEGORIES[entry.category], description: entry.description,
-  species: [...entry.species], duration_minutes: null, bookable: false
+  species: [...entry.species], duration_minutes: null, online_booking_enabled: false, bookable: false,
+  unavailable_reason: 'Online booking is disabled for this service.'
 }));
+const ADMIN_SERVICES = SERVICES.map((service, index) => Object.assign({}, service, { id: `b0000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`, service_key: service.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-$/, ''), display_order: index + 1, version: 1 }));
 const ok = body => ({ body: { success: true, ...body } });
 const routes = (overrides = {}) => ({
   '/auth/user-status': ok({ user: ADMIN }),
@@ -59,6 +61,7 @@ const routes = (overrides = {}) => ({
   '/admin/system-logs': ok({ logs: [] }),
   '/admin/dashboard/contact-messages': ok({ messages: [] }),
   '/appointments/services': ok({ services: SERVICES, species: ['Dog', 'Cat'] }),
+  '/admin/services': ok({ services: ADMIN_SERVICES }),
   ...overrides
 });
 

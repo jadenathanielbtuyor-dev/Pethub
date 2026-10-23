@@ -8,6 +8,7 @@ const logger = require('../utils/logger');
 const asyncHandler = require('../middleware/asyncHandler');
 const { requireAuth } = require('../middleware/requireAuth');
 const breedCatalogController = require('../controllers/breedCatalogController');
+const serviceCatalogController = require('../controllers/serviceCatalogController');
 
 const router = express.Router();
 
@@ -41,6 +42,9 @@ const validateAdminAccess = asyncHandler(async (req, res, next) => {
 
 router.use(requireAuth);
 router.use(validateAdminAccess);
+
+router.get('/services', serviceCatalogController.listAdminServices);
+router.put('/services/:id', serviceCatalogController.updateService);
 
 /**
  * GET /admin/dashboard/stats

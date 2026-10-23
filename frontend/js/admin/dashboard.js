@@ -16,12 +16,13 @@
 //   GET /admin/dashboard/overview          users, pets, appointments (with owner and handler names), medical records
 //   GET /admin/system-logs                 the activity log (newest first)
 //   GET /admin/dashboard/contact-messages  contact form messages (if the overview does not include them)
-//   GET /appointments/services             the clinic's nine services and whether each can be booked online
+//   GET /admin/services                     persisted service configuration
 // Changes:
 //   PUT  /admin/dashboard/appointment-status          { id, status }
 //   POST /admin/dashboard/medical-records/create      { pet_id, appointment_id, record_date, weight, ... }
 //   PUT  /admin/dashboard/user-role                   { id, role }
 //   PUT  /admin/dashboard/contact-message-status      { id, status: 'Read' }
+//   PUT  /admin/services/:id                          confirmed service settings with expected_version
 // Authorization: every request carries the session token (core/api.js). backend/routes/admin.js runs requireAuth (the
 // token must match the user_id sent) and validateAdminAccess (the account's admin role is re-read from the database)
 // before any /admin handler; a non-admin gets 403 whatever this page shows. The role check below only redirects
@@ -36,7 +37,6 @@ const NEW_USER_WINDOW_DAYS = 7;
 // "Upcoming check-ups": Pending or Approved check-up appointments in the next 7 days (same rule as backend/services/adminService.js)
 const UPCOMING_CHECKUPS_WINDOW_DAYS = 7;
 const UPCOMING_CHECKUPS_STATUSES = ['Pending', 'Approved'];
-const CHECKUP_SERVICE_NAMES = ['Dog & Cat Full Check Up', 'Checkup'];
 const CONTACT_MESSAGE_ACTIONABLE_STATUS = 'Unread';
 const CONTACT_MESSAGE_READ_STATUS = 'Read';
 const ADMIN_SYSTEM_TAB_STORAGE_KEY = 'pethubAdminDashboardSystemTab';
@@ -100,10 +100,11 @@ let adminDashboardData = {
   overviewError: '',
   stats: {},
   summary: {},
-  // The clinic's service catalog (GET /appointments/services)
+  // The clinic's persisted service catalog
   serviceCatalog: [],
   serviceCatalogLoaded: false,
   serviceCatalogError: '',
+  serviceCatalogFeedback: '',
   petTypes: { labels: [], values: [] },
   serviceUsage: { labels: [], values: [] },
   appointmentsTrend: { labels: [], values: [] }
@@ -757,7 +758,7 @@ async function loadServiceCatalog() {
   adminDashboardData.serviceCatalogLoaded = false;
   adminDashboardData.serviceCatalogError = '';
   try {
-    const response = await fetchWithRetry(() => fetch(`${window.API_BASE_URL}/appointments/services`));
+    const response = await fetchWithRetry(() => fetch(`${window.API_BASE_URL}/admin/services${getAdminUserIdQuery()}`));
     const data = await response.json().catch(() => ({}));
     if (!response.ok || data.success === false || !Array.isArray(data.services)) {
       throw new Error(data.error || `Failed to load services (${response.status})`);
@@ -1017,7 +1018,9 @@ function countUpcomingCheckups() {
   return asArray(adminDashboardData.appointments).filter(appointment => {
     const service = String(appointment.service_type || '').trim();
     const dateKey = normalizeDashboardDateValue(appointment.appointment_date);
-    return CHECKUP_SERVICE_NAMES.includes(service) && dateKey && dateKey >= today && dateKey <= windowEnd &&
+    const isCheckup = service === 'Checkup' || asArray(adminDashboardData.serviceCatalog)
+      .some(entry => entry.service_key === 'dog-cat-full-check-up' && entry.name === service);
+    return isCheckup && dateKey && dateKey >= today && dateKey <= windowEnd &&
       UPCOMING_CHECKUPS_STATUSES.includes(getAppointmentStatus(appointment.status));
   }).length;
 }
@@ -1741,7 +1744,7 @@ function displayOwnersTable(owners) {
   }).join('');
 }
 
-// Service names for the filter: the catalog's nine services, then any other name found on appointments (earlier
+// Service names for the filter: the current catalog, then any other name found on appointments (earlier
 // services such as "Checkup", kept with their saved duration)
 function populateAppointmentServiceFilter() {
   const select = document.getElementById('appointmentServiceFilter');
@@ -3599,11 +3602,14 @@ function renderServiceCatalog() {
     return;
   }
 
+  const feedback = document.getElementById('serviceCatalogFeedback');
+  if (feedback) feedback.textContent = adminDashboardData.serviceCatalogFeedback || '';
+
   const services = asArray(adminDashboardData.serviceCatalog);
   const bookableCount = services.filter(service => service.bookable === true).length;
   if (summary) {
     summary.textContent = bookableCount === 0
-      ? `Online booking is closed: none of the ${services.length} services has a confirmed duration yet, so the server refuses new bookings and owners are asked to contact the clinic.`
+      ? `Online booking is closed for all ${services.length} services. Review each service's confirmed settings below; contact the clinic if you need to ask about booking.`
       : `Online booking is open for ${bookableCount} of ${services.length} services.`;
   }
 
@@ -3612,34 +3618,91 @@ function renderServiceCatalog() {
     return;
   }
 
-  container.innerHTML = `
-    <div class="ph-dash-table-wrap">
-      <table class="ph-dash-table">
-        <thead>
-          <tr>
-            <th scope="col">Service</th>
-            <th scope="col">Category</th>
-            <th scope="col">For</th>
-            <th scope="col">Confirmed duration</th>
-            <th scope="col">Online booking</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${services.map(service => `
-            <tr>
-              <td><strong>${escapeHtml(displayValue(service.name))}</strong><p class="ph-dash-muted ph-dash-wrap">${escapeHtml(displayValue(service.description, ''))}</p></td>
-              <td>${escapeHtml(displayValue(service.category_label || service.category))}</td>
-              <td>${escapeHtml(asArray(service.species).join(', ') || 'Not recorded')}</td>
-              <td>${Number.isInteger(service.duration_minutes) && service.duration_minutes > 0 ? escapeHtml(`${service.duration_minutes} minutes`) : '<span class="ph-dash-muted">Not confirmed</span>'}</td>
-              <td>${service.bookable === true
-                ? '<span class="ph-status ph-status-completed px-2.5 py-1 text-xs">Open</span>'
-                : '<span class="ph-status ph-status-other px-2.5 py-1 text-xs">Not open</span>'}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    </div>
-  `;
+  container.innerHTML = `<div class="ph-dash-stack">${services.map(service => `
+    <form class="service-config-form rounded-xl border border-slate-200 bg-white p-4 shadow-sm" data-service-id="${escapeHtml(service.id)}" data-service-version="${Number(service.version) || 1}">
+      <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div><h3 class="text-lg font-semibold">${escapeHtml(displayValue(service.name))}</h3><p class="ph-dash-muted">${service.bookable === true ? 'Online booking is open' : escapeHtml(service.unavailable_reason || 'Online booking is closed.')}</p></div>
+        <span class="${service.bookable === true ? 'ph-status ph-status-completed' : 'ph-status ph-status-other'} px-2.5 py-1 text-xs">${service.bookable === true ? 'Open' : 'Closed'}</span>
+      </div>
+      <div class="grid gap-4 md:grid-cols-2">
+        <label class="block text-sm font-medium">Service name<input class="ph-input mt-1 w-full" name="name" maxlength="100" required value="${escapeHtml(service.name)}"></label>
+        <label class="block text-sm font-medium">Category<select class="ph-input mt-1 w-full" name="category" required>
+          <option value="grooming" ${service.category === 'grooming' ? 'selected' : ''}>Grooming</option>
+          <option value="veterinary" ${service.category === 'veterinary' ? 'selected' : ''}>Veterinary</option>
+        </select></label>
+        <label class="block text-sm font-medium md:col-span-2">Description<textarea class="ph-input mt-1 w-full" name="description" rows="2" maxlength="500" required>${escapeHtml(service.description || '')}</textarea></label>
+        <fieldset class="rounded-lg border border-slate-200 p-3">
+          <legend class="px-1 text-sm font-medium">Applicable species (clinic confirmed)</legend>
+          <div class="flex gap-5 pt-1">
+            <label class="flex items-center gap-2"><input type="checkbox" name="species" value="Dog" ${asArray(service.species).includes('Dog') ? 'checked' : ''}>Dog</label>
+            <label class="flex items-center gap-2"><input type="checkbox" name="species" value="Cat" ${asArray(service.species).includes('Cat') ? 'checked' : ''}>Cat</label>
+          </div>
+        </fieldset>
+        <div class="grid grid-cols-2 gap-3">
+          <label class="block text-sm font-medium">Duration in minutes<input class="ph-input mt-1 w-full" name="duration_minutes" type="number" min="5" max="480" step="1" inputmode="numeric" value="${Number.isInteger(service.duration_minutes) ? service.duration_minutes : ''}" placeholder="Not confirmed"></label>
+          <label class="block text-sm font-medium">Display order<input class="ph-input mt-1 w-full" name="display_order" type="number" min="1" max="99" step="1" required value="${Number(service.display_order) || 1}"></label>
+        </div>
+        <label class="flex items-center gap-2 text-sm font-medium"><input type="checkbox" name="online_booking_enabled" ${service.online_booking_enabled === true ? 'checked' : ''}>Enable online booking</label>
+      </div>
+      <div class="mt-4 flex flex-wrap items-center gap-3"><button class="ph-btn ph-btn-primary" type="submit">Save service settings</button><p id="serviceSaveStatus-${escapeHtml(service.id)}" class="text-sm" role="status" aria-live="polite"></p></div>
+    </form>
+  `).join('')}</div>`;
+
+  container.querySelectorAll('.service-config-form').forEach(form => {
+    form.addEventListener('submit', saveServiceConfiguration);
+  });
+}
+
+async function saveServiceConfiguration(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const serviceId = String(form.dataset.serviceId || '');
+  const status = document.getElementById(`serviceSaveStatus-${serviceId}`);
+  const button = form.querySelector('button[type="submit"]');
+  const formData = new FormData(form);
+  const durationText = String(formData.get('duration_minutes') || '').trim();
+  const expectedVersion = Number(form.dataset.serviceVersion);
+  const payload = {
+    name: String(formData.get('name') || '').trim(),
+    description: String(formData.get('description') || '').trim(),
+    category: String(formData.get('category') || ''),
+    species: formData.getAll('species').map(String),
+    duration_minutes: durationText ? Number(durationText) : null,
+    online_booking_enabled: formData.get('online_booking_enabled') === 'on',
+    display_order: Number(formData.get('display_order')),
+    expected_version: expectedVersion
+  };
+
+  if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
+    if (status) status.textContent = 'Reload the service list before saving.';
+    return;
+  }
+  adminDashboardData.serviceCatalogFeedback = '';
+  if (button) button.disabled = true;
+  if (status) status.textContent = 'Saving…';
+  try {
+    const response = await fetchWithRetry(() => fetch(`${window.API_BASE_URL}/admin/services/${encodeURIComponent(serviceId)}${getAdminUserIdQuery()}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }));
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.success !== true) {
+      const error = new Error(data.error || `Could not save service settings (${response.status}).`);
+      error.status = response.status;
+      throw error;
+    }
+    adminDashboardData.serviceCatalogFeedback = `${data.service?.name || payload.name} settings saved.`;
+    await loadServiceCatalog();
+  } catch (error) {
+    if (status) status.textContent = error.message || 'Could not save this service configuration.';
+    if (error.status === 409) {
+      adminDashboardData.serviceCatalogFeedback = 'This service changed in another session. The latest version has been loaded; review it and save again.';
+      await loadServiceCatalog();
+    }
+  } finally {
+    if (button && button.isConnected) button.disabled = false;
+  }
 }
 
 /**

@@ -22,19 +22,74 @@ const EMERGENCY_KEYWORDS = [
   'broken bone', 'fracture', 'trauma', 'accident', 'hit by', 'ingested',
   'extreme lethargy', 'unresponsive', 'passing out', 'fainting'
 ];
+const HUMAN_BITE_SOURCE = Object.freeze({
+  title: 'WHO: Rabies',
+  url: 'https://www.who.int/news-room/fact-sheets/detail/rabies'
+});
+
+function isHumanAnimalBiteReport(message) {
+  const text = String(message || '').toLowerCase();
+  const mentionsAnimal = /\b(dog|puppy|cat|kitten|animal|aso|tuta|pusa|hayop)\b/.test(text);
+  const mentionsBiteOrAttack = /\b(bite|bites|bit|bitten|attacked|attack|kagat|nakagat|kinagat|kumagat|kagatin|nakalmot|kinamot)\b/.test(text);
+  return mentionsAnimal && mentionsBiteOrAttack;
+}
+
+function shouldUseGoogleSearch(message) {
+  return /\b(rabies|rabid|bite|bitten|kagat|nakagat|kinagat|vaccine|vaccination|bakuna|poison|toxin|toxic|lason|medicine|medication|gamot|dosage|dose|treatment|symptom|sintomas|vomit|pagsusuka|diarrhea|hirap huminga|emergency|outbreak|recall|latest|current|infectious|contagious)\b/i
+    .test(String(message || ''));
+}
+
+function normalizeConversationHistory(history = []) {
+  if (!Array.isArray(history)) return [];
+  const normalized = [];
+  let totalCharacters = 0;
+  history.slice(-12).forEach(entry => {
+    const role = entry?.role === 'user' ? 'user' : (entry?.role === 'model' || entry?.role === 'assistant' ? 'model' : '');
+    const text = String(entry?.text || entry?.content || '').trim().slice(0, 1200);
+    if (!role || !text || totalCharacters >= 8000) return;
+    const boundedText = text.slice(0, 8000 - totalCharacters);
+    normalized.push({ role, parts: [{ text: boundedText }] });
+    totalCharacters += boundedText.length;
+  });
+
+  const firstUserIndex = normalized.findIndex(entry => entry.role === 'user');
+  return firstUserIndex < 0 ? [] : normalized.slice(firstUserIndex);
+}
+
+function extractGroundingSources(metadata) {
+  const chunks = Array.isArray(metadata?.groundingChunks) ? metadata.groundingChunks : [];
+  const seen = new Set();
+  const sources = [];
+  chunks.forEach(chunk => {
+    const web = chunk?.web || chunk?.retrievedContext || {};
+    const rawUrl = String(web.uri || web.url || '').trim();
+    try {
+      const url = new URL(rawUrl);
+      if (url.protocol !== 'https:' || url.username || url.password || seen.has(url.href)) return;
+      seen.add(url.href);
+      sources.push({
+        title: String(web.title || url.hostname).trim().slice(0, 200),
+        url: url.href
+      });
+    } catch (error) {
+      // Ignore malformed or non-HTTPS grounding entries.
+    }
+  });
+  return sources.slice(0, 5);
+}
 
 const MINI_FAQ = {
   // ==================== PETHUB BASICS ====================
   'what is pethub': "**PetHub** helps users manage pet profiles, book appointments, review medical records, send contact messages, and use user/admin dashboards.",
   'what does pethub do': "PetHub supports these current features: **pet profiles**, **appointment booking**, **medical records**, **contact/messages**, and **admin/user dashboards**.",
   'what features does pethub have': "PetHub supports these current features: **pet profiles**, **appointment booking**, **medical records**, **contact/messages**, and **admin/user dashboards**.",
-  'what services does pethub offer': "The clinic offers grooming for dogs and cats (**Bath**, **Trim**, **Puppy Cut**, **Full Grooming**, **Nail Cutting**, **Face Trim**, **Flea and Tick Removal**, **Medicated Bath**) and the **Dog & Cat Full Check Up**. See the **Services** page, and book on the **Appointments** page after you sign in. PetHub doesn't list prices; please ask the clinic through the **Contact** page.",
-  'what services does the clinic offer': "The clinic offers grooming for dogs and cats (**Bath**, **Trim**, **Puppy Cut**, **Full Grooming**, **Nail Cutting**, **Face Trim**, **Flea and Tick Removal**, **Medicated Bath**) and the **Dog & Cat Full Check Up**. See the **Services** page for the full list.",
-  'what grooming services are available': "Grooming for dogs and cats: **Bath**, **Trim**, **Puppy Cut**, **Full Grooming**, **Nail Cutting**, **Face Trim**, **Flea and Tick Removal** and **Medicated Bath**. The clinic also offers the **Dog & Cat Full Check Up**.",
-  'do you offer vaccination': "Vaccination isn't one of the services listed in PetHub. The clinic's services are grooming for dogs and cats (**Bath**, **Trim**, **Puppy Cut**, **Full Grooming**, **Nail Cutting**, **Face Trim**, **Flea and Tick Removal**, **Medicated Bath**) and the **Dog & Cat Full Check Up**. For vaccine questions, please ask the clinic through the **Contact** page.",
+  'what services does pethub offer': "The clinic's current service list and online booking status are shown on the **Services** page. The list is managed by the clinic and may change. For prices or questions, use the **Contact** page.",
+  'what services does the clinic offer': "Please check the **Services** page for the clinic's current service list and which services can be booked online. For questions, use the **Contact** page.",
+  'what grooming services are available': "The **Services** page shows the current grooming list, applicable pets, and online booking status.",
+  'do you offer vaccination': "Check the current **Services** page for listed services. For vaccine availability or medical advice, contact the clinic or your veterinarian.",
   'how much does grooming cost': "PetHub doesn't list prices. Please ask the clinic through the **Contact** page.",
   'how much does it cost': "PetHub doesn't list prices. Please ask the clinic through the **Contact** page.",
-  'how long does grooming take': "I'm not sure based on the current PetHub system. Please ask the clinic through the **Contact** page.",
+  'how long does grooming take': "Check the **Services** page for a confirmed duration. If no duration is shown, ask the clinic through the **Contact** page.",
   'what are your opening hours': "PetHub doesn't list the clinic's opening hours. Please ask the clinic through the **Contact** page.",
   'where is the clinic': "PetHub doesn't list the clinic's address. Please ask the clinic through the **Contact** page.",
   'do you accept rabbits': "The clinic cares for **dogs and cats** only, so PetHub pet profiles and bookings are for dogs and cats.",
@@ -47,7 +102,7 @@ const MINI_FAQ = {
   // ==================== GETTING STARTED ====================
   'how do i sign up': "Visit **Register** and fill in every field: your account details (name, email, password) and your personal and contact details (date of birth, gender, contact number and home address). Verify your email with the 6-digit code we send, then log in to your **Dashboard**.",
   'how do i edit my details': "Open the **Overview** of your **Pet Owner Dashboard**, go to **Your details** and choose **Edit details**. Your email can't be changed there; to change your password, use **Forgot password?** on the **Login** page.",
-  'why do you need my address': "The clinic uses your contact number and address to reach you about your appointments. The **Privacy notice** page explains what PetHub collects and why.",
+  'why do you need my address': "The registration form asks for a contact number and address. The current system summary does not explain why the clinic needs each field; use the **Contact** page to ask the clinic.",
   'how do i login': "Go to **Login**, enter your registered email and password, click Login. You'll land on the **Overview** of your **Pet Owner Dashboard**, with your pets and upcoming appointments. 🔐",
   'how do i logout': "Choose **Log out** in the dashboard sidebar (at the top of the screen on phones). You'll be logged out and taken to the **Login** page.",
   'what happens after i sign up': "After registration: 1️⃣ Verify email if needed 2️⃣ Log in 3️⃣ Land on the **Overview** of your **Pet Owner Dashboard** 4️⃣ Open **My Pets** to add your first pet 5️⃣ Open **Appointments** to book when online booking is open 🚀",
@@ -67,13 +122,13 @@ const MINI_FAQ = {
   
   // ==================== APPOINTMENTS ====================
   'how do i book an appointment': "Go to **Appointments**, choose your pet, a service offered for it, a date and a time, and submit the request. The status starts as **Pending** until the clinic reviews it. A service can only be booked online once the clinic has confirmed how long it takes.",
-  'what appointment services are available': "Grooming for dogs and cats (**Bath**, **Trim**, **Puppy Cut**, **Full Grooming**, **Nail Cutting**, **Face Trim**, **Flea and Tick Removal**, **Medicated Bath**) and the **Dog & Cat Full Check Up**. The **Appointments** page shows which ones can be booked for your pet.",
+  'what appointment services are available': "The **Services** page shows the current catalog and which services are open for online booking. In **Appointments**, choose your pet to see which open services apply to them.",
   'what does pending mean': "**Pending** means your appointment request was submitted and is waiting for admin review. Check your **Appointments** page for updates.",
   'what does approved mean': "**Approved** means the appointment request has been accepted in PetHub. Check your **Appointments** page or dashboard for the current details.",
   'what does completed mean': "**Completed** means the appointment was marked finished in PetHub. It can remain visible as part of appointment history if the current system shows it.",
   'what does cancelled mean': "**Cancelled** means the clinic cancelled the appointment request or the appointment. To book again, use the **Appointments** page when online booking is open, or contact the clinic.",
   'how long does approval take': "I'm not sure based on the current PetHub system.",
-  'can i cancel an appointment': "Appointments can't be cancelled or changed online. Use the **Contact** page and quote the appointment's reference (shown on the **Appointments** page) so the clinic can help.",
+  'can i cancel an appointment': "You can cancel your own Pending or Approved appointment from **Appointments** at least 2 hours before its scheduled start. Contact the clinic for rescheduling or a late cancellation.",
   'can i reschedule after approval': "I'm not sure based on the current PetHub system.",
   'what if i miss an appointment': "Check your appointment status in PetHub and contact the clinic or admin through the available contact/messages flow if you need help.",
   'can i book multiple appointments': "I'm not sure based on the current PetHub system.",
@@ -86,7 +141,7 @@ const MINI_FAQ = {
   'where is the dark mode toggle': "Bottom-right corner of any page! 🌙 Click to switch between light and dark modes. Your preference saves automatically! 🌗",
   'what is the home page': "Landing page with PetHub intro, features overview, and Call-to-Action buttons to Register or Login. Great place to learn about PetHub before creating an account! 🏠",
   'what is the about page': "The **About** page shares general information about PetHub.",
-  'what is the services page': "The **Services** page lists the clinic's services: grooming for dogs and cats (**Bath**, **Trim**, **Puppy Cut**, **Full Grooming**, **Nail Cutting**, **Face Trim**, **Flea and Tick Removal**, **Medicated Bath**) and the **Dog & Cat Full Check Up**.",
+  'what is the services page': "The **Services** page shows the current clinic catalog, applicable species, confirmed durations when available, and online booking status.",
   'what is the contact page': "The **Contact** page lets users send messages or inquiries through PetHub.",
   
   // ==================== SECURITY & PRIVACY ====================
@@ -140,17 +195,17 @@ const SYSTEM_PROMPT = `You are PetHub AI Copilot 🐾 - a helpful PetHub assista
 ANTI-FABRICATION RULES - HIGHEST PRIORITY:
   - Only describe PetHub features that exist in the current system.
   - Real PetHub features you may mention: pet profiles, appointment booking, medical records, contact/messages, the Admin Dashboard, and the Pet Owner Dashboard.
-  - The clinic's services are exactly: Bath, Trim, Puppy Cut, Full Grooming, Nail Cutting, Face Trim, Flea and Tick Removal, Medicated Bath (grooming), and Dog & Cat Full Check Up (veterinary check-up). They are for dogs and cats only. Never say the clinic offers any other service (for example vaccination, surgery or dental cleaning) or cares for other animals.
-  - PetHub does not list prices, how long services take, opening hours, or the clinic's address or phone number. Never state or estimate them; say PetHub doesn't list them and suggest the Contact page.
+  - Never rely on a remembered/static service list. The clinic's live catalog and booking availability are on the **Services** page; direct users there for current services and applicable species.
+  - PetHub does not list prices, opening hours, or the clinic's address or phone number. The **Services** page shows confirmed durations and booking status when configured. Never estimate missing details; suggest the Contact page.
   - Do not mention or imply HIPAA compliance, HIPAA-grade encryption, certified medical security, enterprise-grade security, guaranteed privacy, guaranteed treatment, guaranteed appointment approval, AI diagnosis, or any certified medical/security standard.
   - Do not invent data, values, pricing, response times, statistics, security levels, approvals, notifications, clinic availability, future features, or features not listed above.
   - Do not call PetHub "complete", "all-in-one", "premium", "certified", or make exaggerated product claims.
   - If the user asks about a PetHub feature, data value, statistic, security/compliance level, pricing, guarantee, or workflow you cannot verify from the current PetHub system, answer exactly: "I'm not sure based on the current PetHub system."
   - For pet health questions, provide general wellness guidance only. Never diagnose, prescribe, or promise outcomes.
-  - You cannot see any user's pet profiles, appointments or medical records; you only receive the question and the page name. Never claim to know a pet's records, never invent a medical record, weight, vaccination or treatment, and never present your answer as an official clinic record.
+  - You cannot see any user's pet profiles, appointments or medical records. You may receive the current question, the page name and a short, bounded chat history; never treat that history as official clinic data. Never invent a medical record, weight, vaccination or treatment, and never present your answer as an official clinic record.
   - Never say or imply that a veterinarian or the clinic has reviewed, approved or endorsed your answer.
   - Official medical records are added only by clinic administrators after a completed appointment. Pet owners can read them under **Pet Health & AI Assistant** (and in each pet's details on **My Pets**) but cannot add or change them.
-  - Pet owners cannot cancel or reschedule appointments online; they contact the clinic through the **Contact** page.
+  - Owners can cancel their own Pending or Approved appointment at least 2 hours before its scheduled start; rescheduling and late cancellation requests go through the **Contact** page.
 
 YOUR CORE MISSION:
 Provide warm, professional pet wellness advice AND guide users through every PetHub workflow with ease and confidence.
@@ -185,7 +240,7 @@ FILIPINO/TAGALOG EXAMPLES TO UNDERSTAND AND MATCH:
 🏠 PUBLIC PAGES (For All Visitors):
   Home Page - Main landing page with PetHub introduction and navigation
   About Page - PetHub mission: "Track, Care, Schedule", company values
-  Services Page - The clinic's services: grooming for dogs and cats and the Dog & Cat Full Check Up
+  Services Page - The clinic's current service catalog, applicable species, confirmed durations when configured, and online booking status
   Contact Page - Support inquiries, customer contact form
   Login Page - User authentication entry
   Register Page - New account creation
@@ -566,6 +621,14 @@ Response: "I'm here to help with PetHub features and pet wellness only 🐾"
    → Use current_page in your responses if mentioned
    → Give specific guidance based on where user is
 
+FINAL SAFETY AND CURRENT-DATA RULES:
+  - These rules override any earlier conflicting PetHub details in this prompt. The current service catalog is dynamic: never enumerate a fixed service list; direct the user to **Services**.
+  - Answer in the language used by the user, including Tagalog and Taglish. A short, bounded history may be included for conversational context, but it never contains verified account or clinic records.
+  - A report that a dog, cat, or other animal bit or scratched a person is a human medical emergency. Give immediate first aid: wash and flush the wound under running water with soap for at least 15 minutes, then seek urgent medical assessment now at a health facility or animal-bite center for rabies and tetanus evaluation. Do not wait for symptoms or rely on the animal appearing healthy or having a vaccine record. Do not give veterinary-only advice for the injured person.
+  - For other pet emergencies, tell the user to contact an emergency veterinarian immediately. Do not recommend waiting for an online appointment.
+  - Use Google Search grounding for current or high-stakes pet-health questions when available. Keep health advice general, state uncertainty, never diagnose or prescribe, and include citations returned by actual grounding metadata.
+  - PetHub is not a clinic contact directory; do not invent its address, phone, hours, prices, service duration, or response times.
+
 Be accurate, helpful, and honest about what the current PetHub system supports. 🐾`;
 
 
@@ -575,13 +638,31 @@ Be accurate, helpful, and honest about what the current PetHub system supports. 
  */
 const chat = async (req) => {
   try {
-    const { message, currentPage } = req.body;
+    const { message, currentPage, history } = req.body || {};
 
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
       return { statusCode: 400, body: { error: 'Message is required' } };
     }
+    if (message.length > 2000) {
+      return { statusCode: 413, body: { error: 'Message is too long. Keep it under 2,000 characters.' } };
+    }
 
     const lowerMessage = message.toLowerCase();
+
+    // A person bitten or scratched by an animal needs human medical assessment, not a pet appointment.
+    if (isHumanAnimalBiteReport(message)) {
+      const tagalog = /\b(ako|ko|kami|kayo|siya|ng|aso|pusa|nakagat|kinagat|kagat|nakalmot|kinamot)\b/i.test(message);
+      const reply = tagalog
+        ? 'Kung ikaw o ibang tao ay nakagat o nakalmot ng hayop, hugasan at banlawan agad ang sugat sa umaagos na tubig at sabon nang hindi bababa sa 15 minuto. Magpatingin agad ngayon sa health facility o animal-bite center para masuri ang rabies at tetanus risk. Huwag hintayin ang sintomas o umasa lang sa itsura o vaccine record ng hayop.'
+        : 'If a person was bitten or scratched by an animal, immediately wash and flush the wound under running water with soap for at least 15 minutes. Seek medical assessment now at a health facility or animal-bite center for rabies and tetanus evaluation. Do not wait for symptoms or rely only on the animal appearing healthy or its vaccine record.';
+      return { statusCode: 200, body: {
+        reply,
+        success: true,
+        isEmergency: true,
+        sources: [HUMAN_BITE_SOURCE],
+        grounded: false
+      } };
+    }
 
     // ==================== EMERGENCY DETECTION ====================
     // Check for critical emergency keywords
@@ -594,7 +675,9 @@ const chat = async (req) => {
       return { statusCode: 200, body: {
         reply: emergencyResponse,
         success: true,
-        isEmergency: true
+        isEmergency: true,
+        sources: [],
+        grounded: false
       } };
     }
 
@@ -616,42 +699,38 @@ const chat = async (req) => {
       return { statusCode: 200, body: {
         reply: faqResponse + followUpSuggestion,
         success: true,
-        isFAQ: true
+        isFAQ: true,
+        sources: [],
+        grounded: false
       } };
     }
 
     // ==================== BUILD CONTEXT-AWARE PROMPT ====================
     // Add page context for smart help prioritization
     let pageContext = '';
-    if (currentPage) {
-      pageContext = `\n\n[PAGE CONTEXT] User is on: ${currentPage}. Prioritize help relevant to this page.`;
+    if (typeof currentPage === 'string' && /^[a-z0-9 &-]{1,80}$/i.test(currentPage.trim())) {
+      pageContext = `\n\n[PAGE CONTEXT] User is on: ${currentPage.trim()}. Prioritize help relevant to this page.`;
     }
 
     const contextualSystemPrompt = SYSTEM_PROMPT + pageContext;
 
     // ==================== CALL GEMINI API ====================
     // Call Gemini API with smarter instructions
-    const aiResponse = await callGeminiAPI(message, contextualSystemPrompt);
+    const aiResponse = await callGeminiAPI(message, contextualSystemPrompt, history);
 
     return { statusCode: 200, body: {
-      reply: aiResponse,
-      success: true
+      reply: aiResponse.text,
+      success: true,
+      sources: aiResponse.sources,
+      grounded: aiResponse.grounded
     } };
 
   } catch (error) {
-    console.error('AI Chat error:', error);
-    
-    // Return user-friendly error message
-    if (error.message.includes('API key')) {
-      return { statusCode: 500, body: { 
-        error: 'AI service configuration error. Please try again later.',
-        reply: 'I apologize, but I\'m temporarily unavailable. Please try again in a moment.'
-      } };
-    }
-
-    return { statusCode: 500, body: { 
-      error: 'Server error processing your message',
-      reply: 'I encountered an error processing your request. Please try again.'
+    logger.warn('ai.chat.failed', { code: error?.code || 'AI_PROVIDER_ERROR' });
+    const timedOut = error?.code === 'AI_TIMEOUT';
+    return { statusCode: timedOut ? 504 : 503, body: {
+      error: timedOut ? 'The assistant took too long to respond. Please try again.' : 'The assistant is temporarily unavailable. Please try again later.',
+      reply: 'I\'m temporarily unavailable. Please try again in a moment.'
     } };
   }
 };
@@ -694,74 +773,87 @@ function generateFollowUpSuggestions(topic, response) {
 /**
  * Call Gemini API generateContent endpoint
  */
-async function callGeminiAPI(userMessage, systemPrompt = SYSTEM_PROMPT) {
-  // Fail locally (handled by chat() as a configuration error) instead of calling Gemini with an empty key
+async function callGeminiAPI(userMessage, systemPrompt = SYSTEM_PROMPT, history = [], { timeoutMs = 20000 } = {}) {
   if (!GEMINI_API_KEY) {
-    throw new Error('Gemini API key is not configured');
+    const error = new Error('Gemini is not configured');
+    error.code = 'AI_CONFIGURATION';
+    throw error;
   }
 
-  const endpoint = `${GEMINI_BASE_URL}/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-
+  const endpoint = `${GEMINI_BASE_URL}/${encodeURIComponent(GEMINI_MODEL)}:generateContent`;
   const requestBody = {
-    system_instruction: {
-      parts: {
-        text: systemPrompt
-      }
-    },
-    contents: {
-      parts: [
-        {
-          text: userMessage
-        }
-      ]
-    },
+    system_instruction: { parts: [{ text: systemPrompt }] },
+    contents: [
+      ...normalizeConversationHistory(history),
+      { role: 'user', parts: [{ text: String(userMessage).slice(0, 2000) }] }
+    ],
     generationConfig: {
-      temperature: 0.7,
+      temperature: 0.5,
       topK: 40,
-      topP: 0.95,
-      maxOutputTokens: 800
+      topP: 0.9,
+      maxOutputTokens: 900
     }
   };
+  if (shouldUseGoogleSearch(userMessage)) {
+    // Gemini 2.5 uses Google Search Retrieval grounding on the legacy generateContent API.
+    requestBody.tools = [{ googleSearchRetrieval: {} }];
+  }
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'x-goog-api-key': GEMINI_API_KEY
       },
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify(requestBody),
+      signal: controller.signal
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error('Gemini API error:', errorData);
-      throw new Error(`Gemini API error: ${response.status}`);
+      logger.warn('ai.gemini.provider_error', { status: response.status });
+      const error = new Error('Gemini request failed');
+      error.code = response.status === 429 ? 'AI_RATE_LIMIT' : 'AI_PROVIDER_ERROR';
+      throw error;
     }
 
     const data = await response.json();
-
-    // Extract text from Gemini response
-    if (data.candidates && data.candidates.length > 0) {
-      const candidate = data.candidates[0];
-      if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
-        return candidate.content.parts[0].text;
-      }
+    const candidate = data?.candidates?.[0];
+    const text = (candidate?.content?.parts || [])
+      .map(part => typeof part?.text === 'string' ? part.text : '')
+      .filter(Boolean)
+      .join('\n')
+      .trim();
+    if (!text) {
+      const error = new Error('Gemini returned no text');
+      error.code = 'AI_PROVIDER_ERROR';
+      throw error;
     }
 
-    throw new Error('Invalid response format from Gemini API');
-
+    const sources = extractGroundingSources(candidate?.groundingMetadata);
+    return { text, sources, grounded: sources.length > 0 };
   } catch (error) {
-    console.error('Gemini API call failed:', error);
-    
-    // Return helpful fallback message
-    if (error.message.includes('API key')) {
-      throw new Error('AI API key configuration error');
+    if (controller.signal.aborted || error?.name === 'AbortError') {
+      const timeoutError = new Error('Gemini request timed out');
+      timeoutError.code = 'AI_TIMEOUT';
+      throw timeoutError;
     }
-    
-    throw new Error(`Failed to get AI response: ${error.message}`);
+    if (error?.code) throw error;
+    logger.warn('ai.gemini.request_failed', { reason: error?.name === 'TypeError' ? 'network' : 'response' });
+    const providerError = new Error('Gemini request failed');
+    providerError.code = 'AI_PROVIDER_ERROR';
+    throw providerError;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
 module.exports = {
-  chat
+  chat,
+  callGeminiAPI,
+  shouldUseGoogleSearch,
+  normalizeConversationHistory,
+  extractGroundingSources
 };

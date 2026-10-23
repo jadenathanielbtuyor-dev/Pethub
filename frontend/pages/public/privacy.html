@@ -46,32 +46,29 @@
   </header>
 
   <!-- ================= MAIN CONTENT ================= -->
-  <!-- DRAFT. Every statement below describes what the PetHub code does as of 2026-10-20. Items marked as placeholders
-       (data-placeholder) need the clinic's or adviser's answer and must be completed before this page is published. -->
   <main id="main" class="flex-grow" tabindex="-1">
 
     <section class="ph-page-hero" aria-labelledby="pageTitle">
       <div class="ph-container">
         <p class="ph-eyebrow"><i class="ri-shield-check-line" aria-hidden="true"></i>Privacy</p>
         <h1 id="pageTitle" class="ph-display">Privacy notice</h1>
-        <p class="ph-lead">What PetHub collects about you and your pets, why, and who can see it.</p>
+        <p class="ph-lead">A summary of information the current PetHub system handles.</p>
       </div>
     </section>
 
     <section class="ph-section" aria-label="Privacy notice">
       <div class="ph-container">
-        <div class="ph-alert ph-alert-warning" role="note">
+        <div class="ph-alert ph-alert-info" role="note">
           <i class="ri-information-line ph-alert-icon" aria-hidden="true"></i>
           <div class="ph-alert-body">
-            <p class="ph-alert-title">Draft for review</p>
-            <p>This notice describes how PetHub works today. The clinic still needs to review it and complete the parts marked as placeholders before it is final.</p>
+            <p class="ph-alert-title">Current system summary</p>
+            <p>This page describes the application behavior reviewed on 23 October 2026. The clinic must approve its controller identity, purposes, lawful bases, retention schedule and request process before treating this as its complete privacy notice.</p>
           </div>
         </div>
 
         <div class="ph-prose mt-8">
           <h2 id="who">Who is responsible</h2>
-          <p>PetHub is the clinic's online booking and records system. Questions about your information go to the clinic.</p>
-          <p><span class="ph-placeholder" data-placeholder="privacy-controller"><span class="ph-placeholder-tag">Placeholder</span>The clinic's name and how to contact it about privacy: to be confirmed by the clinic</span></p>
+          <p>PetHub is the online booking and records application. The public site does not identify the clinic responsible for the service by legal name or provide a privacy-specific contact. The Contact form sends messages to the clinic's administrator message list; it does not display a response time.</p>
 
           <h2 id="what">What we collect and why</h2>
           <h3>Your account</h3>
@@ -81,8 +78,7 @@
           </ul>
           <h3>Your personal and contact details</h3>
           <ul>
-            <li><strong>Contact number and home address</strong>: so the clinic can reach you about your appointments and keep its customer records.</li>
-            <li><strong>Date of birth and gender</strong>: asked for when you register. <span class="ph-placeholder" data-placeholder="privacy-dob-gender-purpose"><span class="ph-placeholder-tag">Placeholder</span>The clinic's reason for needing these: to be confirmed by the clinic</span> You can always choose "Prefer not to say" for gender.</li>
+            <li><strong>Contact number, home address, date of birth and gender</strong>: the registration form requests these details. Gender includes a "Prefer not to say" option. The application does not state the purpose for collecting date of birth or gender; the clinic must decide whether they are needed and explain that purpose.</li>
           </ul>
           <h3>Your pets and visits</h3>
           <ul>
@@ -93,33 +89,32 @@
           <h3>Other things we keep</h3>
           <ul>
             <li><strong>Messages</strong> you send through the Contact page (your name, email address and message).</li>
-            <li><strong>An activity log</strong> of account events such as sign-ins, registration, email verification, password resets and changes to your details, with their dates, for security and support. It does not record your passwords or the details themselves.</li>
-            <li><strong>Chat assistant</strong>: questions that the assistant cannot answer from its built-in list are sent to Google's Gemini service to write a reply. Please don't type personal details into the chat. The conversation is not saved in your browser.</li>
+            <li><strong>An activity log</strong> of selected account and administrative actions, with dates and related record identifiers. Some entries include action details.</li>
+            <li><strong>Chat assistant</strong>: chat messages and recent turns are sent to Google's Gemini service when it is configured. Some current pet-health questions may also use Google Search grounding. The app keeps chat turns in browser memory for the current session and does not save them as PetHub chat history. Do not enter personal or sensitive details.</li>
           </ul>
 
           <h2 id="who-sees">Who can see it</h2>
           <ul>
             <li><strong>You</strong>, when you are signed in.</li>
             <li><strong>Clinic staff with administrator accounts</strong>, to manage accounts, pets, bookings, medical records and messages. Their user lists show your name, email address, role and whether your email is verified; they do not show your date of birth, gender, contact number or address.</li>
-            <li><strong>Service providers that run PetHub</strong>: Supabase (database), Brevo (sending emails), Google Gemini (chat assistant replies), and Vercel and Railway (hosting the website and its server). They handle the information needed for their part of the service.</li>
+            <li><strong>Service providers used by the application</strong>: Supabase stores application records, Brevo sends account and appointment emails, and Google Gemini processes chat requests. Google Fonts and jsDelivr receive requests from browsers loading the site. The live hosting provider is not established by the code review.</li>
           </ul>
 
           <h2 id="browser">What your browser keeps</h2>
-          <p>While you are signed in, your browser's session storage keeps your sign-in token and your basic account details (name, email address and account type) until you log out or close the browser. Local storage keeps your light or dark display choice. PetHub uses no advertising or tracking cookies. Pages load fonts from Google Fonts and icons from jsDelivr, so those services receive your browser's request.</p>
+          <p>While you are signed in, session storage keeps your sign-in token and basic account details until you log out or close the browser. Local storage keeps your light or dark display choice. The application code reviewed does not set advertising or analytics cookies.</p>
 
           <h2 id="keep">How long we keep it</h2>
-          <p><span class="ph-placeholder" data-placeholder="privacy-retention"><span class="ph-placeholder-tag">Placeholder</span>How long the clinic keeps accounts, bookings, records and messages: to be confirmed by the clinic</span></p>
+          <p>The reviewed application does not implement an automatic retention or deletion schedule for accounts, bookings, medical records or messages. The clinic must set and publish retention periods and the process for deleting or restricting records.</p>
 
           <h2 id="choices">Your choices</h2>
           <ul>
             <li>See and correct your name and personal details from your dashboard: <strong>Your details</strong>, then <strong>Edit details</strong>.</li>
             <li>Change your password with <strong>Forgot password?</strong> on the login page.</li>
-            <li>For any other request about your information, such as a copy or deletion, contact the clinic. <span class="ph-placeholder" data-placeholder="privacy-requests"><span class="ph-placeholder-tag">Placeholder</span>How the clinic handles these requests: to be confirmed by the clinic</span></li>
+            <li>The application has no self-service data export or account deletion workflow. The clinic must publish how it receives, verifies and handles access, correction, deletion and other privacy requests.</li>
           </ul>
 
           <h2 id="changes">Changes to this notice</h2>
-          <p>If PetHub starts collecting something new or using it differently, this notice will be updated first.</p>
-          <p class="text-sm"><span class="ph-placeholder" data-placeholder="privacy-date"><span class="ph-placeholder-tag">Placeholder</span>Date this notice takes effect: to be set when the clinic approves it</span></p>
+          <p>This system summary was updated on 23 October 2026. The clinic should review it whenever its collection, use, sharing or retention practices change.</p>
         </div>
       </div>
     </section>
@@ -156,7 +151,7 @@
           </ul>
         </div>
       </div>
-      <p class="ph-footer-legal">&copy; 2026 PetHub. All rights reserved. Photos are used under Creative Commons licences; see the <a href="../../pages/public/about.html#photo-credits">photo credits</a>.</p>
+      <p class="ph-footer-legal">&copy; 2026 PetHub. All rights reserved.</p>
     </div>
   </footer>
 

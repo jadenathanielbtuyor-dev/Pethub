@@ -266,6 +266,26 @@
         transform: translateY(-2px);
       }
 
+      .pethub-ai-citations {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem 0.7rem;
+        margin-top: 0.75rem;
+        padding-top: 0.5rem;
+        border-top: 1px solid rgba(100, 116, 139, 0.25);
+        font-size: 0.75rem;
+      }
+
+      .pethub-ai-citations strong {
+        flex-basis: 100%;
+      }
+
+      .pethub-ai-citations a {
+        color: #b45309;
+        text-decoration: underline;
+        overflow-wrap: anywhere;
+      }
+
       /* Loading indicator - SUBTLE TYPING DOTS */
       .pethub-ai-message.ai .bubble.loading {
         display: flex;
@@ -483,6 +503,10 @@
           box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
         }
 
+        :where(body.dark-mode) .pethub-ai-citations a {
+          color: #fdba74;
+        }
+
         :where(body.dark-mode) .pethub-ai-starters {
           border-top-color: #333;
         }
@@ -566,6 +590,7 @@
           <input
             type="text"
             id="pethub-ai-input"
+            maxlength="2000"
             placeholder="Ask about pets or PetHub..."
             aria-label="Chat message input"
           />
@@ -712,6 +737,35 @@
     return div;
   }
 
+  function appendCitationLinks(messageElement, sources) {
+    const safeSources = Array.isArray(sources) ? sources.slice(0, 5) : [];
+    const links = safeSources.map(source => {
+      try {
+        const url = new URL(String(source?.url || ''));
+        if (url.protocol !== 'https:' || url.username || url.password) return null;
+        return { url: url.href, title: String(source.title || url.hostname).slice(0, 200) };
+      } catch (error) {
+        return null;
+      }
+    }).filter(Boolean);
+    if (!links.length) return;
+
+    const references = document.createElement('div');
+    references.className = 'pethub-ai-citations';
+    const label = document.createElement('strong');
+    label.textContent = 'Sources';
+    references.appendChild(label);
+    links.forEach(source => {
+      const link = document.createElement('a');
+      link.href = source.url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = source.title;
+      references.appendChild(link);
+    });
+    messageElement.appendChild(references);
+  }
+
   // ==================== MESSAGE HANDLING ====================
 
   async function handleSendMessage() {
@@ -753,7 +807,11 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           message,
-          currentPage
+          currentPage,
+          history: inMemoryChatHistory.slice(-10).map(entry => ({
+            role: entry.sender === 'user' ? 'user' : 'model',
+            text: String(entry.text || '').slice(0, 1200)
+          }))
         })
       });
 
@@ -768,6 +826,7 @@
 
       // Display AI response with formatting
       const formattedResponse = formatMessageContent(data.reply);
+      appendCitationLinks(formattedResponse, data.sources);
       displayChatMessage(formattedResponse, 'ai');
 
     } catch (error) {
@@ -831,6 +890,12 @@
       'ex', 'cheating', 'breakup', 'divorce'
     ];
 
+    // Keep bite reports on the medical first-aid path; backend handles them deterministically.
+    if (/\b(dog|puppy|cat|kitten|animal|aso|tuta|pusa|hayop)\b/i.test(lowerMessage)
+        && /\b(bite|bites|bit|bitten|attack|attacked|kagat|nakagat|kinagat|kumagat|nakalmot|kinamot)\b/i.test(lowerMessage)) {
+      return { allowed: true };
+    }
+
     // Check for blocked terms as whole words so normal words that contain them
     // (e.g. "exercise", "appetite", "grass") are not rejected
     for (let term of blockedTerms) {
@@ -858,6 +923,9 @@
       'admin', 'secure', 'smart scheduling', 'secured pet profiles',
       'help', 'how', 'what', 'where', 'when', 'why', 'can', 'do',
       'use', 'access', 'navigate', 'find', 'manage', 'add', 'create'
+      , 'aso', 'tuta', 'pusa', 'kuting', 'hayop', 'alagang', 'nakagat', 'kinagat', 'kagat', 'nakalmot', 'kinamot',
+      'rabies', 'lason', 'gamot', 'sintomas', 'matamlay', 'pagsusuka', 'sumusuka', 'ayaw kumain', 'hindi kumakain',
+      'pagkain', 'bakuna', 'pagbabakuna', 'balahibo', 'hinga', 'hirap huminga', 'beterinaryo', 'klinika', 'kailan', 'ba'
     ];
 
     // Check if message contains at least one allowed keyword

@@ -201,6 +201,73 @@ class FakeDatabase {
       const outcome = await interception.handler({ functionName, payload: args, action: 'rpc' }, this);
       if (outcome) return outcome;
     }
+    if (functionName === 'create_appointment_if_available') {
+      const existing = this.rows.appointments.find(row => (
+        String(row.user_id) === String(args.p_user_id)
+        && String(row.pet_id) === String(args.p_pet_id)
+        && String(row.service_type) === String(args.p_service_type)
+        && String(row.appointment_date).slice(0, 10) === String(args.p_appointment_date).slice(0, 10)
+        && String(row.appointment_time).slice(0, 5) === String(args.p_appointment_time).slice(0, 5)
+        && String(row.status) === 'Pending'
+      ));
+      if (existing) return { data: { outcome: 'existing', appointment_id: existing.id }, error: null, status: 200 };
+
+      const clockMinutes = value => {
+        const match = String(value || '').match(/^(\d{1,2}):(\d{2})/);
+        return match ? Number(match[1]) * 60 + Number(match[2]) : NaN;
+      };
+      const start = clockMinutes(args.p_appointment_time);
+      const end = start + Number(args.p_estimated_duration_minutes);
+      const conflict = this.rows.appointments.some(row => {
+        if (String(row.appointment_date).slice(0, 10) !== String(args.p_appointment_date).slice(0, 10)) return false;
+        if (!['Pending', 'Approved', 'Completed'].includes(String(row.status))) return false;
+        const duration = Number(row.estimated_duration_minutes);
+        const existingStart = clockMinutes(row.appointment_time);
+        if (!Number.isInteger(duration) || duration < 5 || duration > 480 || !Number.isFinite(existingStart)) return false;
+        return start < existingStart + duration && existingStart < end;
+      });
+      if (conflict) return { data: { outcome: 'conflict' }, error: null, status: 200 };
+
+      const appointment = this.seed('appointments', {
+        user_id: args.p_user_id,
+        pet_id: args.p_pet_id,
+        pet_name: args.p_pet_name,
+        service_type: args.p_service_type,
+        estimated_duration_minutes: args.p_estimated_duration_minutes,
+        appointment_date: args.p_appointment_date,
+        appointment_time: args.p_appointment_time,
+        status: 'Pending'
+      });
+      return { data: { outcome: 'created', appointment_id: appointment.id }, error: null, status: 200 };
+    }
+    if (functionName === 'update_appointment_status_if_available') {
+      const appointment = this.rows.appointments.find(row => String(row.id) === String(args.p_appointment_id));
+      if (!appointment) return { data: { outcome: 'not_found' }, error: null, status: 200 };
+      if (String(appointment.status) !== String(args.p_expected_status)) {
+        return { data: { outcome: 'stale' }, error: null, status: 200 };
+      }
+      if (args.p_status === 'Approved') {
+        const clockMinutes = value => {
+          const match = String(value || '').match(/^(\d{1,2}):(\d{2})/);
+          return match ? Number(match[1]) * 60 + Number(match[2]) : NaN;
+        };
+        const start = clockMinutes(appointment.appointment_time);
+        const duration = Number(appointment.estimated_duration_minutes);
+        const conflict = this.rows.appointments.some(row => {
+          if (String(row.id) === String(appointment.id)) return false;
+          if (String(row.appointment_date).slice(0, 10) !== String(appointment.appointment_date).slice(0, 10)) return false;
+          if (!['Approved', 'Completed'].includes(String(row.status))) return false;
+          const otherStart = clockMinutes(row.appointment_time);
+          const otherDuration = Number(row.estimated_duration_minutes);
+          if (!Number.isFinite(start) || !Number.isFinite(otherStart) || duration < 5 || otherDuration < 5) return false;
+          return start < otherStart + otherDuration && otherStart < start + duration;
+        });
+        if (conflict) return { data: { outcome: 'conflict' }, error: null, status: 200 };
+      }
+      appointment.status = args.p_status;
+      appointment.handled_by = args.p_handled_by;
+      return { data: { outcome: 'updated', appointment_id: appointment.id }, error: null, status: 200 };
+    }
     if (functionName !== 'cancel_appointment_for_owner') {
       return this.error('42883', `function ${functionName} does not exist`);
     }
@@ -402,6 +469,15 @@ function createPetHubDatabase({ usersProfileColumns = true } = {}) {
         deposit_required: () => false
       }
     },
+    pethub_service_catalog: {
+      columns: ['id', 'service_key', 'name', 'description', 'category', 'species', 'duration_minutes', 'online_booking_enabled', 'display_order', 'version', 'created_by', 'updated_by', 'created_at', 'updated_at'],
+      uuidColumns: ['id', 'created_by', 'updated_by'],
+      defaults: { id: uuid, description: () => '', species: () => [], duration_minutes: () => null, online_booking_enabled: () => false, version: () => 1, created_at: now, updated_at: now },
+      uniqueIndexes: [
+        { name: 'pethub_service_catalog_service_key_key', columns: ['service_key'] },
+        { name: 'pethub_service_catalog_name_ci_key', columns: ['name'], normalize: true }
+      ]
+    },
     // Legacy table kept for its historical rows; nothing in the application uses it
     payments: {
       columns: [
@@ -436,6 +512,17 @@ function createPetHubDatabase({ usersProfileColumns = true } = {}) {
 
   Object.entries(definitions).forEach(([name, definition]) => { definition.name = name; });
   const database = new FakeDatabase(definitions);
+  const { SERVICE_CATALOG } = require('../../constants/services');
+  SERVICE_CATALOG.forEach((entry, index) => {
+    database.seed('pethub_service_catalog', {
+      service_key: entry.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+      name: entry.name,
+      description: entry.description,
+      category: entry.category,
+      species: [...entry.species],
+      display_order: index + 1
+    });
+  });
   const { BREED_CATALOG_SEED } = require('../../constants/breedCatalog');
   BREED_CATALOG_SEED.forEach(entry => database.seed('pet_breed_catalog', entry));
   return database;

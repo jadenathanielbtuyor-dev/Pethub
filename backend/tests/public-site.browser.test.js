@@ -117,10 +117,10 @@ describe('Public site in a browser (mocked API)', { skip }, () => {
 
   it('a link to a section lands below the sticky header', async () => {
     for (const width of [375, 1280]) {
-      const tab = await openTab({ url: pageUrl('pages/public/services.html', '#check-up'), width });
+      const tab = await openTab({ url: pageUrl('pages/public/services.html', '#ctaTitle'), width });
       try {
-        await sleep(200);
-        const gap = await tab.evaluate(`document.getElementById('check-up').getBoundingClientRect().top - document.querySelector('.ph-header').getBoundingClientRect().bottom`);
+        await sleep(500);
+        const gap = await tab.evaluate(`document.getElementById('ctaTitle').getBoundingClientRect().top - document.querySelector('.ph-header').getBoundingClientRect().bottom`);
         assert.ok(gap >= 0, `the heading is not hidden under the header at ${width}px (${gap}px)`);
       } finally { await tab.close(); }
     }
@@ -136,20 +136,27 @@ describe('Public site in a browser (mocked API)', { skip }, () => {
   });
 
   it('signed in, the header offers the dashboard and log out, and booking links go straight to booking', async () => {
-    const tab = await openTab({ url: pageUrl('pages/public/services.html'), session: CUSTOMER });
+    const tab = await openTab({
+      url: pageUrl('pages/public/services.html'),
+      session: CUSTOMER,
+      scenario: { routes: { '/appointments/services': { body: { success: true, services: [
+        { id: 'bath-service-id', name: 'Bath', category: 'grooming', category_label: 'Grooming', description: 'Test-only service.', species: ['Dog', 'Cat'], duration_minutes: 30, bookable: true }
+      ] } } } }
+    });
     try {
+      assert.ok(await tab.waitFor(`document.querySelector('.ph-card h3')?.textContent.trim() === 'Bath'`), 'the dynamic clinic catalog has loaded');
       const nav = await tab.evaluate(`({
         account: document.querySelector('[data-auth-link]').textContent.trim(),
         accountHref: document.querySelector('[data-auth-link]').href,
         logout: (document.querySelector('[data-logout-link]') || {}).textContent,
         book: document.querySelector('.ph-nav-actions [data-book-link]').href,
-        bath: document.querySelector('[data-service="Bath"] [data-book-link]').href
+        bath: [...document.querySelectorAll('.ph-card')].find(card => card.querySelector('h3')?.textContent.trim() === 'Bath').querySelector('[data-book-link]').href
       })`);
       assert.equal(nav.account, 'My dashboard');
       assert.match(nav.accountHref, /pages\/user\/dashboard\.html$/);
       assert.equal(nav.logout, 'Log out');
       assert.match(nav.book, /pages\/user\/appointments\.html$/);
-      assert.match(nav.bath, /pages\/user\/appointments\.html\?service=Bath$/);
+      assert.match(nav.bath, /pages\/user\/appointments\.html\?service=bath-service-id$/);
     } finally { await tab.close(); }
   });
 });

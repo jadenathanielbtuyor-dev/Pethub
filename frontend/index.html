@@ -52,9 +52,9 @@
     <section class="ph-hero" aria-labelledby="heroTitle">
       <div class="ph-container ph-hero-grid">
         <div>
-          <p class="ph-eyebrow"><i class="ri-heart-3-line" aria-hidden="true"></i>Grooming and check-ups for dogs and cats</p>
-          <h1 id="heroTitle" class="ph-display">Care for your dog or cat, <span class="ph-text-accent">booked in a few steps</span></h1>
-          <p class="ph-lead">Book a bath, a trim, full grooming or a full check-up with the clinic online. Keep a profile for each pet and follow every booking until the clinic confirms it.</p>
+          <p class="ph-eyebrow"><i class="ri-heart-3-line" aria-hidden="true"></i>Online pet care management</p>
+          <h1 id="heroTitle" class="ph-display">Care for your pet, <span class="ph-text-accent">managed in a few steps</span></h1>
+          <p class="ph-lead">Keep a profile for each pet, request an appointment from the clinic's current service list, and follow every booking until the clinic confirms it.</p>
           <div class="ph-actions">
             <a href="pages/auth/login.html?next=appointments" class="ph-btn ph-btn-primary ph-btn-lg" data-book-link>
               <i class="ri-calendar-check-line" aria-hidden="true"></i>Book an Appointment
@@ -63,13 +63,9 @@
           </div>
           <p class="ph-hero-sub">New to PetHub? <a href="pages/auth/register.html">Create an account</a> to book.</p>
         </div>
-        <figure class="ph-figure">
-          <div class="ph-photo ph-photo-landscape">
-            <img src="assets/images/photos/hero-dog-grooming.jpg" alt="A groomer blow-drying a small long-haired dog on a grooming table" width="960" height="638">
-          </div>
-          <p class="ph-hero-note"><i class="ri-checkbox-circle-line" aria-hidden="true"></i><span>Bookings stay pending until the clinic approves them</span></p>
-          <figcaption>Photo: j.tobias (japanese_craft_construction), <a href="https://creativecommons.org/licenses/by/2.0">CC BY 2.0</a>. Not taken at the clinic.</figcaption>
-        </figure>
+        <div class="ph-card flex min-h-72 items-center justify-center bg-gradient-to-br from-orange-50 via-amber-50 to-sky-50" aria-hidden="true">
+          <img src="assets/images/paw.png" alt="" width="144" height="144" class="opacity-90">
+        </div>
       </div>
     </section>
 
@@ -79,30 +75,20 @@
         <div class="ph-section-head is-center">
           <p class="ph-eyebrow">Services</p>
           <h2 id="servicesTitle" class="ph-title">What the clinic offers</h2>
-          <p class="ph-lead">Grooming for dogs and cats, and a full veterinary check-up.</p>
+          <p class="ph-lead">The clinic manages its current offerings in PetHub.</p>
         </div>
         <div class="ph-card-grid items-start">
           <article class="ph-card">
             <span class="ph-icon"><i class="ri-scissors-cut-line" aria-hidden="true"></i></span>
-            <h3 class="ph-card-title">Grooming</h3>
-            <p class="ph-card-text">8 grooming services for dogs and cats.</p>
-            <ul class="ph-chips" aria-label="Grooming services">
-              <li class="ph-chip">Bath</li>
-              <li class="ph-chip">Trim</li>
-              <li class="ph-chip">Puppy Cut</li>
-              <li class="ph-chip">Full Grooming</li>
-              <li class="ph-chip">Nail Cutting</li>
-              <li class="ph-chip">Face Trim</li>
-              <li class="ph-chip">Flea and Tick Removal</li>
-              <li class="ph-chip">Medicated Bath</li>
-            </ul>
-            <p class="mt-5"><a href="pages/public/services.html#grooming" class="ph-link-arrow">See the grooming services <i class="ri-arrow-right-line" aria-hidden="true"></i></a></p>
+            <h3 class="ph-card-title">Clinic services</h3>
+            <p class="ph-card-text">See the current service list, which pets each service is for, and whether online booking is open.</p>
+            <p class="mt-5"><a href="pages/public/services.html" class="ph-link-arrow">View current services <i class="ri-arrow-right-line" aria-hidden="true"></i></a></p>
           </article>
           <article class="ph-card">
             <span class="ph-icon"><i class="ri-stethoscope-line" aria-hidden="true"></i></span>
-            <h3 class="ph-card-title">Dog &amp; Cat Full Check Up</h3>
-            <p class="ph-card-text">A full veterinary check-up for your dog or cat.</p>
-            <p class="mt-5"><a href="pages/public/services.html#check-up" class="ph-link-arrow">About the check-up <i class="ri-arrow-right-line" aria-hidden="true"></i></a></p>
+            <h3 class="ph-card-title">Appointments</h3>
+            <p class="ph-card-text">Request a date and time for an available service. Every request stays pending until the clinic approves it.</p>
+            <p class="mt-5"><a href="pages/auth/login.html?next=appointments" class="ph-link-arrow" data-book-link>Book an appointment <i class="ri-arrow-right-line" aria-hidden="true"></i></a></p>
           </article>
         </div>
       </div>
@@ -208,7 +194,7 @@
           </ul>
         </div>
       </div>
-      <p class="ph-footer-legal">&copy; 2026 PetHub. All rights reserved. Photos are used under Creative Commons licences; see the <a href="pages/public/about.html#photo-credits">photo credits</a>.</p>
+      <p class="ph-footer-legal">&copy; 2026 PetHub. All rights reserved.</p>
     </div>
   </footer>
 

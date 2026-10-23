@@ -1,72 +1,82 @@
-// Questions about the clinic's services, answered from constants/services.js (the data lives there so it can be
-// reviewed and changed in one place).
 const {
   SERVICE_SPECIES,
-  STANDARD_DURATION_MINUTES,
   SERVICE_CATEGORIES,
-  SERVICE_CATALOG,
-  CHECKUP_SERVICE_NAMES
+  LEGACY_SERVICE_NAMES
 } = require('../constants/services');
 
 const EARLIER_SERVICE_SUFFIX = '(earlier service)';
 const NOT_RECORDED_LABEL = 'Service not recorded';
+const MIN_SERVICE_DURATION_MINUTES = 5;
+const MAX_SERVICE_DURATION_MINUTES = 480;
 
-function getService(serviceType) {
-  const name = String(serviceType || '').trim();
-  return SERVICE_CATALOG.find(entry => entry.name === name) || null;
-}
-
-function isPositiveMinutes(value) {
-  return Number.isInteger(value) && value > 0;
-}
-
-// Confirmed minutes for a catalog service, or null while the clinic has not confirmed them
-function getServiceDurationMinutes(serviceType) {
-  const entry = getService(serviceType);
-  if (!entry) return null;
-  if (isPositiveMinutes(entry.durationMinutes)) return entry.durationMinutes;
-  return isPositiveMinutes(STANDARD_DURATION_MINUTES) ? STANDARD_DURATION_MINUTES : null;
-}
-
-function isServiceBookable(serviceType) {
-  return getServiceDurationMinutes(serviceType) !== null;
-}
-
-// 'Dog' / 'Cat' for any letter case, '' for anything else
 function normalizeSpecies(value) {
   const text = String(value || '').trim().toLowerCase();
   return SERVICE_SPECIES.find(species => species.toLowerCase() === text) || '';
 }
 
-function isServiceAvailableForSpecies(serviceType, species) {
-  const entry = getService(serviceType);
+function describeSpecies(speciesList = []) {
+  const words = speciesList.map(species => `${String(species).toLowerCase()}s`);
+  if (words.length > 1) return `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`;
+  return words[0] || '';
+}
+
+function isServiceAvailableForSpecies(service, species) {
   const normalized = normalizeSpecies(species);
-  return Boolean(entry && normalized && entry.species.includes(normalized));
+  return Boolean(service && normalized && Array.isArray(service.species) && service.species.includes(normalized));
 }
 
-// "dogs and cats", "dogs"
-function describeSpecies(speciesList) {
-  const words = speciesList.map(species => `${species.toLowerCase()}s`);
-  return words.length > 1 ? `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}` : words[0] || '';
+function getServiceUnavailableReason(service) {
+  if (!service) return 'This service is not listed in the current catalog.';
+  if (service.online_booking_enabled !== true) return 'Online booking is disabled for this service.';
+  if (!Number.isInteger(service.duration_minutes)
+      || service.duration_minutes < MIN_SERVICE_DURATION_MINUTES
+      || service.duration_minutes > MAX_SERVICE_DURATION_MINUTES) {
+    return 'A clinic-confirmed duration is required before this service can be booked online.';
+  }
+  if (!Array.isArray(service.species) || service.species.length === 0) {
+    return 'Applicable species need clinic confirmation before this service can be booked online.';
+  }
+  return '';
 }
 
-// What the booking page needs (GET /appointments/services)
-function listServicesForClient() {
-  return SERVICE_CATALOG.map(entry => ({
-    name: entry.name,
-    category: entry.category,
-    category_label: SERVICE_CATEGORIES[entry.category],
-    description: entry.description,
-    species: [...entry.species],
-    duration_minutes: getServiceDurationMinutes(entry.name),
-    bookable: isServiceBookable(entry.name)
-  }));
+function isServiceBookable(service) {
+  return getServiceUnavailableReason(service) === '';
 }
 
-// Admin "services" chart: every catalog service (0 when never booked), then each earlier service name that saved
-// appointments still carry, labelled as such so historical bookings stay visible
-function countServicesForAnalytics(serviceTypes) {
-  const counts = new Map(SERVICE_CATALOG.map(entry => [entry.name, 0]));
+function mapServiceForClient(service) {
+  const species = Array.isArray(service.species) ? [...service.species] : [];
+  return {
+    id: String(service.id),
+    service_key: service.service_key,
+    name: service.name,
+    category: service.category,
+    category_label: SERVICE_CATEGORIES[service.category] || service.category,
+    description: service.description || '',
+    species,
+    duration_minutes: Number.isInteger(service.duration_minutes) ? service.duration_minutes : null,
+    online_booking_enabled: service.online_booking_enabled === true,
+    bookable: isServiceBookable(service),
+    unavailable_reason: getServiceUnavailableReason(service),
+    display_order: service.display_order
+  };
+}
+
+function listServicesForClient(rows = []) {
+  return (Array.isArray(rows) ? rows : [])
+    .slice()
+    .sort((first, second) => (Number(first.display_order) - Number(second.display_order)) || String(first.name).localeCompare(String(second.name)))
+    .map(mapServiceForClient);
+}
+
+function findServiceByIdOrName(rows = [], { serviceId = '', serviceName = '' } = {}) {
+  const id = String(serviceId || '').trim();
+  const name = String(serviceName || '').trim();
+  return (rows || []).find(service => (id && String(service.id) === id)
+    || (!id && name && String(service.name) === name)) || null;
+}
+
+function countServicesForAnalytics(serviceTypes, serviceRows = []) {
+  const counts = new Map((serviceRows || []).map(entry => [entry.name, 0]));
   const earlier = new Map();
   (serviceTypes || []).forEach(value => {
     const name = String(value || '').trim();
@@ -83,19 +93,25 @@ function countServicesForAnalytics(serviceTypes) {
   };
 }
 
-function isCheckupService(serviceType) {
-  return CHECKUP_SERVICE_NAMES.includes(String(serviceType || '').trim());
+function isCheckupService(serviceType, serviceRows = []) {
+  const name = String(serviceType || '').trim();
+  if (LEGACY_SERVICE_NAMES.includes(name) && name === 'Checkup') return true;
+  return (serviceRows || []).some(service => service.service_key === 'dog-cat-full-check-up' && service.name === name);
 }
 
 module.exports = {
   EARLIER_SERVICE_SUFFIX,
-  getService,
-  getServiceDurationMinutes,
-  isServiceBookable,
+  NOT_RECORDED_LABEL,
+  MIN_SERVICE_DURATION_MINUTES,
+  MAX_SERVICE_DURATION_MINUTES,
   normalizeSpecies,
-  isServiceAvailableForSpecies,
   describeSpecies,
+  isServiceAvailableForSpecies,
+  getServiceUnavailableReason,
+  isServiceBookable,
+  mapServiceForClient,
   listServicesForClient,
+  findServiceByIdOrName,
   countServicesForAnalytics,
   isCheckupService
 };

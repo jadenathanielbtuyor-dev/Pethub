@@ -1,6 +1,4 @@
-// The clinic's service catalog exactly as shipped (constants/services.js): the nine approved services, dogs and cats
-// only, no prices, and NO confirmed durations yet, so online booking of every service is refused with a clear message
-// until the clinic confirms them. Also checks that the frontend, the chatbot and the public pages repeat the same list.
+// The migration fixture contains initial metadata only; runtime services come from the persisted service catalog.
 // MOCKED: the real Express app on the in-memory database (helpers/harness.js) with serviceDurations: null, so the
 // catalog is used as shipped. Nothing talks to Supabase, Brevo or Gemini.
 const { describe, it, before, after } = require('node:test');
@@ -26,13 +24,13 @@ after(async () => {
 });
 
 describe('Service catalog as shipped', () => {
-  it('lists exactly the nine approved services for dogs and cats, with no prices and no invented durations', () => {
+  it('keeps the migration fixture free of invented durations and leaves Puppy Cut species unconfirmed', () => {
     const { SERVICE_CATALOG, SERVICE_SPECIES, STANDARD_DURATION_MINUTES, LEGACY_SERVICE_NAMES } = require('../constants/services');
     assert.deepEqual(SERVICE_CATALOG.map(entry => entry.name), APPROVED_SERVICES);
     assert.deepEqual([...SERVICE_SPECIES], ['Dog', 'Cat']);
     SERVICE_CATALOG.forEach(entry => {
       assert.equal(entry.durationMinutes, null, `${entry.name}: no duration until the clinic confirms one`);
-      assert.deepEqual([...entry.species], ['Dog', 'Cat'], `${entry.name}: species rule pending clinic confirmation`);
+      assert.deepEqual([...entry.species], entry.name === 'Puppy Cut' ? [] : ['Dog', 'Cat'], `${entry.name}: species must reflect clinic confirmation`);
       assert.ok(entry.description && entry.description.length < 80, `${entry.name} has a short description`);
       assert.doesNotMatch(entry.description, /₱|php|peso|price|\d+\s*(min|hour)|guarantee|cure|best|#1/i, `${entry.name}: no price, time or claim`);
       assert.ok(!Object.keys(entry).some(key => /price|cost|fee/i.test(key)), `${entry.name} has no price field`);
@@ -42,19 +40,20 @@ describe('Service catalog as shipped', () => {
     APPROVED_SERVICES.forEach(name => assert.ok(!LEGACY_SERVICE_NAMES.includes(name), `${name} is not an earlier service`));
   });
 
-  it('the booking page gets the catalog from GET /appointments/services, every service marked not bookable yet', async () => {
+  it('public and signed-in pages get the runtime catalog from GET /appointments/services', async () => {
     const user = t.createUser();
     const response = await t.api('GET', '/appointments/services', { token: user.token });
     assert.equal(response.status, 200);
     assert.deepEqual(response.body.species, ['Dog', 'Cat']);
     assert.deepEqual(response.body.services.map(service => service.name), APPROVED_SERVICES);
     response.body.services.forEach(service => {
-      assert.deepEqual(Object.keys(service).sort(), ['bookable', 'category', 'category_label', 'description', 'duration_minutes', 'name', 'species']);
+      assert.deepEqual(Object.keys(service).sort(), ['bookable', 'category', 'category_label', 'description', 'display_order', 'duration_minutes', 'id', 'name', 'online_booking_enabled', 'service_key', 'species', 'unavailable_reason']);
       assert.equal(service.bookable, false);
+      assert.equal(service.online_booking_enabled, false);
       assert.equal(service.duration_minutes, null);
     });
     assert.equal(response.body.services.find(service => service.name === 'Dog & Cat Full Check Up').category_label, 'Veterinary check-up');
-    assert.equal((await t.api('GET', '/appointments/services')).status, 401, 'signed-in customers only, like the rest of /appointments');
+    assert.equal((await t.api('GET', '/appointments/services')).status, 200, 'the public Services page uses the same catalog');
   });
 
   it('refuses to book any service without a confirmed duration, creating nothing', async () => {
@@ -66,7 +65,7 @@ describe('Service catalog as shipped', () => {
         body: { user_id: user.id, pet_id: pet.id, pet_name: pet.name, service_type: service, appointment_date: t.manilaDate(3), appointment_time: '10:00:00' }
       });
       assert.equal(response.status, 409, service);
-      assert.equal(response.body.error, `${service} cannot be booked online yet because the clinic has not confirmed how long it takes. Please contact the clinic to book it.`);
+      assert.match(response.body.error, /online booking is disabled/i);
     }
     assert.equal(t.db.table('appointments').length, 0);
   });
@@ -99,9 +98,10 @@ describe('Service catalog as shipped', () => {
 });
 
 describe('Everything that names the services uses the catalog', () => {
-  it('the chatbot lists exactly the approved services, for dogs and cats, without prices or opening hours', () => {
+  it('the chatbot points to the live catalog and does not embed a fixed service list', () => {
     const ai = fs.readFileSync(path.join(__dirname, '..', 'services', 'aiService.js'), 'utf8');
-    for (const name of APPROVED_SERVICES) assert.ok(ai.includes(name), `the chatbot knows ${name}`);
+    for (const name of APPROVED_SERVICES) assert.ok(!ai.includes(name), `the chatbot does not hard-code ${name}`);
+    assert.match(ai, /live catalog and booking availability are on the \*\*Services\*\* page/);
     assert.doesNotMatch(ai, /\*\*Vaccination\*\*|\*\*Surgery\*\*|\*\*Dental\*\*|Dental Cleaning|🦜 Bird|🐰 Rabbit/, 'no unsupported services or species are offered');
     assert.doesNotMatch(ai, /₱\s*\d|PHP\s*\d|\d+\s*pesos/i, 'no prices');
   });
@@ -122,5 +122,14 @@ describe('Everything that names the services uses the catalog', () => {
     const shared = fs.readFileSync(path.join(FRONTEND, 'js', 'shared', 'appointment-durations.js'), 'utf8');
     assert.doesNotMatch(shared, /Checkup|Vaccination|Surgery|Dental/);
     assert.doesNotMatch(shared, /:\s*\d+\s*,/, 'no durations in the frontend');
+  });
+
+  it('the public Services page loads the same runtime catalog instead of repeating service details', () => {
+    const page = fs.readFileSync(path.join(FRONTEND, 'pages', 'public', 'services.html'), 'utf8');
+    const script = fs.readFileSync(path.join(FRONTEND, 'js', 'public', 'services.js'), 'utf8');
+    assert.match(page, /id="publicServiceCatalog"/);
+    assert.match(page, /js\/public\/services\.js/);
+    for (const name of APPROVED_SERVICES) assert.ok(!page.includes(name), `no static ${name} on the public page`);
+    assert.match(script, /appointments\/services/);
   });
 });

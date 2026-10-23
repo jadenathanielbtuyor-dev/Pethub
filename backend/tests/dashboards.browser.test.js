@@ -1,7 +1,7 @@
 // The Pet Owner Dashboard and the Admin Dashboard in headless Chrome: the four-section navigation on a desktop (a
 // sidebar beside the content) and a phone (a bar that stays at the top, no sideways scrolling), loading, empty, error
 // and success states, read-only medical records for owners, records kept apart from the AI assistant (which is sent
-// only a general question), booking closed while no duration is confirmed, and admin changes shown only as the
+// a general question and bounded conversation history), booking closed while services are not configured, and admin changes shown only as the
 // server answers them. Contrast is checked in both themes.
 // MOCKED (helpers/browser.js): the page's fetch answers from each test's routes; Railway, Vercel and CDN hosts are
 // blocked. Every name and value below is made-up test data.
@@ -46,7 +46,15 @@ const RECORDS = [
 // The catalog as shipped: no duration confirmed, nothing bookable online
 const SERVICES = SERVICE_CATALOG.map(entry => ({
   name: entry.name, category: entry.category, category_label: SERVICE_CATEGORIES[entry.category], description: entry.description,
-  species: [...entry.species], duration_minutes: null, bookable: false
+  species: [...entry.species], duration_minutes: null, online_booking_enabled: false, bookable: false,
+  unavailable_reason: 'Online booking is disabled for this service.'
+}));
+const ADMIN_SERVICES = SERVICES.map((service, index) => ({
+  ...service,
+  id: `b0000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+  service_key: service.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-$/, ''),
+  display_order: index + 1,
+  version: 1
 }));
 const PROFILE = { phone_number: '+639170000000', date_of_birth: '1990-01-01', gender: 'Prefer not to say', address_line: '1 Test Street', barangay: 'Test', city_municipality: 'Test City', province: 'Test Province', postal_code: '1000' };
 const ok = body => ({ body: { success: true, ...body } });
@@ -70,6 +78,7 @@ const ownerRoutes = (overrides = {}) => ({
   '/pets/medical-records': ok({ records: RECORDS }),
   '/auth/activity-logs': ok({ logs: [{ id: 'l1', action: 'user_logged_in', details: '', created_at: new Date().toISOString() }] }),
   '/appointments/services': ok({ services: SERVICES, species: ['Dog', 'Cat'] }),
+  '/admin/services': ok({ services: ADMIN_SERVICES }),
   '/appointments/all': ok({ appointments: [] }),
   '/ai/chat': ok({ reply: 'A general tip.' }),
   ...overrides
@@ -88,6 +97,7 @@ const adminRoutes = (overrides = {}) => ({
     { id: 'g2', user_id: 'u1', action: 'user_logged_in', display_text: 'Test Owner signed in', created_at: new Date().toISOString() }
   ] }),
   '/admin/dashboard/contact-messages': ok({ messages: [{ id: 'm1', fullname: 'Visitor', email: 'visitor@example.test', message: 'Test message.', status: 'Unread', created_at: new Date().toISOString() }] }),
+  '/admin/services': ok({ services: ADMIN_SERVICES }),
   '/appointments/services': ok({ services: SERVICES, species: ['Dog', 'Cat'] }),
   ...overrides
 });
@@ -282,7 +292,7 @@ describe('Pet Owner Dashboard in a browser (mocked API)', { skip }, () => {
     } finally { await tab.close(); }
   });
 
-  it('Pet Health keeps official records apart from the AI assistant, which is sent only a general question and the page name', async () => {
+  it('Pet Health keeps official records apart from the AI assistant, which receives a general question and bounded history', async () => {
     const tab = await open('pages/user/health.html', '', OWNER, ownerRoutes());
     try {
       assert.ok(await tab.waitFor(`document.getElementById('healthRecords').innerText.includes('12.5 kg')`));
@@ -296,7 +306,9 @@ describe('Pet Owner Dashboard in a browser (mocked API)', { skip }, () => {
       await tab.evaluate(`document.querySelector('[data-ai-question]').click()`);
       assert.ok(await tab.waitFor(`${requests('POST', '/ai/chat')}.length === 1`));
       const sent = JSON.parse((await tab.evaluate(requests('POST', '/ai/chat')))[0].body);
-      assert.deepEqual(Object.keys(sent).sort(), ['currentPage', 'message']);
+      assert.deepEqual(Object.keys(sent).sort(), ['currentPage', 'history', 'message']);
+      assert.ok(Array.isArray(sent.history) && sent.history.length <= 10);
+      assert.ok(sent.history.every(entry => String(entry.text || '').length <= 1200));
       assert.equal(sent.currentPage, 'Pet Owner Dashboard - Pet Health & AI Assistant');
       assert.match(sent.message, /\bdog\b/);
       assert.doesNotMatch(sent.message, /Mochi|Aspin|12\.5|Deworming/, 'no pet name, profile or record');
@@ -468,12 +480,12 @@ describe('Admin Dashboard in a browser (mocked API)', { skip }, () => {
     } finally { await tab.close(); }
   });
 
-  it('System Management lists the service catalog and says online booking is closed', async () => {
+  it('System Management lists editable catalog cards and says online booking is closed', async () => {
     const tab = await open('pages/admin/dashboard.html', '#services', ADMIN, adminRoutes());
     try {
-      assert.ok(await tab.waitFor(`document.querySelectorAll('#servicesCatalogContainer tbody tr').length === 9`));
+      assert.ok(await tab.waitFor(`document.querySelectorAll('#servicesCatalogContainer .service-config-form').length === 9`));
       assert.match(await tab.evaluate(textOf('#bookingStatusSummary')), /Online booking is closed/);
-      assert.equal(await tab.evaluate(`document.querySelectorAll('#servicesCatalogContainer .ph-status-completed').length`), 0, 'no service shown as open');
+      assert.equal(await tab.evaluate(`document.querySelectorAll('#servicesCatalogContainer .ph-status-other').length`), 9, 'all services shown as closed');
     } finally { await tab.close(); }
   });
 

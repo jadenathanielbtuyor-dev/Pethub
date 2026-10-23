@@ -369,7 +369,7 @@ describe('Booking uses the existing pet profile', () => {
     const pet = seedPet(owner);
     t.createAppointment(t.createUser(), { daysAhead: 16, time: '10:00:00', service: 'Bath', duration: 60, status: 'Approved' });
     const conflict = await book(owner, pet.id, { appointment_date: t.manilaDate(16), appointment_time: '10:30' });
-    assert.equal(conflict.status, 400);
+    assert.equal(conflict.status, 409);
     assert.equal(conflict.body.error, 'Selected time is unavailable.');
     assert.equal((await book(owner, pet.id, { service_type: 'Not a service' })).status, 400);
     assert.equal(t.db.table('appointments').filter(appointment => appointment.pet_id === pet.id).length, 0);

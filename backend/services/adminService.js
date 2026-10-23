@@ -7,7 +7,6 @@ const {
   SCHEDULE_CONFLICT_MESSAGE,
   OCCUPIED_APPOINTMENT_STATUSES,
   getAppointmentTimeRange,
-  normalizeAppointmentDate,
   validateAdminAppointmentStatusRequest
 } = require('../validators/appointmentsValidator');
 const { runExclusive } = require('../utils/keyedLock');
@@ -33,8 +32,8 @@ const activityLogsRepository = require('../repositories/activityLogsRepository')
 const contactRepository = require('../repositories/contactRepository');
 const appointmentNotificationsService = require('./appointmentNotificationsService');
 const { APPOINTMENT_STATUS_CHANGED_MESSAGE } = require('../constants/appointments');
-const { CHECKUP_SERVICE_NAMES } = require('../constants/services');
 const { countServicesForAnalytics, isCheckupService, normalizeSpecies } = require('../utils/serviceCatalog');
+const serviceCatalogRepository = require('../repositories/serviceCatalogRepository');
 
 // "Upcoming check-ups" = Pending or Approved check-up appointments (constants/services.js CHECKUP_SERVICE_NAMES) from
 // today through today + 7 days (inclusive). Counted from appointments only: medical records describe past visits.
@@ -47,6 +46,22 @@ function getUpcomingCheckupsEndDate(today) {
   const endDate = new Date(`${today}T00:00:00.000Z`);
   endDate.setUTCDate(endDate.getUTCDate() + UPCOMING_CHECKUPS_WINDOW_DAYS);
   return endDate.toISOString().split('T')[0];
+}
+
+async function loadConfiguredServices() {
+  const { data, error } = await serviceCatalogRepository.listAll();
+  if (error) {
+    if (['42P01', 'PGRST205'].includes(String(error.code || ''))) return [];
+    throw error;
+  }
+  return Array.isArray(data) ? data : [];
+}
+
+function getCheckupNames(services) {
+  return [...new Set([
+    ...(services || []).filter(service => service.service_key === 'dog-cat-full-check-up').map(service => service.name),
+    'Checkup' // historical appointment label retained for older records
+  ])];
 }
 
 // Pets per species for the charts: Dog and Cat (the species the clinic serves), and Other for any earlier pet profile
@@ -94,13 +109,14 @@ function formatSuggestedAppointmentTime(timeMs) {
   return `${hours}:${minutes}`;
 }
 
-function getActiveAppointmentRanges(appointments, excludedAppointmentId = '') {
+function getActiveAppointmentRanges(appointments, excludedAppointmentId = '', includePending = true) {
   const excludedId = String(excludedAppointmentId || '').trim();
   return (appointments || [])
     .filter(appointment => {
       const appointmentId = String(appointment?.id || '').trim();
       const status = String(appointment?.status || '').trim().toLowerCase();
-      return (!excludedId || appointmentId !== excludedId) && OCCUPIED_APPOINTMENT_STATUSES.has(status);
+      const occupiesSchedule = OCCUPIED_APPOINTMENT_STATUSES.has(status) && (includePending || status !== 'pending');
+      return (!excludedId || appointmentId !== excludedId) && occupiesSchedule;
     })
     .map(appointment => getAppointmentTimeRange(
       appointment.appointment_date,
@@ -148,7 +164,7 @@ async function getAppointmentApprovalConflict(appointment, excludedAppointmentId
 
   const conflict = getSuggestedTimeAfterConflict(
     requestedRange,
-    getActiveAppointmentRanges(appointments, excludedAppointmentId)
+    getActiveAppointmentRanges(appointments, excludedAppointmentId, false)
   );
 
   return {
@@ -310,8 +326,9 @@ const getDashboardStats = async (req) => {
     const totalMedicalRecords = medicalRecordsResult.count || 0;
 
     const today = new Date().toISOString().split('T')[0];
+    const configuredServices = await loadConfiguredServices();
     const { count: upcomingCheckups, error: checkupsError } = await appointmentsRepository.countUpcomingByServices(
-      [...CHECKUP_SERVICE_NAMES],
+      getCheckupNames(configuredServices),
       today,
       getUpcomingCheckupsEndDate(today),
       UPCOMING_CHECKUPS_STATUSES
@@ -384,8 +401,9 @@ const getAnalyticsSummary = async (req) => {
     if (completedError) throw completedError;
 
     const today = new Date().toISOString().split('T')[0];
+    const configuredServices = await loadConfiguredServices();
     const { count: upcomingCheckups, error: checkupsError } = await appointmentsRepository.countUpcomingByServices(
-      [...CHECKUP_SERVICE_NAMES],
+      getCheckupNames(configuredServices),
       today,
       getUpcomingCheckupsEndDate(today),
       UPCOMING_CHECKUPS_STATUSES
@@ -446,10 +464,11 @@ const getDashboardOverview = async (req) => {
   try {
     const today = new Date().toISOString().split('T')[0];
 
-    const [usersResult, petsResult, appointmentsResult] = await Promise.all([
+    const [usersResult, petsResult, appointmentsResult, servicesResult] = await Promise.all([
       usersRepository.listForDashboardOverview(),
       petsRepository.listAllPets(),
-      appointmentsRepository.listAllAppointments()
+      appointmentsRepository.listAllAppointments(),
+      loadConfiguredServices()
     ]);
 
     if (usersResult.error) throw usersResult.error;
@@ -459,6 +478,7 @@ const getDashboardOverview = async (req) => {
     const users = usersResult.data || [];
     const pets = petsResult.data || [];
     const appointments = appointmentsResult.data || [];
+    const configuredServices = servicesResult || [];
 
     const { data: medicalRecords, error: medicalRecordsError } = await medicalRecordsRepository.listAllRecords();
 
@@ -536,7 +556,7 @@ const getDashboardOverview = async (req) => {
     const upcomingCheckupsEndDate = getUpcomingCheckupsEndDate(today);
     const upcomingCheckups = appointments.filter(apt => {
       const dateKey = apt.appointment_date ? apt.appointment_date.toString().split('T')[0] : null;
-      return isCheckupService(apt.service_type) && dateKey && UPCOMING_CHECKUPS_STATUSES.includes(apt.status) &&
+      return isCheckupService(apt.service_type, configuredServices) && dateKey && UPCOMING_CHECKUPS_STATUSES.includes(apt.status) &&
         dateKey >= today && dateKey <= upcomingCheckupsEndDate;
     }).length;
     const upcomingBookings = appointments.filter(apt => apt.appointment_date && apt.status !== 'Cancelled' && apt.appointment_date >= today).length;
@@ -546,7 +566,7 @@ const getDashboardOverview = async (req) => {
       : 0;
 
     const petTypeCounts = countPetTypes(normalizedPets);
-    const serviceCounts = countServicesForAnalytics(normalizedAppointments.map(apt => apt.service_type));
+    const serviceCounts = countServicesForAnalytics(normalizedAppointments.map(apt => apt.service_type), configuredServices);
 
     const currentDate = new Date();
     const lastSevenDays = Array.from({ length: 7 }, (_, index) => {
@@ -646,11 +666,14 @@ const getAnalyticsPetTypes = async (req) => {
  */
 const getAnalyticsServices = async (req) => {
   try {
-    const { data: appointments, error } = await appointmentsRepository.listServiceTypes();
+    const [{ data: appointments, error }, configuredServices] = await Promise.all([
+      appointmentsRepository.listServiceTypes(),
+      loadConfiguredServices()
+    ]);
 
     if (error) throw error;
 
-    const { labels, values } = countServicesForAnalytics((appointments || []).map(apt => apt.service_type));
+    const { labels, values } = countServicesForAnalytics((appointments || []).map(apt => apt.service_type), configuredServices);
 
     return { statusCode: 200, body: {
       success: true,
@@ -1173,6 +1196,29 @@ const updateAppointmentStatus = async (req) => {
             suggested_time: conflict.suggested_time || null
           } } };
         }
+
+        const reserved = await appointmentsRepository.updateStatusIfAvailable(
+          normalizedAppointmentId,
+          normalizedStatus,
+          normalizedAdminUserId,
+          currentStatus
+        );
+        if (reserved.error) {
+          if (['PGRST202', '42883'].includes(String(reserved.error.code || ''))) {
+            return { refused: { statusCode: 503, body: { error: 'Secure approval is unavailable until the reviewed database rule is installed.' } } };
+          }
+          return reserved;
+        }
+        if (reserved.data?.outcome === 'conflict') {
+          return { refused: { statusCode: 409, body: { error: SCHEDULE_CONFLICT_MESSAGE, suggested_time: null } } };
+        }
+        if (!['updated', 'stale', 'not_found'].includes(reserved.data?.outcome)) {
+          return { error: { code: 'PETHUB_UNEXPECTED_APPOINTMENT_STATUS_RESULT' } };
+        }
+        if (reserved.data.outcome !== 'updated') return { data: [], error: null };
+
+        const updated = await appointmentsRepository.findById(normalizedAppointmentId);
+        return { data: updated.data ? [updated.data] : [], error: updated.error };
       }
 
       return appointmentsRepository.updateStatus(
@@ -1183,11 +1229,8 @@ const updateAppointmentStatus = async (req) => {
       );
     };
 
-    // Approvals on the same date run one at a time (same key as appointmentsService.updateStatus), so two admins
-    // approving overlapping appointments at once cannot both pass the schedule check
-    const outcome = normalizedStatus === 'Approved'
-      ? await runExclusive(`schedule:${normalizeAppointmentDate(existingData.appointment_date)}`, applyStatus)
-      : await applyStatus();
+    // The database approval function shares the same per-date advisory lock as owner bookings across all instances.
+    const outcome = await applyStatus();
     if (outcome.refused) return outcome.refused;
 
     const { data, error } = outcome;

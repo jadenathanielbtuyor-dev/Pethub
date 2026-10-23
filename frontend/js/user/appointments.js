@@ -9,9 +9,10 @@
 //   The pet is one of the owner's registered profiles (GET /pets/userPets; ?pet=<id> from My Pets preselects it) and
 //   is sent as its pet_id, which the server checks belongs to the owner; booking never creates a pet.
 //   The flow: the owner picks a pet, service, date and time -> the form checks them (service bookable for the pet's
-//   species, date and time not in the past, slot not already taken by an approved appointment) -> the server checks
-//   everything again, including that the clinic has confirmed the service's duration (409 until it has) and that the
-//   slot is free (400 with a suggested time) -> on success the appointment is saved as Pending and the list is reloaded
+//   species, date and time not in the past, slot not already taken by a Pending, Approved or Completed appointment)
+//   -> the server checks everything again, including that the clinic has confirmed the service's duration (409 until
+//   it has) and that the slot is free (409 with a suggested time) -> on success the appointment is saved as Pending
+//   and the list is reloaded
 //   from the server; on failure nothing is saved and the form keeps the owner's choices.
 // - Owners may cancel their own Pending or Approved appointments at least two hours before clinic-local start.
 //   The server recomputes this cutoff and conditionally updates only the current owner/status; the browser countdown
@@ -28,13 +29,14 @@ let appointmentDateAvailabilityController = null;
 // The clinic's services come from the server (GET /appointments/services) into window.AppointmentDurations
 let serviceCatalogLoaded = false;
 let serviceCatalogError = "";
+let serviceCardClickBound = false;
 const NO_APPOINTMENT_PETS_MESSAGE = "Please add a pet first before booking an appointment.";
 const INVALID_APPOINTMENT_DATE_MESSAGE = "Enter a valid appointment date.";
 const INVALID_APPOINTMENT_TIME_MESSAGE = "Enter a valid appointment time.";
 const PAST_APPOINTMENT_DATE_MESSAGE = "Appointment date cannot be in the past.";
 const PAST_APPOINTMENT_TIME_MESSAGE = "Appointment time must be later than the current time when booking for today.";
 const APPOINTMENT_DATE_AVAILABILITY_NOTE = "That slot is unavailable. Choose another time.";
-const OCCUPIED_APPOINTMENT_STATUSES = new Set(["approved", "completed"]);
+const OCCUPIED_APPOINTMENT_STATUSES = new Set(["pending", "approved", "completed"]);
 const APPOINTMENT_DATE_TIME_MESSAGES = [
   INVALID_APPOINTMENT_DATE_MESSAGE,
   INVALID_APPOINTMENT_TIME_MESSAGE,
@@ -541,14 +543,15 @@ function updateBookingClosedNotice() {
     && !services.some(service => catalog.isBookable(service.name)));
 }
 
-// A "Book" link on the Services page names its service (?service=Bath); it is chosen once the list has loaded, if it
+// A "Book" link on the Services page names its service (?service=<id>); it is chosen once the list has loaded, if it
 // can be booked
 function applyRequestedService() {
   const requested = new URLSearchParams(window.location.search).get("service");
   const select = document.getElementById("serviceType");
   if (!requested || !select || select.value) return;
-  if (!isKnownAppointmentServiceType(requested)) return;
-  select.value = requested;
+  const requestedService = window.AppointmentDurations?.getService(requested);
+  if (!requestedService || !isKnownAppointmentServiceType(requestedService.name)) return;
+  select.value = requestedService.name;
   select.dispatchEvent(new Event("change"));
 }
 
@@ -590,8 +593,55 @@ function renderServiceOptions() {
 
   select.disabled = Boolean(serviceCatalogError) || !serviceCatalogLoaded;
   if (previousValue && isKnownAppointmentServiceType(previousValue)) select.value = previousValue;
+  renderServiceCards(catalog, species, select.value);
   updateServiceTypeHint();
   select.dispatchEvent(new Event("change"));
+}
+
+function renderServiceCards(catalog, species, selectedService) {
+  const container = document.getElementById("serviceCardList");
+  if (!container) return;
+  if (serviceCatalogError) {
+    container.innerHTML = `<p class="ph-dash-error-text" role="alert">${escapeHtml(serviceCatalogError)}</p>`;
+    return;
+  }
+  if (!serviceCatalogLoaded) {
+    container.innerHTML = '<p class="ph-dash-note" role="status">Loading clinic services...</p>';
+    return;
+  }
+  const services = catalog.getServices();
+  if (!services.length) {
+    container.innerHTML = '<p class="ph-dash-note" role="status">The clinic service list is unavailable. Please contact the clinic for service information.</p>';
+    return;
+  }
+  container.innerHTML = services.map(service => {
+    let reason = service.unavailableReason || (!catalog.isBookable(service.name) ? "Online booking is not enabled" : "");
+    if (!reason && species && !catalog.isAvailableForSpecies(service.name, species)) {
+      reason = `Not offered for ${getSpeciesPluralLabel(species)}`;
+    }
+    const canSelect = !reason && catalog.isBookable(service.name);
+    const selected = service.name === selectedService;
+    const stateClass = selected ? "border-orange-500 bg-orange-50" : "border-slate-200 bg-white hover:border-orange-300";
+    return `<button type="button" class="service-choice-card rounded-xl border-2 p-4 text-left transition-colors ${stateClass} ${canSelect ? "cursor-pointer" : "cursor-not-allowed opacity-75"}" data-service-name="${escapeHtml(service.name)}" aria-pressed="${selected}" ${canSelect ? "" : "disabled"}>
+      <span class="flex items-start justify-between gap-3"><span><strong class="block text-base text-slate-900">${escapeHtml(service.name)}</strong><span class="mt-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">${escapeHtml(service.categoryLabel || service.category)}</span></span><i class="${selected ? "ri-checkbox-circle-fill text-orange-600" : canSelect ? "ri-checkbox-blank-circle-line text-slate-400" : "ri-lock-line text-slate-400"}" aria-hidden="true"></i></span>
+      <span class="mt-3 block text-sm text-slate-600">${escapeHtml(service.description || "")}</span>
+      <span class="mt-3 block text-sm font-medium ${canSelect ? "text-emerald-700" : "text-slate-500"}">${canSelect ? `Duration: ${escapeHtml(catalog.formatDuration(service.name))}` : escapeHtml(reason || "Online booking is not available")}</span>
+      ${service.species.length ? `<span class="mt-1 block text-xs text-slate-500">For ${escapeHtml(service.species.join(" and "))}</span>` : '<span class="mt-1 block text-xs text-slate-500">Applicable species not confirmed</span>'}
+    </button>`;
+  }).join("");
+
+  if (!serviceCardClickBound) {
+    container.addEventListener("click", event => {
+      const card = event.target.closest("[data-service-name]");
+      if (!card || card.disabled) return;
+      const select = document.getElementById("serviceType");
+      if (!select) return;
+      select.value = card.dataset.serviceName;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      renderServiceCards(catalog, getSelectedPetSpecies(), select.value);
+    });
+    serviceCardClickBound = true;
+  }
 }
 
 // Under the service list: why services are unavailable, or what the selected service is
@@ -609,7 +659,7 @@ function updateServiceTypeHint() {
     text = serviceCatalogError;
     isError = true;
   } else if (serviceCatalogLoaded && services.length > 0 && !services.some(service => catalog.isBookable(service.name))) {
-    text = "Online booking opens once the clinic confirms how long each service takes. Until then, please contact the clinic to book.";
+    text = "No service is currently open for online booking. Check the service cards for details, or contact the clinic.";
   } else if (selected) {
     text = selected.description;
   } else if (species && services.some(service => catalog.isBookable(service.name) && !catalog.isAvailableForSpecies(service.name, species))) {
@@ -1350,6 +1400,7 @@ async function bookAppointment(details) {
         user_id: currentUser.id,
         pet_id: details.petId,
         pet_name: details.petName,
+        service_id: details.serviceId,
         service_type: details.serviceType,
         appointment_date: details.appointmentDate,
         appointment_time: formattedTime,
@@ -1452,7 +1503,14 @@ function setupFormHandler() {
       return;
     }
 
-    const bookingDetails = { petId: selectedPetId, petName, serviceType, appointmentDate, appointmentTime };
+    const bookingDetails = {
+      petId: selectedPetId,
+      petName,
+      serviceId: window.AppointmentDurations.getServiceId(serviceType),
+      serviceType,
+      appointmentDate,
+      appointmentTime
+    };
 
     if (bookingSlotUnavailable) {
       showAppointmentFeedback(messageContainer, BOOKING_DETAILS_HINTS.unavailable, "error");

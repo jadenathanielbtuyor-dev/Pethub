@@ -95,7 +95,7 @@
               <i class="ri-information-line ph-alert-icon" aria-hidden="true"></i>
               <div class="ph-alert-body">
                 <p class="ph-alert-title">Online booking isn't open yet</p>
-                <p>The clinic still has to confirm how long each service takes. Until then, please <a href="../public/contact.html" class="ph-link-arrow">contact the clinic</a> to book.</p>
+                <p>Online booking is currently closed for all services. Check the service cards for the clinic's current settings, or <a href="../public/contact.html" class="ph-link-arrow">contact the clinic</a> to ask about booking.</p>
               </div>
             </div>
 
@@ -115,12 +115,13 @@
 
               <div>
                 <label for="serviceType" class="block text-gray-700 font-semibold text-sm mb-2">Service Type</label>
-                <!-- Filled by js/user/appointments.js from GET /appointments/services (the clinic's catalog). Services not
-                     offered for the selected pet, or whose duration the clinic has not confirmed yet, are shown disabled. -->
-                <select id="serviceType" required aria-describedby="serviceTypeHint serviceDurationHint"
-                  class="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-colors">
+                <!-- The hidden value mirrors the selected service card for existing form validation and summary. -->
+                <select id="serviceType" tabindex="-1" aria-hidden="true" class="sr-only">
                   <option value="">Loading services...</option>
                 </select>
+                <div id="serviceCardList" class="grid gap-3 sm:grid-cols-2" role="group" aria-label="Clinic services" aria-describedby="serviceTypeHint serviceDurationHint">
+                  <p class="ph-dash-note" role="status">Loading clinic services...</p>
+                </div>
                 <p id="serviceTypeHint" class="mt-2 hidden text-sm font-medium text-slate-500" aria-live="polite"></p>
                 <p id="serviceDurationHint" class="mt-2 hidden text-sm font-medium text-slate-500" aria-live="polite"></p>
               </div>

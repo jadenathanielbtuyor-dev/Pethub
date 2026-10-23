@@ -63,6 +63,45 @@ function createAppointment(appointment) {
     .select(APPOINTMENT_SELECT);
 }
 
+// The reviewed database function locks the clinic-local date and checks overlapping active appointments in one
+// transaction, so separate Railway instances cannot reserve the same slot concurrently.
+function createIfAvailable(appointment, serviceId) {
+  return supabase.rpc('create_appointment_if_available', {
+    p_service_id: serviceId,
+    p_user_id: appointment.user_id,
+    p_pet_id: appointment.pet_id,
+    p_pet_name: appointment.pet_name,
+    p_service_type: appointment.service_type,
+    p_estimated_duration_minutes: appointment.estimated_duration_minutes,
+    p_appointment_date: appointment.appointment_date,
+    p_appointment_time: appointment.appointment_time
+  });
+}
+
+function findPendingDuplicate(appointment) {
+  return supabase
+    .from('appointments')
+    .select(APPOINTMENT_SELECT)
+    .eq('user_id', appointment.user_id)
+    .eq('pet_id', appointment.pet_id)
+    .eq('service_type', appointment.service_type)
+    .eq('appointment_date', appointment.appointment_date)
+    .eq('appointment_time', appointment.appointment_time)
+    .eq('status', 'Pending')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+}
+
+function updateStatusIfAvailable(appointmentId, status, handledBy, expectedStatus) {
+  return supabase.rpc('update_appointment_status_if_available', {
+    p_appointment_id: appointmentId,
+    p_status: status,
+    p_handled_by: handledBy,
+    p_expected_status: expectedStatus
+  });
+}
+
 function listByUserId(userId) {
   return orderNewestFirst(supabase
     .from('appointments')
@@ -188,6 +227,9 @@ module.exports = {
   listSchedule,
   listScheduleByDate,
   createAppointment,
+  createIfAvailable,
+  findPendingDuplicate,
+  updateStatusIfAvailable,
   listByUserId,
   listByUserIdAndPetId,
   countUnlinkedByUserId,

@@ -9,7 +9,8 @@ const APPOINTMENT_STATUS_CHANGED_MESSAGE = 'This appointment was just changed by
 const CLINIC_TIME_ZONE = 'Asia/Manila';
 const APPOINTMENT_CANCELLATION_CUTOFF_HOURS = 2;
 const APPOINTMENT_CANCELLATION_CUTOFF_MESSAGE = 'Appointments can only be cancelled at least 2 hours before their scheduled start time. Please contact the clinic for help.';
-const OCCUPIED_APPOINTMENT_STATUSES = new Set(['approved', 'completed']);
+// Pending requests also reserve their requested slot until the clinic approves or cancels them.
+const OCCUPIED_APPOINTMENT_STATUSES = new Set(['pending', 'approved', 'completed']);
 const VALID_APPOINTMENT_STATUSES = Object.freeze(['Pending', 'Approved', 'Completed', 'Cancelled']);
 
 module.exports = {

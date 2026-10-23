@@ -13,12 +13,16 @@
     services = (Array.isArray(list) ? list : [])
       .filter(service => service && typeof service.name === 'string' && service.name.trim())
       .map(service => Object.freeze({
+        id: String(service.id || ''),
         name: service.name.trim(),
         category: String(service.category || ''),
         categoryLabel: String(service.category_label || service.category || ''),
         description: String(service.description || ''),
         species: Object.freeze(Array.isArray(service.species) ? service.species.map(String) : []),
-        durationMinutes: Number.isInteger(service.duration_minutes) && service.duration_minutes > 0 ? service.duration_minutes : null
+        durationMinutes: Number.isInteger(service.duration_minutes) && service.duration_minutes > 0 ? service.duration_minutes : null,
+        onlineBookingEnabled: service.online_booking_enabled === true,
+        bookable: service.bookable === true,
+        unavailableReason: String(service.unavailable_reason || '')
       }));
   }
 
@@ -28,7 +32,7 @@
 
   function getService(serviceType) {
     const name = normalizeServiceName(serviceType);
-    return services.find(service => service.name === name) || null;
+    return services.find(service => service.name === name || (service.id && service.id === name)) || null;
   }
 
   function hasService(serviceType) {
@@ -40,9 +44,14 @@
     return service ? service.durationMinutes : null;
   }
 
+  function getServiceId(serviceType) {
+    return getService(serviceType)?.id || '';
+  }
+
   // A service can be booked online once the clinic has confirmed its duration
   function isBookable(serviceType) {
-    return getDurationMinutes(serviceType) !== null;
+    const service = getService(serviceType);
+    return Boolean(service && service.bookable === true && service.durationMinutes !== null);
   }
 
   function isAvailableForSpecies(serviceType, species) {
@@ -68,6 +77,7 @@
     getService,
     hasService,
     getDurationMinutes,
+    getServiceId,
     isBookable,
     isAvailableForSpecies,
     formatDuration

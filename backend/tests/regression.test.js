@@ -235,7 +235,7 @@ describe('AI chatbot', () => {
   it('without a Gemini key, other questions get the existing "temporarily unavailable" fallback and nothing is sent out', async () => {
     const blockedBefore = t.blockedRequests.length;
     const response = await t.api('POST', '/ai/chat', { body: { message: 'How often should I brush my rabbit?' } });
-    assert.equal(response.status, 500);
+    assert.equal(response.status, 503);
     assert.match(response.body.reply, /temporarily unavailable/);
     assert.equal(t.blockedRequests.length, blockedBefore, 'no request to Gemini without a key');
   });

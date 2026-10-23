@@ -26,7 +26,9 @@ const PAYMENT_WORDING = /deposit|payment|paymongo|checkout|refund|₱/i;
 const { TEST_ONLY_SERVICE_DURATIONS } = require('./helpers/harness');
 const { SERVICE_CATALOG, SERVICE_CATEGORIES } = require('../constants/services');
 // What GET /appointments/services would return with the test-only durations and species rule
-const SERVICES = SERVICE_CATALOG.map(entry => ({
+const SERVICES = SERVICE_CATALOG.map((entry, index) => ({
+  id: `test-service-${index + 1}`,
+  service_key: `test-service-${index + 1}`,
   name: entry.name,
   category: entry.category,
   category_label: SERVICE_CATEGORIES[entry.category],
@@ -337,7 +339,8 @@ describe('Booking page in a browser (mocked API)', { skip }, () => {
 
       const [booking] = await tab.evaluate(requests('POST', '/appointments/create'));
       assert.deepEqual(JSON.parse(booking.body), {
-        user_id: 'u1', pet_id: 'p1', pet_name: 'Mochi', service_type: CHECK_UP, appointment_date: FUTURE, appointment_time: '10:00:00'
+        user_id: 'u1', pet_id: 'p1', pet_name: 'Mochi', service_id: SERVICES.find(service => service.name === CHECK_UP).id,
+        service_type: CHECK_UP, appointment_date: FUTURE, appointment_time: '10:00:00'
       });
       const state = await tab.evaluate(summaryState);
       assert.equal(state.feedback, 'Appointment booked. It is pending clinic approval.');
@@ -426,7 +429,7 @@ describe('Booking page in a browser (mocked API)', { skip }, () => {
       assert.ok(await tab.waitFor(petsLoaded));
       const options = (await tab.evaluate(serviceOptions)).flatMap(group => group.options);
       assert.ok(options.every(option => option.disabled && option.text.endsWith('(online booking not open yet)')));
-      assert.equal(await tab.evaluate(serviceHint), 'Online booking opens once the clinic confirms how long each service takes. Until then, please contact the clinic to book.');
+      assert.equal(await tab.evaluate(serviceHint), 'No service is currently open for online booking. Check the service cards for details, or contact the clinic.');
       await tab.evaluate(fillForm({ serviceType: 'Bath' }));
       const state = await tab.evaluate(summaryState);
       assert.equal(state.buttonDisabled, true);

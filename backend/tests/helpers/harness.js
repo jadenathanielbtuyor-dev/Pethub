@@ -107,6 +107,17 @@ async function startTestApp({
   }
 
   const db = createPetHubDatabase(database);
+  db.table('pethub_service_catalog').forEach(service => {
+    service.duration_minutes = serviceDurations ? (serviceDurations[service.name] ?? null) : null;
+    service.species = [...(serviceSpecies[service.name] || service.species || [])];
+    service.online_booking_enabled = Boolean(
+      serviceDurations
+      && Number.isInteger(service.duration_minutes)
+      && service.duration_minutes >= 5
+      && service.duration_minutes <= 480
+      && service.species.length > 0
+    );
+  });
   const adminState = { configured: adminClientConfigured };
   stubModule(path.join(BACKEND_DIR, 'config', 'supabase.js'), db.client());
   stubModule(path.join(BACKEND_DIR, 'config', 'supabaseAdmin.js'), {

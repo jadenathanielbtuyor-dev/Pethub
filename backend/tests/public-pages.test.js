@@ -1,7 +1,6 @@
 // The public website and sign-in pages as shipped (frontend/index.html, pages/public, pages/auth): the shared header
-// with its menu button, one main heading, links and images that exist, the clinic's real services (no invented
-// services, prices, statistics, reviews or contact details), clearly marked placeholders for facts the clinic still
-// has to confirm, photo credits, and form limits that match the backend.
+// with its menu button, one main heading, links and images that exist, no invented clinic facts, runtime services,
+// no unlicensed stock photos or development placeholders, and form limits that match the backend.
 // Static file checks only; behaviour in a browser is covered by public-site.browser.test.js (opt-in).
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
@@ -9,7 +8,6 @@ const fs = require('fs');
 const path = require('path');
 
 const FRONTEND = path.join(__dirname, '..', '..', 'frontend');
-const { SERVICE_CATALOG, SPECIES_PENDING_CONFIRMATION } = require('../constants/services');
 const { CONTACT_LIMITS } = require('../validators/contactValidator');
 
 const PUBLIC_PAGES = ['index.html', 'pages/public/about.html', 'pages/public/services.html', 'pages/public/contact.html', 'pages/public/privacy.html'];
@@ -47,8 +45,8 @@ describe('Shared header, structure and links', () => {
 describe('Content is about the clinic, with nothing invented', () => {
   const INVENTED = [
     /support@pethub\.com/i, /Mon\s*-\s*Fri/i, /8:00 AM/i, /\+?63\s?9\d{2}/, /\(0\d\)\s?\d{3,4}/,
-    /₱|PHP\s*\d|\bprice[sd]?\s*(from|start)/i, /\d[\d,]*\+\s*(happy|pets|clients|customers)/i, /\b\d\.\d\s*(star|rating)/i,
-    /testimonial|what our (clients|customers) say|★/i, /years of experience|award|certified|#1|best in/i,
+    /â‚±|PHP\s*\d|\bprice[sd]?\s*(from|start)/i, /\d[\d,]*\+\s*(happy|pets|clients|customers)/i, /\b\d\.\d\s*(star|rating)/i,
+    /testimonial|what our (clients|customers) say|â˜…/i, /years of experience|award|certified|#1|best in/i,
     /vaccinat\w* service|dental cleaning|surgery/i, /\brabbits?\b|\bbirds?\b|\bhamsters?\b/i
   ];
 
@@ -59,69 +57,44 @@ describe('Content is about the clinic, with nothing invented', () => {
     });
   }
 
-  it('public pages describe the clinic\'s services, not how the website was built', () => {
+  it('public pages describe the clinic service, not how the website was built', () => {
     for (const file of PUBLIC_PAGES.filter(name => !name.endsWith('privacy.html'))) {
       assert.doesNotMatch(textOf(read(file)), /supabase|node\.?js|express|tailwind|capstone|backend/i, file);
     }
   });
 
-  it('the Services page lists exactly the catalog\'s services, descriptions and species, with a booking link each', () => {
+  it('the public Services page loads the current catalog dynamically', () => {
     const html = read('pages/public/services.html');
-    const services = [...html.matchAll(/data-service="([^"]+)"/g)].map(match => decode(match[1]));
-    assert.deepEqual(services, SERVICE_CATALOG.map(entry => entry.name));
-    for (const entry of SERVICE_CATALOG) {
-      const block = html.split(`data-service="${entry.name.replace(/&/g, '&amp;')}"`)[1].split(/data-service="|<\/section>/)[0];
-      assert.ok(textOf(block).includes(entry.description), `${entry.name}: description from the catalog`);
-      const species = [...block.matchAll(/ph-badge-(dog|cat)/g)].map(match => match[1] === 'dog' ? 'Dog' : 'Cat');
-      assert.deepEqual(species, [...entry.species], `${entry.name}: species from the catalog`);
-      assert.ok(block.includes(`login.html?next=appointments&amp;service=${encodeURIComponent(entry.name).replace(/%20/g, '+')}`), `${entry.name}: book link`);
-      assert.equal(block.includes('data-placeholder="species"'), SPECIES_PENDING_CONFIRMATION.includes(entry.name), `${entry.name}: species placeholder only while pending`);
-    }
+    assert.match(html, /id="publicServiceCatalog"/);
+    assert.ok(html.includes('js/public/services.js'));
+    const script = read('js/public/services.js');
+    assert.ok(script.includes('appointments/services'));
+    assert.ok(script.includes('service.bookable'));
+    for (const name of ['Bath', 'Puppy Cut', 'Dog & Cat Full Check Up']) assert.ok(!html.includes(name), name);
   });
 
-  it('the home page names every grooming service and the check-up', () => {
+  it('the home page links to the dynamic Services page without repeating its service list', () => {
+    const html = read('index.html');
     const text = textOf(read('index.html'));
-    SERVICE_CATALOG.forEach(entry => assert.ok(text.includes(entry.name), entry.name));
+    assert.match(html, /href="pages\/public\/services\.html"/);
+    for (const name of ['Puppy Cut', 'Flea and Tick Removal', 'Dog & Cat Full Check Up']) assert.ok(!text.includes(name), name);
   });
 
-  it('every placeholder is visibly labelled and none is hidden', () => {
-    for (const file of PUBLIC_PAGES) {
-      const html = read(file);
-      const placeholders = [...html.matchAll(/<span class="ph-placeholder" data-placeholder="([^"]+)"><span class="ph-placeholder-tag">Placeholder<\/span>([^<]+)<\/span>/g)];
-      assert.equal(placeholders.length, (html.match(/data-placeholder=/g) || []).length, `${file}: every placeholder uses the labelled markup`);
-      placeholders.forEach(([, , text]) => assert.match(text, /to be (confirmed|provided|set)/i));
-    }
-    const contact = read('pages/public/contact.html');
-    for (const kind of ['clinic-phone', 'clinic-email', 'clinic-address', 'clinic-hours']) {
-      assert.ok(contact.includes(`data-placeholder="${kind}"`), kind);
-    }
+  it('public pages contain no development placeholder fields or tags', () => {
+    for (const file of PUBLIC_PAGES) assert.doesNotMatch(read(file), /data-placeholder=|ph-placeholder-tag|class="ph-placeholder"/, file);
   });
 });
 
-describe('Photos and credits', () => {
-  it('every photo used is credited on the About page and in CREDITS.md with a Creative Commons licence', () => {
+describe('Public imagery', () => {
+  it('does not serve third-party stock photos after removing their assets and credits', () => {
     const photosDir = path.join(FRONTEND, 'assets', 'images', 'photos');
     const photos = fs.readdirSync(photosDir).filter(name => /\.(jpe?g|png|webp)$/i.test(name));
-    const credits = fs.readFileSync(path.join(photosDir, 'CREDITS.md'), 'utf8');
-    const about = read('pages/public/about.html');
-    const used = new Set([...PUBLIC_PAGES, ...AUTH_PAGES].flatMap(file => [...read(file).matchAll(/images\/photos\/([^"]+)"/g)].map(match => match[1])));
-    assert.ok(used.size >= 2);
-    for (const photo of used) {
-      assert.ok(photos.includes(photo), `${photo} exists`);
-      const row = credits.split('\n').find(line => line.includes(`\`${photo}\``));
-      assert.ok(row, `${photo} is in CREDITS.md`);
-      assert.match(row, /CC BY \d\.\d — https:\/\/creativecommons\.org\/licenses\/by\/\d\.\d/);
-      assert.match(row, /https:\/\/commons\.wikimedia\.org\/wiki\/File:/);
-    }
-    assert.equal((about.match(/licensed under <a href="https:\/\/creativecommons\.org\/licenses\/by\//g) || []).length, used.size);
-    for (const file of PUBLIC_PAGES) {
-      const html = read(file);
-      [...html.matchAll(/<img src="[^"]*images\/photos\/[^"]+"[^>]*>[\s\S]*?<figcaption>([\s\S]*?)<\/figcaption>/g)]
-        .forEach(([, caption]) => assert.match(caption, /CC BY \d\.\d/, `${file}: the photo caption names its licence`));
-    }
+    const used = new Set([...PUBLIC_PAGES, ...AUTH_PAGES].filter(file => read(file).includes('images/photos/')));
+    assert.equal(used.size, 0);
+    assert.deepEqual(photos, []);
+    assert.equal(fs.existsSync(path.join(photosDir, 'CREDITS.md')), false);
   });
 });
-
 describe('Forms match the backend', () => {
   it('the contact form uses the backend\'s length limits', () => {
     const html = read('pages/public/contact.html');
