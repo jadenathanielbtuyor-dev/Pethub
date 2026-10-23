@@ -1,7 +1,8 @@
 -- =====================================================================================================
 -- PetHub: PayMongo appointment deposits (tables public.payments and public.appointments)
--- Prepared 2026-10-17. NOT APPLIED. Run in the Supabase SQL Editor only after explicit approval,
--- in a dev/test Supabase project first.
+-- Prepared 2026-10-17. PARTIALLY APPLIED (verified 2026-10-23): the four payments columns and
+-- appointments.deposit_required exist; the three unique indexes do not. SUPERSEDED: online payments were removed from
+-- PetHub, nothing reads these columns, and the indexes are not needed. Do not run this file.
 --
 --   P1  payments: provider_checkout_session_id, provider_payment_id, expires_at (+ unique indexes),
 --       receipt_email_sent_at (marks the "deposit payment confirmed" email as sent, so it goes out once).  Required.

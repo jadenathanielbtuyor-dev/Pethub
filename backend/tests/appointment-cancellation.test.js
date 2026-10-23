@@ -150,4 +150,26 @@ describe('Owner appointment cancellation', () => {
       assert.equal(t.db.table('activity_logs').filter(row => row.action === 'appointment_cancelled' && row.user_id === owner.id).length, 1);
     });
   });
+
+  it('records when an appointment was cancelled, by its owner or by the clinic, and keeps the row', async () => {
+    const owner = t.createUser();
+    const admin = t.createUser({ role: 'admin' });
+    const later = hours => Date.now() + hours * 60 * 60 * 1000 + 17 * 60 * 1000;
+    const byOwner = seedAppointment(owner, later(205));
+    const byClinic = seedAppointment(owner, later(209));
+    const approved = seedAppointment(owner, later(213));
+    const setStatus = (id, status) => t.api('PUT', `/admin/dashboard/appointment-status?user_id=${admin.id}`, { token: admin.token, body: { id, status } });
+
+    assert.equal((await t.api('POST', `/appointments/cancel/${byOwner.id}`, { token: owner.token })).status, 200);
+    assert.equal((await setStatus(byClinic.id, 'Cancelled')).status, 200);
+    assert.equal((await setStatus(approved.id, 'Approved')).status, 200);
+    await t.settleEmails();
+
+    for (const id of [byOwner.id, byClinic.id]) {
+      const row = t.appointmentRow(id);
+      assert.equal(row.status, 'Cancelled');
+      assert.ok(Number.isFinite(Date.parse(row.cancelled_at)), 'cancelled_at holds the cancellation time');
+    }
+    assert.equal(t.appointmentRow(approved.id).cancelled_at ?? null, null, 'approval leaves cancelled_at empty');
+  });
 });

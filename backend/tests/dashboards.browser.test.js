@@ -314,6 +314,15 @@ describe('Pet Owner Dashboard in a browser (mocked API)', { skip }, () => {
       assert.doesNotMatch(sent.message, /Mochi|Aspin|12\.5|Deworming/, 'no pet name, profile or record');
       assert.equal(await tab.evaluate(`document.getElementById('pethub-ai-popup').classList.contains('active')`), true);
 
+      // An emergency containing a word the off-topic filter blocks ("kill") still reaches the backend's emergency path;
+      // a plainly off-topic question is still answered in the browser without a request
+      assert.ok(await tab.waitFor(`window.PetHubAI.ask('Can rat poison kill my cat?') === true`));
+      assert.ok(await tab.waitFor(`${requests('POST', '/ai/chat')}.length === 2`));
+      assert.equal(JSON.parse((await tab.evaluate(requests('POST', '/ai/chat')))[1].body).message, 'Can rat poison kill my cat?');
+      assert.ok(await tab.waitFor(`window.PetHubAI.ask('Help me with my javascript homework') === true`));
+      assert.ok(await tab.waitFor(`document.getElementById('pethub-ai-messages').innerText.includes('pet wellness only')`));
+      assert.equal(await tab.evaluate(`${requests('POST', '/ai/chat')}.length`), 2);
+
       await tab.evaluate(`(() => { const s = document.getElementById('healthPetSelect'); s.value = 'p2'; s.dispatchEvent(new Event('change')); })()`);
       assert.match(await tab.evaluate(textOf('#healthRecords')), /No official records for Luna yet/);
       assert.match(await tab.evaluate(`document.querySelector('[data-ai-question]').textContent`), /\bcat\b/);

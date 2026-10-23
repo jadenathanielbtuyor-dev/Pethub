@@ -1,6 +1,7 @@
 const {
   hasValue,
-  trimValue
+  trimValue,
+  isUuid
 } = require('./commonValidator');
 
 function normalizeRecordDateValue(value) {
@@ -55,6 +56,18 @@ function validateAdminMedicalRecord(body = {}, adminUserId) {
     };
   }
 
+  if (!isUuid(normalizedPetId)) {
+    return {
+      error: { statusCode: 404, body: { success: false, error: 'Pet not found' } }
+    };
+  }
+
+  if (normalizedAppointmentId && !isUuid(normalizedAppointmentId)) {
+    return {
+      error: { statusCode: 404, body: { success: false, error: 'Appointment not found' } }
+    };
+  }
+
   if (!hasValue(body.record_date)) {
     return {
       error: { statusCode: 400, body: { success: false, error: 'record_date is required' } }
@@ -77,9 +90,10 @@ function validateAdminMedicalRecord(body = {}, adminUserId) {
 
   if (hasValue(body.weight)) {
     const numericWeight = Number(body.weight);
-    if (!Number.isFinite(numericWeight) || numericWeight < 0) {
+    // An official weight is a measurement: 0 would be shown as "0 kg recorded", which is not the same as no weight
+    if (!Number.isFinite(numericWeight) || numericWeight <= 0) {
       return {
-        error: { statusCode: 400, body: { success: false, error: 'weight must be a valid non-negative number' } }
+        error: { statusCode: 400, body: { success: false, error: 'weight must be a number greater than zero' } }
       };
     }
     payload.weight = numericWeight;

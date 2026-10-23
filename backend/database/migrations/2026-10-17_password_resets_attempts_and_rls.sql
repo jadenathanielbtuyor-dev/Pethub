@@ -1,6 +1,8 @@
 -- =====================================================================================================
 -- PetHub: Forgot Password database changes (table public.password_resets only)
--- Prepared 2026-10-17. NOT APPLIED. Run in the Supabase SQL Editor only after explicit approval.
+-- Prepared 2026-10-17. PARTIALLY APPLIED (verified 2026-10-23): D1 (attempts column and its CHECK) exists; the D1b
+-- index does not; D2 (RLS) is not on. Do not run this file again: D1b is in 2026-10-23_reconcile_live_schema.sql and D2 in
+-- 2026-10-20_rls_least_privilege.sql.
 --
 --   D1   attempts column: counts code checks (the backend allows 3).                Required before backend deploy.
 --   D1b  one open (unused) code per user: parallel requests can't send two emails.  Required before backend deploy.

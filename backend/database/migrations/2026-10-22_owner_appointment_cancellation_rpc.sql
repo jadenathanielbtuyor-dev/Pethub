@@ -1,5 +1,7 @@
 -- PetHub: atomically enforce the owner's cancellation cutoff against the database clock.
--- Prepared 2026-10-22. NOT APPLIED. Apply only after reviewing the target schema and approving the migration.
+-- Prepared 2026-10-22. NOT APPLIED (verified 2026-10-23: public has no functions). SUPERSEDED by
+-- 2026-10-23_reconcile_live_schema.sql PART E, which also sets the existing appointments.cancelled_at column. Do not run
+-- this file.
 -- The function changes only Pending/Approved -> Cancelled. It never deletes a row or sets another status.
 -- It creates no cancellation reason/timestamp field; the existing application attempts an activity-log event.
 --

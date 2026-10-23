@@ -1,5 +1,6 @@
 -- PetHub: persisted breed options and owner-reported weight history.
--- Prepared 2026-10-22. NOT APPLIED. Review and approve before running in Supabase.
+-- Prepared 2026-10-22. NOT APPLIED (verified 2026-10-23). Included unchanged in 2026-10-23_reconcile_live_schema.sql:
+-- run that file instead of this one.
 -- This is additive. It does not alter pets.breed or medical_records.weight and does not rewrite existing records.
 -- The initial breed rows are a reviewed selection from AKC / CFA lists, not a universal or exhaustive registry.
 -- Owner-entered weights are separate, append-only rows with their own source and timestamp.

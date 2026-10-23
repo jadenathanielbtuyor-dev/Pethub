@@ -14,6 +14,11 @@ function isEmailLike(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || ''));
 }
 
+// Database ids are UUIDs; checking the shape first answers 400/404 instead of a database error for a malformed id
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+}
+
 function isVerifiedValue(value) {
   return value === true || value === 'true' || value === 1 || value === '1';
 }
@@ -30,6 +35,7 @@ module.exports = {
   trimValue,
   normalizeEmail,
   isEmailLike,
+  isUuid,
   isVerifiedValue,
   getLocalDateValue
 };

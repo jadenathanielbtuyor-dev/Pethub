@@ -1,5 +1,6 @@
 -- PetHub: persist the optional relationship between one completed appointment and one official medical record.
--- Prepared 2026-10-22. NOT APPLIED. Review the preflight and apply only to the approved database.
+-- Prepared 2026-10-22. NOT APPLIED (verified 2026-10-23; medical_records had 0 rows). Included unchanged in
+-- 2026-10-23_reconcile_live_schema.sql: run that file instead of this one.
 --
 -- Current application behavior permits at most one medical record for a completed appointment, but it does not
 -- persist appointment_id. The application currently tries to reconstruct that link from an activity-log action.

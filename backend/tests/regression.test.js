@@ -141,6 +141,31 @@ describe('Pets', () => {
 });
 
 describe('Medical records', () => {
+  it('an official weight must be a real measurement and ids must be well-formed; nothing is saved otherwise', async () => {
+    const owner = t.createUser();
+    const pet = t.createPet(owner, 'Biscuit');
+    const visit = t.createAppointment(owner, { pet, daysAhead: -2, status: 'Completed' });
+    const body = {
+      pet_id: pet.id, appointment_id: visit.id, record_date: t.manilaDate(-2), weight: 0,
+      vaccination_status: 'Up to date', treatment: 'Check-up', medical_notes: 'Test note'
+    };
+    const create = payload => t.api('POST', `/admin/dashboard/medical-records/create?user_id=${admin.id}`, { token: admin.token, body: payload });
+    const recordsBefore = t.db.table('medical_records').length;
+
+    const zero = await create(body);
+    assert.equal(zero.status, 400);
+    assert.match(zero.body.error, /greater than zero/);
+    assert.equal((await create({ ...body, weight: -1 })).status, 400);
+    assert.equal((await create({ ...body, weight: 3.4, pet_id: 'not-a-pet-id' })).status, 404);
+    assert.equal((await create({ ...body, weight: 3.4, appointment_id: 'not-an-appointment-id' })).status, 404);
+    assert.equal(t.db.table('medical_records').length, recordsBefore);
+
+    const saved = await create({ ...body, weight: 3.4 });
+    assert.equal(saved.status, 201, JSON.stringify(saved.body));
+    assert.equal(saved.body.record.weight, 3.4);
+    assert.equal(saved.body.record.appointment_id, visit.id);
+  });
+
   it('admins add a record after a completed appointment; owners read their pet\'s records but cannot add or read others\'', async () => {
     const owner = t.createUser();
     const stranger = t.createUser();

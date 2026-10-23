@@ -45,6 +45,20 @@ describe('PetHub AI safety and grounding', () => {
     assert.equal(calls.length, 0);
   });
 
+  it('answers pet emergencies without Gemini, in Tagalog when described in Tagalog', async () => {
+    const tagalog = await t.api('POST', '/ai/chat', { body: { message: 'Nalason yata ang aso ko, ano gagawin ko?' } });
+    assert.equal(tagalog.status, 200);
+    assert.equal(tagalog.body.isEmergency, true);
+    assert.match(tagalog.body.reply, /Kailangan agad ng beterinaryo/);
+    assert.match(tagalog.body.reply, /emergency vet clinic/);
+
+    const english = await t.api('POST', '/ai/chat', { body: { message: 'Can rat poison kill my cat?' } });
+    assert.equal(english.status, 200);
+    assert.equal(english.body.isEmergency, true);
+    assert.match(english.body.reply, /immediate veterinary care/);
+    assert.equal(calls.length, 0, 'emergency guidance never depends on the AI provider');
+  });
+
   it('sends bounded history and uses the API key header and Search grounding only for a current health question', async () => {
     respondWith(providerReply('Ask a veterinarian for an exam.', {
       groundingChunks: [
@@ -73,7 +87,8 @@ describe('PetHub AI safety and grounding', () => {
     assert.match(call.url, /models\/gemini-2\.5-flash:generateContent$/);
     assert.doesNotMatch(call.url, /key=/i);
     assert.equal(new Headers(call.init.headers).get('x-goog-api-key'), 'test-gemini-key');
-    assert.deepEqual(call.body.tools, [{ googleSearchRetrieval: {} }]);
+    // google_search is the documented grounding tool for current Gemini models (google_search_retrieval is for older ones)
+    assert.deepEqual(call.body.tools, [{ google_search: {} }]);
     assert.equal(call.body.contents.at(-1).parts[0].text, 'What is the current rabies vaccine schedule for my dog?');
     assert.deepEqual(call.body.contents.slice(0, 2).map(entry => entry.role), ['user', 'model']);
     assert.match(call.body.system_instruction.parts[0].text, /Tagalog and Taglish/);

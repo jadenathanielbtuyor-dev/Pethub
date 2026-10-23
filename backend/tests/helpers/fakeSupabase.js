@@ -266,6 +266,7 @@ class FakeDatabase {
       }
       appointment.status = args.p_status;
       appointment.handled_by = args.p_handled_by;
+      if (args.p_status === 'Cancelled') appointment.cancelled_at = new Date().toISOString();
       return { data: { outcome: 'updated', appointment_id: appointment.id }, error: null, status: 200 };
     }
     if (functionName !== 'cancel_appointment_for_owner') {
@@ -283,6 +284,7 @@ class FakeDatabase {
     const start = getAppointmentStartTimestamp(appointment.appointment_date, appointment.appointment_time, 'Asia/Manila');
     if (!Number.isFinite(start) || start - Date.now() < 2 * 60 * 60 * 1000) return { data: false, error: null, status: 200 };
     appointment.status = 'Cancelled';
+    appointment.cancelled_at = new Date().toISOString();
     return { data: true, error: null, status: 200 };
   }
 

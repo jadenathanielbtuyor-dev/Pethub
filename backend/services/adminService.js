@@ -7,6 +7,7 @@ const {
   SCHEDULE_CONFLICT_MESSAGE,
   OCCUPIED_APPOINTMENT_STATUSES,
   getAppointmentTimeRange,
+  getClinicDateValue,
   validateAdminAppointmentStatusRequest
 } = require('../validators/appointmentsValidator');
 const { runExclusive } = require('../utils/keyedLock');
@@ -46,6 +47,19 @@ function getUpcomingCheckupsEndDate(today) {
   const endDate = new Date(`${today}T00:00:00.000Z`);
   endDate.setUTCDate(endDate.getUTCDate() + UPCOMING_CHECKUPS_WINDOW_DAYS);
   return endDate.toISOString().split('T')[0];
+}
+
+// The last `days` clinic (Asia/Manila) dates ending today, oldest first, with chart labels such as "Oct 23".
+// Appointment dates are clinic dates, so the server's own timezone must not decide which day "today" is.
+function getRecentClinicDates(days) {
+  const [year, month, day] = getClinicDateValue().split('-').map(Number);
+  return Array.from({ length: days }, (_, index) => {
+    const date = new Date(Date.UTC(year, month - 1, day - (days - 1 - index)));
+    return {
+      key: date.toISOString().slice(0, 10),
+      label: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+    };
+  });
 }
 
 async function loadConfiguredServices() {
@@ -325,7 +339,7 @@ const getDashboardStats = async (req) => {
     const activityLogCount = activityLogsResult.count;
     const totalMedicalRecords = medicalRecordsResult.count || 0;
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getClinicDateValue();
     const configuredServices = await loadConfiguredServices();
     const { count: upcomingCheckups, error: checkupsError } = await appointmentsRepository.countUpcomingByServices(
       getCheckupNames(configuredServices),
@@ -400,7 +414,7 @@ const getAnalyticsSummary = async (req) => {
 
     if (completedError) throw completedError;
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getClinicDateValue();
     const configuredServices = await loadConfiguredServices();
     const { count: upcomingCheckups, error: checkupsError } = await appointmentsRepository.countUpcomingByServices(
       getCheckupNames(configuredServices),
@@ -462,7 +476,7 @@ const getAnalyticsSummary = async (req) => {
  */
 const getDashboardOverview = async (req) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getClinicDateValue();
 
     const [usersResult, petsResult, appointmentsResult, servicesResult] = await Promise.all([
       usersRepository.listForDashboardOverview(),
@@ -568,19 +582,9 @@ const getDashboardOverview = async (req) => {
     const petTypeCounts = countPetTypes(normalizedPets);
     const serviceCounts = countServicesForAnalytics(normalizedAppointments.map(apt => apt.service_type), configuredServices);
 
-    const currentDate = new Date();
-    const lastSevenDays = Array.from({ length: 7 }, (_, index) => {
-      const date = new Date(currentDate);
-      date.setDate(currentDate.getDate() - (6 - index));
-      return date;
-    });
-
-    const trendLabels = lastSevenDays.map(date => date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric'
-    }));
-
-    const trendKeys = lastSevenDays.map(date => date.toISOString().split('T')[0]);
+    const lastSevenDays = getRecentClinicDates(7);
+    const trendLabels = lastSevenDays.map(day => day.label);
+    const trendKeys = lastSevenDays.map(day => day.key);
     const trendCounts = trendKeys.reduce((acc, dateKey) => {
       acc[dateKey] = 0;
       return acc;
@@ -691,19 +695,9 @@ const getAnalyticsServices = async (req) => {
  */
 const getAnalyticsAppointmentsTrend = async (req) => {
   try {
-    const today = new Date();
-    const lastSevenDays = Array.from({ length: 7 }, (_, index) => {
-      const date = new Date(today);
-      date.setDate(today.getDate() - (6 - index));
-      return date;
-    });
-
-    const labels = lastSevenDays.map(date => date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric'
-    }));
-
-    const dateKeys = lastSevenDays.map(date => date.toISOString().split('T')[0]);
+    const lastSevenDays = getRecentClinicDates(7);
+    const labels = lastSevenDays.map(day => day.label);
+    const dateKeys = lastSevenDays.map(day => day.key);
     const counts = dateKeys.reduce((acc, dateKey) => {
       acc[dateKey] = 0;
       return acc;

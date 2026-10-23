@@ -40,9 +40,11 @@ Roles: `PUT /admin/dashboard/user-role` accepts only `user` and `admin`, and ref
 
 ## Services and Scheduling
 
-The clinic's services (Bath, Trim, Puppy Cut, Full Grooming, Nail Cutting, Face Trim, Flea and Tick Removal, Medicated Bath, Dog & Cat Full Check Up) are defined once in `constants/services.js`, with the species each may be booked for (dogs and cats). The booking page loads them from `GET /appointments/services`; bookings are checked against them, including the pet's species.
+The clinic's services (Bath, Trim, Puppy Cut, Full Grooming, Nail Cutting, Face Trim, Flea and Tick Removal, Medicated Bath, Dog & Cat Full Check Up) are stored in the `pethub_service_catalog` table (created by `2026-10-23_reconcile_live_schema.sql`) and edited by administrators in the Admin Dashboard (`GET /admin/services`, `PUT /admin/services/:id`, optimistic `version` check). `constants/services.js` only holds the seed values and test fixtures; it is not read at runtime to authorize a booking. The public Services page and the booking page load the catalog from `GET /appointments/services`. Until the table exists, those endpoints answer 503 and nothing can be booked.
 
-Durations are NOT confirmed yet: every service has `durationMinutes: null`, so online booking answers 409 "cannot be booked online yet" until the clinic confirms each length (or one standard length in `STANDARD_DURATION_MINUTES`). Enter only confirmed minutes. The rule "Puppy Cut is for dogs only" is pending the clinic's confirmation and is not applied (`SPECIES_PENDING_CONFIRMATION`). Earlier service names saved on existing appointments (e.g. "Checkup") cannot be booked any more but those appointments keep their saved duration and can still be approved, completed or cancelled; one saved without a duration can be approved but blocks no time. New pet profiles must be a Dog or a Cat.
+Durations are NOT confirmed yet: every service is seeded with no duration and online booking off, so it cannot be booked until an administrator saves a clinic-confirmed duration, at least one species and turns online booking on (the database refuses "on" without the other two). Puppy Cut is seeded with no species because its species rule awaits the clinic. Bookings and approvals go through the `create_appointment_if_available` / `update_appointment_status_if_available` database functions, which lock the date so separate backend instances cannot double-book. Earlier service names saved on existing appointments (e.g. "Checkup") cannot be booked any more but those appointments keep their saved duration and can still be approved, completed or cancelled; one saved without a duration can be approved but blocks no time. New pet profiles must be a Dog or a Cat.
+
+Cancelling (owner, at least 2 hours before the Asia/Manila start, or administrator) keeps the appointment row and records the time in `appointments.cancelled_at`.
 
 ## Pet Profiles
 
@@ -77,7 +79,14 @@ SELECT id, age FROM public.pets WHERE age IS NULL OR age < 1 OR age > 25;
 
 ## Database Migrations
 
-Migration files in `database/migrations/` are prepared for review and run by hand in the Supabase SQL Editor; nothing applies them automatically. Each file says in its header whether it has been applied. Pending as of 2026-10-20: `2026-10-20_users_profile_fields.sql` (before deploying the backend) and `2026-10-20_rls_least_privilege.sql` (after the backend runs with the service role key; it closes every table to the public key).
+Migration files in `database/migrations/` are prepared for review and run by hand in the Supabase SQL Editor; nothing applies them automatically and the project has no migration ledger (`supabase_migrations.schema_migrations` does not exist). Each file says in its header whether it has been applied.
+
+Verified read-only against the live project on 2026-10-23 (details and evidence: `docs/live-database-reconciliation-2026-10-23.md`): the deployed Railway backend is ahead of the database. Run, in this order and each only after approval:
+
+1. `2026-10-23_reconcile_live_schema.sql`: one transaction that adds the user profile columns, the one-open-reset-code index, the breed catalog and owner weight tables, `medical_records.appointment_id`, the service catalog and the three appointment functions. It stops without changing anything if the database is not in the verified state. It replaces running the 2026-10-20 profile, 2026-10-22 and 2026-10-23 service-catalog files separately.
+2. `2026-10-20_rls_least_privilege.sql`: row level security on the 14 older tables (the backend already uses the service role key).
+
+`2026-10-17_password_resets_attempts_and_rls.sql` and `2026-10-17_paymongo_deposits.sql` are partially applied and must not be run again.
 
 ## Folder Roles
 

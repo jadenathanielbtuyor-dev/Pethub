@@ -176,10 +176,14 @@ function findForMedicalRecord(appointmentId) {
 
 // With expectedCurrentStatus, the row only changes if its status is still the one the caller checked,
 // so two admins acting at once cannot overwrite each other (0 rows returned = it changed meanwhile).
+// A cancellation keeps the row and records when it happened in the existing cancelled_at column.
 function updateStatus(appointmentId, status, handledBy, expectedCurrentStatus) {
+  const changes = status === 'Cancelled'
+    ? { status, handled_by: handledBy, cancelled_at: new Date().toISOString() }
+    : { status, handled_by: handledBy };
   let query = supabase
     .from('appointments')
-    .update({ status, handled_by: handledBy })
+    .update(changes)
     .eq('id', appointmentId);
 
   if (expectedCurrentStatus) {

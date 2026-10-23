@@ -7,7 +7,8 @@ const { logAdminActivity } = require('../utils/activityLogger');
 const { logUserActivity } = require('../utils/activityLogger');
 const appointmentNotificationsService = require('./appointmentNotificationsService');
 const {
-  hasValue
+  hasValue,
+  isUuid
 } = require('../validators/commonValidator');
 const {
   INVALID_APPOINTMENT_DATE_MESSAGE,
@@ -172,6 +173,9 @@ const createAppointment = async (req) => {
     if (!serviceId && !serviceName) {
       const validation = validateCreateAppointment(body, null);
       return validation.error;
+    }
+    if (serviceId && !isUuid(serviceId)) {
+      return { statusCode: 400, body: { error: 'Select a valid service type.' } };
     }
 
     const serviceResult = serviceId

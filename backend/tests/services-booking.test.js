@@ -182,3 +182,36 @@ describe('Admin figures', () => {
     }
   });
 });
+
+describe('Malformed booking and clinic-calendar figures', () => {
+  it('a malformed service id is a bad request, not a server error, and nothing is booked', async () => {
+    const user = t.createUser();
+    const dog = seedPet(user, 'Dog', 'Rex');
+    const before = t.db.table('appointments').length;
+    const response = await t.api('POST', '/appointments/create', {
+      token: user.token,
+      body: { user_id: user.id, pet_id: dog.id, service_id: 'not-a-service-id', appointment_date: t.manilaDate(40), appointment_time: '10:00:00' }
+    });
+    assert.equal(response.status, 400);
+    assert.equal(t.db.table('appointments').length, before);
+  });
+
+  it('the clinic date does not depend on the server timezone', () => {
+    const { getClinicDateValue } = require('../validators/appointmentsValidator');
+    assert.equal(getClinicDateValue(new Date('2026-10-23T15:59:59Z')), '2026-10-23');
+    assert.equal(getClinicDateValue(new Date('2026-10-23T16:00:00Z')), '2026-10-24', 'midnight in Asia/Manila is 16:00 UTC');
+  });
+
+  it('the admin 7-day trend ends on today in Asia/Manila', async () => {
+    const owner = t.createUser();
+    const dog = seedPet(owner, 'Dog', 'Trend');
+    const trend = async () => (await t.api('GET', `/admin/analytics/appointments-trend?user_id=${admin.id}`, { token: admin.token })).body;
+    const before = await trend();
+    [0, -6, -7].forEach(daysAhead => t.createAppointment(owner, { pet: dog, daysAhead, status: 'Completed' }));
+    const after = await trend();
+
+    assert.deepEqual(after.values.map((value, index) => value - before.values[index]), [1, 0, 0, 0, 0, 0, 1]);
+    const [year, month, day] = t.manilaDate(0).split('-').map(Number);
+    assert.equal(after.labels.at(-1), new Date(Date.UTC(year, month - 1, day)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }));
+  });
+});

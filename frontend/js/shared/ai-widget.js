@@ -896,6 +896,12 @@
       return { allowed: true };
     }
 
+    // Emergencies always reach the backend, which answers them with emergency guidance. Blocked words such as "kill",
+    // "harm" or "drugs" must not turn "Can rat poison kill my cat?" into an off-topic reply.
+    if (/\b(poison\w*|toxic|toxin\w*|ingest\w*|swallow\w*|bleed\w*|blood|seizure\w*|convuls\w*|chok\w*|not breathing|cannot breathe|can't breathe|collaps\w*|unconscious|unresponsive|faint\w*|passing out|hit by|fracture\w*|broken bone|lason|nalason|dugo|nagdudugo|dumudugo|kombulsyon|nangingisay|hindi makahinga|nabulunan|hinimatay|nasagasaan)\b/i.test(lowerMessage)) {
+      return { allowed: true };
+    }
+
     // Check for blocked terms as whole words so normal words that contain them
     // (e.g. "exercise", "appetite", "grass") are not rejected
     for (let term of blockedTerms) {

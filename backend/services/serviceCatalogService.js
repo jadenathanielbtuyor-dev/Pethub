@@ -31,10 +31,12 @@ async function listAdminServices() {
   try {
     const { data, error } = await serviceCatalogRepository.listAll();
     if (error) return failedCatalogLoad(error);
-    const services = listServicesForClient(data || []).map((service, index) => ({
+    // listServicesForClient re-sorts the rows, so each service's version is looked up by id, not by position
+    const rowsById = new Map((data || []).map(row => [String(row.id), row]));
+    const services = listServicesForClient(data || []).map(service => ({
       ...service,
-      version: data[index]?.version,
-      updated_at: data[index]?.updated_at || null
+      version: rowsById.get(service.id)?.version,
+      updated_at: rowsById.get(service.id)?.updated_at || null
     }));
     return { statusCode: 200, body: { success: true, services } };
   } catch (error) {

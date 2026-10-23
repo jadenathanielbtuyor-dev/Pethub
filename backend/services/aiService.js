@@ -22,6 +22,13 @@ const EMERGENCY_KEYWORDS = [
   'broken bone', 'fracture', 'trauma', 'accident', 'hit by', 'ingested',
   'extreme lethargy', 'unresponsive', 'passing out', 'fainting'
 ];
+// The same emergencies described in Tagalog / Taglish; these are answered in Tagalog
+const TAGALOG_EMERGENCY_KEYWORDS = [
+  'nalason', 'lason', 'nagdudugo', 'dumudugo', 'kombulsyon', 'nangingisay', 'hindi makahinga', 'hindi humihinga',
+  'nabulunan', 'nawalan ng malay', 'hinimatay', 'nasagasaan'
+];
+const EMERGENCY_RESPONSE = "🚨 **EMERGENCY - Your pet needs immediate veterinary care!**\n\nPlease contact an emergency vet clinic NOW. Do not wait.\n\nOnce stabilized, book urgent appointment in your **Appointments** page.\n\nFor emergency care, contact a local emergency vet clinic or animal poison control.\n\nYour pet's life may depend on immediate action. ⚠️";
+const TAGALOG_EMERGENCY_RESPONSE = "🚨 **EMERGENCY - Kailangan agad ng beterinaryo ang alaga mo!**\n\nMakipag-ugnayan NGAYON sa emergency vet clinic. Huwag nang maghintay.\n\nKapag stable na siya, mag-book ng agarang appointment sa **Appointments** page.\n\nPara sa emergency care, tumawag sa pinakamalapit na emergency vet clinic o animal poison control.\n\nMaaaring nakasalalay ang buhay ng alaga mo sa agarang aksyon. ⚠️";
 const HUMAN_BITE_SOURCE = Object.freeze({
   title: 'WHO: Rabies',
   url: 'https://www.who.int/news-room/fact-sheets/detail/rabies'
@@ -666,14 +673,14 @@ const chat = async (req) => {
 
     // ==================== EMERGENCY DETECTION ====================
     // Check for critical emergency keywords
-    const isEmergency = EMERGENCY_KEYWORDS.some(keyword => 
+    const isEmergency = EMERGENCY_KEYWORDS.some(keyword =>
       lowerMessage.includes(keyword)
     );
+    const isTagalogEmergency = TAGALOG_EMERGENCY_KEYWORDS.some(keyword => lowerMessage.includes(keyword));
 
-    if (isEmergency) {
-      const emergencyResponse = "🚨 **EMERGENCY - Your pet needs immediate veterinary care!**\n\nPlease contact an emergency vet clinic NOW. Do not wait.\n\nOnce stabilized, book urgent appointment in your **Appointments** page.\n\nFor emergency care, contact a local emergency vet clinic or animal poison control.\n\nYour pet's life may depend on immediate action. ⚠️";
+    if (isEmergency || isTagalogEmergency) {
       return { statusCode: 200, body: {
-        reply: emergencyResponse,
+        reply: isTagalogEmergency ? TAGALOG_EMERGENCY_RESPONSE : EMERGENCY_RESPONSE,
         success: true,
         isEmergency: true,
         sources: [],
@@ -795,8 +802,9 @@ async function callGeminiAPI(userMessage, systemPrompt = SYSTEM_PROMPT, history 
     }
   };
   if (shouldUseGoogleSearch(userMessage)) {
-    // Gemini 2.5 uses Google Search Retrieval grounding on the legacy generateContent API.
-    requestBody.tools = [{ googleSearchRetrieval: {} }];
+    // Grounding with Google Search: current models (Gemini 2.0 and later, including 2.5 Flash) take the google_search
+    // tool; google_search_retrieval is only for older models (https://ai.google.dev/gemini-api/docs/google-search).
+    requestBody.tools = [{ google_search: {} }];
   }
 
   const controller = new AbortController();

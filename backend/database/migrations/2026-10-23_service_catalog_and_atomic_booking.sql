@@ -1,5 +1,7 @@
 -- PetHub: persistent service configuration and database-atomic booking inserts.
--- Prepared 2026-10-23. NOT APPLIED. Review the target schema and approve before running.
+-- Prepared 2026-10-23. NOT APPLIED (verified 2026-10-23: Railway already requests pethub_service_catalog and gets 404).
+-- SUPERSEDED by 2026-10-23_reconcile_live_schema.sql PART F (its approval function also sets appointments.cancelled_at).
+-- Do not run this file.
 --
 -- The current application stores service details/durations in backend source and every duration is unconfirmed.
 -- This table becomes the runtime source of truth. The nine current entries are seeded disabled with no durations.

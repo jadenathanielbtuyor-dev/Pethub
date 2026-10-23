@@ -3131,7 +3131,7 @@ function ensureMedicalRecordModal() {
           <div class="ph-form-grid">
             <div class="ph-field">
               <label for="adminMedicalRecordWeight" class="ph-label">Weight (kg)</label>
-              <input id="adminMedicalRecordWeight" name="weight" type="number" min="0" step="0.01" required class="ph-input">
+              <input id="adminMedicalRecordWeight" name="weight" type="number" min="0.01" step="0.01" required class="ph-input">
             </div>
             <div class="ph-field">
               <label for="adminMedicalRecordVaccination" class="ph-label">Vaccination Status</label>
@@ -3314,8 +3314,8 @@ function getMedicalRecordFormPayload(form, appointmentId = '') {
   }
 
   const numericWeight = Number(payload.weight);
-  if (!Number.isFinite(numericWeight) || numericWeight < 0) {
-    throw new Error('Weight must be a valid non-negative number.');
+  if (!Number.isFinite(numericWeight) || numericWeight <= 0) {
+    throw new Error('Weight must be a number greater than zero.');
   }
 
   return payload;

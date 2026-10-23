@@ -110,6 +110,13 @@ function getAppointmentStartTimestamp(appointmentDate, appointmentTime, timeZone
   return matches ? candidateMs : null;
 }
 
+// The date (YYYY-MM-DD) on the clinic's wall clock, whatever timezone the server runs in
+function getClinicDateValue(date = new Date(), timeZone = CLINIC_TIME_ZONE) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit'
+  }).format(date);
+}
+
 function validateOwnerCancellationRequest(params = {}, authenticatedUserId) {
   const normalizedAppointmentId = trimValue(params.id);
   const normalizedUserId = trimValue(authenticatedUserId);
@@ -141,10 +148,7 @@ function getAppointmentDateTimeValidationError(appointmentDate, appointmentTime)
   if (!parsedTime) return INVALID_APPOINTMENT_TIME_MESSAGE;
 
   const clinicNow = new Date();
-  const clinicToday = new Intl.DateTimeFormat('en-CA', {
-    timeZone: CLINIC_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit'
-  }).format(clinicNow);
-  const today = clinicToday;
+  const today = getClinicDateValue(clinicNow);
   if (normalizedDate < today) return PAST_APPOINTMENT_DATE_MESSAGE;
   if (normalizedDate > today) return '';
 
@@ -302,6 +306,7 @@ module.exports = {
   normalizeAppointmentTime,
   parseAppointmentTime,
   normalizeDurationMinutes,
+  getClinicDateValue,
   getAppointmentStartTimestamp,
   validateOwnerCancellationRequest,
   getAppointmentTimeRange,

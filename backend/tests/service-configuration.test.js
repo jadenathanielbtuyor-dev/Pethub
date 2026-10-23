@@ -86,4 +86,18 @@ describe('Persistent service settings', () => {
     assert.equal(stale.status, 409);
     assert.match(stale.body.error, /changed after the page loaded/i);
   });
+
+  it('pairs each service with its own version when two services share a display order', async () => {
+    const admin = t.createUser({ role: 'admin' });
+    const bath = t.db.find('pethub_service_catalog', row => row.name === 'Bath');
+    const other = t.db.find('pethub_service_catalog', row => row.name === 'Face Trim');
+    // Same position: the database orders the names by code point ("Bath" first), the admin list alphabetically
+    Object.assign(other, { name: 'aromatherapy trim', display_order: bath.display_order, version: 7 });
+
+    const list = await t.api('GET', '/admin/services', { token: admin.token });
+    assert.equal(list.status, 200);
+    const versions = Object.fromEntries(list.body.services.map(service => [service.id, service.version]));
+    assert.equal(versions[other.id], 7);
+    assert.equal(versions[bath.id], bath.version);
+  });
 });

@@ -1,6 +1,17 @@
 -- =====================================================================================================
 -- PetHub: close the database to the public (publishable / anon) API key
--- Prepared 2026-10-20. NOT APPLIED. Run in the Supabase SQL Editor only after explicit approval.
+-- Prepared 2026-10-20. NOT APPLIED (re-verified 2026-10-23). Run in the Supabase SQL Editor only after explicit approval,
+-- AFTER 2026-10-23_reconcile_live_schema.sql.
+--
+-- Verified 2026-10-23 through the read-only Supabase MCP (live project; no row contents read):
+--   * all 14 tables below: relrowsecurity = false, 0 policies; anon and authenticated hold every table privilege
+--     (arwdDxtm, including TRUNCATE). users.password, email_verifications.verification_code and
+--     password_resets.reset_token are therefore readable and writable with the public key. 2 of the 5 accounts still
+--     store a legacy (non-hashed) password value.
+--   * Supabase API logs, last 24 h: every PostgREST request (Railway backend and the local backend) used the
+--     service_role key; there were no anon-key requests. The frontend contains no Supabase URL or key. So step 0/1
+--     below is already satisfied and enabling RLS should not affect the application. Still run the smoke test.
+--   * The three tables created by 2026-10-23_reconcile_live_schema.sql already have RLS on and no API-role grants.
 --
 -- Why: on 2026-10-20 a count-only check (no rows read) showed the publishable key could read EVERY public table,
 -- with the same row counts as the service role key: users (including the password column), email_verifications
@@ -119,7 +130,8 @@ COMMIT;
 
 
 -- ---------------------------------------------------------------------------------
--- PART 3a: check (read-only). Expect rls_enabled = true for all fourteen tables.
+-- PART 3a: check (read-only). Expect rls_enabled = true for every table (fourteen here, seventeen after the
+-- 2026-10-23 reconciliation).
 -- ---------------------------------------------------------------------------------
 SELECT c.relname AS table_name, c.relrowsecurity AS rls_enabled
 FROM pg_class c

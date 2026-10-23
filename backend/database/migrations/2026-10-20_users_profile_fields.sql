@@ -1,7 +1,8 @@
 -- =====================================================================================================
 -- PetHub: personal and contact details on public.users (registration page + user dashboard "Your details")
 -- Prepared 2026-10-20, revised 2026-10-20 (details now REQUIRED for new accounts). NOT APPLIED.
--- Run in the Supabase SQL Editor only after explicit approval.
+-- 2026-10-23: verified NOT applied on the live database. Its PART 2 is included unchanged in
+-- 2026-10-23_reconcile_live_schema.sql: run that file instead of this one (running both stops at the preflight).
 --
 --   P1  seven new NULLABLE columns: date_of_birth, gender, address_line, barangay, city_municipality, province,
 --       postal_code, each with a CHECK constraint that accepts NULL or a value the backend would accept.
