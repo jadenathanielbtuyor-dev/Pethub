@@ -65,7 +65,7 @@ describe('Service catalog as shipped', () => {
         body: { user_id: user.id, pet_id: pet.id, pet_name: pet.name, service_type: service, appointment_date: t.manilaDate(3), appointment_time: '10:00:00' }
       });
       assert.equal(response.status, 409, service);
-      assert.match(response.body.error, /online booking is disabled/i);
+      assert.equal(response.body.error, 'This service is temporarily unavailable for online booking. Please select another service.');
     }
     assert.equal(t.db.table('appointments').length, 0);
   });

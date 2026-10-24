@@ -87,7 +87,10 @@ const FETCH_STUB = `(() => {
     if (route === '/pets/userPets') return reply(200, { success: true, pets: scenario.pets });
     if (route === '/appointments/services') {
       if (scenario.servicesStatus) return reply(scenario.servicesStatus, { error: 'Server error' });
-      return reply(200, { success: true, services: scenario.services, species: ['Dog', 'Cat'] }, scenario.servicesDelay || 0);
+      // servicesSequence: one list per request (the last one repeats), e.g. a service switched off after the first load
+      const sequence = scenario.servicesSequence;
+      const services = Array.isArray(sequence) && sequence.length ? (sequence.length > 1 ? sequence.shift() : sequence[0]) : scenario.services;
+      return reply(200, { success: true, services, species: ['Dog', 'Cat'] }, scenario.servicesDelay || 0);
     }
     if (route === '/appointments/all') return reply(200, { success: true, appointments: [] });
     if (route === '/appointments/create') return reply(scenario.createStatus || 201, scenario.createBody || { success: true, appointment: {} }, scenario.createDelay ?? 100);
@@ -235,6 +238,8 @@ const paymentRequests = `window.__requests.filter(r => /payment|checkout|deposit
 const petsLoaded = 'document.getElementById("petSelect").options.length > 1 && document.querySelectorAll("#serviceType option[value]:not([value=\'\'])").length > 0';
 const serviceOptions = `[...document.querySelectorAll('#serviceType optgroup')].map(group => ({ label: group.label, options: [...group.querySelectorAll('option')].map(option => ({ value: option.value, text: option.textContent, disabled: option.disabled })) }))`;
 const serviceHint = `(() => { const hint = document.getElementById('serviceTypeHint'); return hint.classList.contains('hidden') ? '' : hint.textContent.trim(); })()`;
+const serviceCardNames = `[...document.querySelectorAll('#serviceCardList [data-service-name]')].map(card => card.dataset.serviceName)`;
+const textOf = id => `(document.getElementById(${JSON.stringify(id)}) || {}).textContent?.replace(/\\s+/g, ' ').trim() || ''`;
 const CONTRAST = `
   const luminance = color => { const [r, g, b] = color.match(/[\\d.]+/g).map(Number).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
   const background = element => { for (let e = element; e; e = e.parentElement) { const color = getComputedStyle(e).backgroundColor; if (color && !/rgba\\(0, 0, 0, 0\\)|transparent/.test(color)) return color; } return 'rgb(255, 255, 255)'; };
@@ -412,7 +417,11 @@ describe('Booking page in a browser (mocked API)', { skip }, () => {
       await tab.evaluate(fillForm({ petSelect: 'p2', serviceType: '' }));
       let options = (await tab.evaluate(serviceOptions)).flatMap(group => group.options);
       assert.deepEqual(options.filter(option => option.disabled).map(option => option.text), ['Puppy Cut (not offered for cats)']);
-      assert.equal(await tab.evaluate(serviceHint), 'Services marked "not offered for cats" can\'t be booked for this pet.');
+      // The cards offer only what can be booked for a cat: Puppy Cut is left out, with no repeated "not offered" text
+      const catCards = await tab.evaluate(serviceCardNames);
+      assert.equal(catCards.includes('Puppy Cut'), false);
+      assert.equal(catCards.length, SERVICES.length - 1);
+      assert.equal(await tab.evaluate(serviceHint), '');
 
       // A service picked for the dog is cleared when a cat is chosen
       await tab.evaluate(fillForm({ petSelect: 'p1', serviceType: 'Puppy Cut' }));
@@ -428,18 +437,75 @@ describe('Booking page in a browser (mocked API)', { skip }, () => {
     } finally { await tab.close(); }
   });
 
-  it('while no duration is confirmed, shows every service as not open for online booking and keeps the button disabled', async () => {
+  it('when no service can be booked online, shows the "temporarily unavailable" notice instead of the form', async () => {
     const unconfirmed = SERVICES.map(service => ({ ...service, duration_minutes: null, bookable: false }));
     const tab = await openTab({ url: BOOKING_PAGE, scenario: { services: unconfirmed } });
     try {
       assert.ok(await tab.waitFor(petsLoaded));
+      assert.ok(await tab.waitFor(`!document.getElementById('bookingClosedNotice').hidden`));
+      assert.match(await tab.evaluate(`document.getElementById('bookingClosedNotice').textContent.replace(/\\s+/g, ' ')`),
+        /Online booking is temporarily unavailable\. Please check again later or contact the clinic for assistance\./);
+      assert.equal(await tab.evaluate(`document.getElementById('appointmentForm').hidden`), true, 'no form that cannot be completed');
+      assert.deepEqual(await tab.evaluate(serviceCardNames), []);
       const options = (await tab.evaluate(serviceOptions)).flatMap(group => group.options);
       assert.ok(options.every(option => option.disabled && option.text.endsWith('(online booking not open yet)')));
-      assert.equal(await tab.evaluate(serviceHint), 'No service is currently open for online booking. Check the service cards for details, or contact the clinic.');
       await tab.evaluate(fillForm({ serviceType: 'Bath' }));
       const state = await tab.evaluate(summaryState);
       assert.equal(state.buttonDisabled, true);
       assert.equal(state.duration, 'Not selected');
+      assert.deepEqual(tab.errors, []);
+    } finally { await tab.close(); }
+  });
+
+  it('shows only services open for online booking, as compact cards by category, and books the chosen service by its id', async () => {
+    const someOff = SERVICES.map(service => (['Trim', 'Face Trim'].includes(service.name) ? { ...service, online_booking_enabled: false, bookable: false } : service));
+    const tab = await openTab({ url: BOOKING_PAGE, scenario: { services: someOff, createBody: { success: true, appointment: appointment() } } });
+    try {
+      assert.ok(await tab.waitFor(petsLoaded));
+      assert.equal(await tab.evaluate(textOf('servicePickerTitle')), 'Choose a Service');
+      assert.equal(await tab.evaluate(textOf('servicePickerIntro')), 'Select an available service for your pet.');
+      const names = await tab.evaluate(serviceCardNames);
+      assert.deepEqual(names, SERVICES.map(service => service.name).filter(name => !['Trim', 'Face Trim'].includes(name)));
+      assert.deepEqual(await tab.evaluate(`[...document.querySelectorAll('#serviceCardList .service-choice-group > p')].map(p => p.textContent.trim())`), ['Grooming', 'Veterinary check-up']);
+      assert.equal(await tab.evaluate(`document.getElementById('serviceUnavailableNote').hidden`), false);
+      assert.equal(await tab.evaluate(textOf('serviceUnavailableNote')), 'Some services are temporarily unavailable.');
+      assert.doesNotMatch(await tab.evaluate(textOf('serviceCardList')), /disabled|not open|not enabled|locked/i, 'no repeated unavailable messages');
+      assert.equal(await tab.evaluate(`document.querySelectorAll('#serviceCardList button[disabled]').length`), 0, 'nothing shown that cannot be chosen');
+      // Each card: name, description, confirmed duration and species (its category is the heading of its group)
+      assert.match(await tab.evaluate(`document.querySelector('[data-service-name="Bath"]').innerText.replace(/\\s+/g, ' ')`), /^Bath A bath for your dog or cat\. 1 hour · Dogs and cats$/);
+      assert.equal(await tab.evaluate(`document.querySelector('[data-service-name="Bath"]').closest('.service-choice-group').querySelector('p').textContent.trim()`), 'Grooming');
+
+      await tab.evaluate(fillForm({ serviceType: '' }));
+      await clickElement(tab, '[data-service-name="Bath"]');
+      assert.ok(await tab.waitFor(`document.querySelector('[data-service-name="Bath"]').getAttribute('aria-pressed') === 'true'`));
+      assert.equal(await tab.evaluate(`document.getElementById('serviceType').value`), 'Bath');
+      assert.equal(await tab.evaluate(`document.querySelectorAll('#serviceCardList [aria-pressed="true"]').length`), 1);
+      assert.equal((await tab.evaluate(summaryState)).service, 'Bath');
+      await tab.evaluate(fillForm({ serviceType: 'Bath' }));
+      await tab.evaluate(`${SUBMIT}.click()`);
+      assert.ok(await tab.waitFor(`document.getElementById('messageContainer').textContent.includes('Appointment booked')`));
+      const [booking] = await tab.evaluate(requests('POST', '/appointments/create'));
+      assert.equal(JSON.parse(booking.body).service_id, SERVICES.find(service => service.name === 'Bath').id);
+      assert.deepEqual(tab.errors, []);
+    } finally { await tab.close(); }
+  });
+
+  it('a service switched off after the page loaded: the refusal is shown and the list reloads without it', async () => {
+    const off = SERVICES.map(service => (service.name === CHECK_UP ? { ...service, online_booking_enabled: false, bookable: false } : service));
+    const refusal = 'This service is temporarily unavailable for online booking. Please select another service.';
+    const tab = await openTab({ url: BOOKING_PAGE, scenario: { servicesSequence: [SERVICES, off], createStatus: 409, createBody: { error: refusal } } });
+    try {
+      assert.ok(await tab.waitFor(petsLoaded));
+      assert.ok((await tab.evaluate(serviceCardNames)).includes(CHECK_UP));
+      await tab.evaluate(fillForm());
+      await tab.evaluate(`${SUBMIT}.click()`);
+      assert.ok(await tab.waitFor(`document.getElementById('messageContainer').textContent.includes('temporarily unavailable')`));
+      assert.equal((await tab.evaluate(summaryState)).feedback, refusal);
+      assert.ok(await tab.waitFor(`${requests('GET', '/appointments/services')}.length === 2`), 'the list is reloaded');
+      assert.ok(await tab.waitFor(`![...document.querySelectorAll('#serviceCardList [data-service-name]')].some(card => card.dataset.serviceName === ${JSON.stringify(CHECK_UP)})`));
+      assert.equal(await tab.evaluate(`document.getElementById('serviceType').value`), '', 'the switched-off service is no longer selected');
+      assert.equal((await tab.evaluate(summaryState)).buttonDisabled, true);
+      assert.equal(await tab.evaluate(`document.getElementById('serviceUnavailableNote').hidden`), false);
     } finally { await tab.close(); }
   });
 

@@ -14,6 +14,7 @@ const {
   PAST_APPOINTMENT_DATE_MESSAGE,
   PAST_APPOINTMENT_TIME_MESSAGE,
   SCHEDULE_CONFLICT_MESSAGE,
+  SERVICE_TEMPORARILY_UNAVAILABLE_MESSAGE,
   OCCUPIED_APPOINTMENT_STATUSES,
   VALID_APPOINTMENT_STATUSES,
   CLINIC_TIME_ZONE
@@ -199,6 +200,13 @@ function validateCreateAppointment(body = {}, service = null) {
   if (requestedServiceType && requestedServiceType !== serviceType) {
     return {
       error: { statusCode: 409, body: { error: 'The service configuration changed. Refresh the service list and try again.' } }
+    };
+  }
+
+  // Switched off by the clinic (possibly after the customer opened the booking page)
+  if (service.online_booking_enabled !== true) {
+    return {
+      error: { statusCode: 409, body: { error: SERVICE_TEMPORARILY_UNAVAILABLE_MESSAGE } }
     };
   }
 

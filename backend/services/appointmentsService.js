@@ -14,7 +14,8 @@ const {
   INVALID_APPOINTMENT_DATE_MESSAGE,
   APPOINTMENT_STATUS_CHANGED_MESSAGE,
   APPOINTMENT_CANCELLATION_CUTOFF_HOURS,
-  APPOINTMENT_CANCELLATION_CUTOFF_MESSAGE
+  APPOINTMENT_CANCELLATION_CUTOFF_MESSAGE,
+  SERVICE_TEMPORARILY_UNAVAILABLE_MESSAGE
 } = require('../constants/appointments');
 const { SERVICE_SPECIES } = require('../constants/services');
 const { isServiceAvailableForSpecies, describeSpecies } = require('../utils/serviceCatalog');
@@ -252,6 +253,11 @@ const createAppointment = async (req) => {
         return { statusCode: 503, body: { error: 'Secure booking is unavailable until the reviewed database rule is installed.' } };
       }
       if (String(error.code || '') === 'P0001') {
+        // The database re-checked the service under a lock: say so plainly if the clinic switched it off meanwhile
+        const latest = await serviceCatalogRepository.findById(catalogServiceId);
+        if (!latest.error && latest.data?.online_booking_enabled !== true) {
+          return { statusCode: 409, body: { error: SERVICE_TEMPORARILY_UNAVAILABLE_MESSAGE } };
+        }
         return { statusCode: 409, body: { error: 'The service or pet details changed. Refresh the service list and try again.' } };
       }
       if (String(error.code || '') === '22023') {

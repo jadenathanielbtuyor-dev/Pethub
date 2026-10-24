@@ -4345,6 +4345,138 @@ body.dark-mode .ph-status-other {
   color: #e5e7eb !important;
 }
 
+/* Admin System Management: one row per service with its online booking switch */
+.service-availability-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.service-availability-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--ph-radius-control);
+  background-color: #ffffff;
+}
+
+.service-availability-info {
+  min-width: 0;
+  flex: 1 1 16rem;
+}
+
+.service-availability-name {
+  color: var(--ph-ink);
+  font-weight: 700;
+}
+
+.service-availability-meta,
+.service-availability-detail {
+  color: var(--ph-ink-muted);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.service-availability-detail {
+  margin-top: 0.125rem;
+}
+
+.service-availability-control {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* An on/off switch (role="switch", state in aria-checked); the off track keeps 3:1 contrast against its background */
+.ph-switch {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.ph-switch-track {
+  position: relative;
+  display: block;
+  width: 2.75rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  background-color: #64748b;
+  transition: background-color 150ms ease;
+}
+
+.ph-switch-thumb {
+  position: absolute;
+  top: 0.1875rem;
+  left: 0.1875rem;
+  width: 1.125rem;
+  height: 1.125rem;
+  border-radius: 999px;
+  background-color: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.35);
+  transition: transform 150ms ease;
+}
+
+.ph-switch[aria-checked="true"] .ph-switch-track {
+  background-color: #15803d;
+}
+
+.ph-switch[aria-checked="true"] .ph-switch-thumb {
+  transform: translateX(1.25rem);
+}
+
+.ph-switch:focus-visible {
+  outline: 3px solid var(--ph-orange);
+  outline-offset: 2px;
+}
+
+.ph-switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.ph-switch[aria-busy="true"] {
+  cursor: progress;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ph-switch-track,
+  .ph-switch-thumb {
+    transition: none;
+  }
+}
+
+body.dark-mode .service-availability-row {
+  border-color: #334155;
+  background-color: #1e293b;
+}
+
+body.dark-mode .service-availability-name {
+  color: #e2e8f0;
+}
+
+body.dark-mode .service-availability-meta,
+body.dark-mode .service-availability-detail {
+  color: #cbd5e1;
+}
+
+body.dark-mode .ph-switch-track {
+  background-color: #94a3b8;
+}
+
+body.dark-mode .ph-switch[aria-checked="true"] .ph-switch-track {
+  background-color: #22c55e;
+}
+
 /* Customer pages (body.user-page): cream page, rounded cards with a soft peach edge, Nunito headings. Colours in dark
    mode stay with the user pages' own dark rules (they use !important); only shape and spacing change there. */
 body.user-page,

@@ -533,14 +533,17 @@ async function loadServiceCatalog() {
   updateBookingClosedNotice();
 }
 
-// The "Online booking isn't open yet" notice: shown when the list loaded and no service has a confirmed duration
+// When the list loaded and no service can be booked online right now, the "temporarily unavailable" notice replaces
+// the booking form (a form that cannot be completed is not shown). A failed load keeps the form with its error message.
 function updateBookingClosedNotice() {
   const notice = document.getElementById("bookingClosedNotice");
+  const form = document.getElementById("appointmentForm");
   const catalog = window.AppointmentDurations;
   if (!notice || !catalog) return;
-  const services = catalog.getServices();
-  notice.hidden = !(serviceCatalogLoaded && !serviceCatalogError && services.length > 0
-    && !services.some(service => catalog.isBookable(service.name)));
+  const closed = serviceCatalogLoaded && !serviceCatalogError
+    && !catalog.getServices().some(service => catalog.isBookable(service.name));
+  notice.hidden = !closed;
+  if (form) form.hidden = closed;
 }
 
 // A "Book" link on the Services page names its service (?service=<id>); it is chosen once the list has loaded, if it
@@ -555,8 +558,9 @@ function applyRequestedService() {
   select.dispatchEvent(new Event("change"));
 }
 
-// The service list, grouped by category. Services that cannot be booked for the selected pet stay visible but
-// disabled, with the reason in their label.
+// The hidden select behind the service cards, grouped by category. It keeps every service (those that cannot be
+// booked for the selected pet are disabled, with the reason), so validation and the summary see the whole catalog;
+// the visible cards list only what can be booked.
 function renderServiceOptions() {
   const select = document.getElementById("serviceType");
   const catalog = window.AppointmentDurations;
@@ -598,10 +602,35 @@ function renderServiceOptions() {
   select.dispatchEvent(new Event("change"));
 }
 
+function setServiceUnavailableNote(visible) {
+  const note = document.getElementById("serviceUnavailableNote");
+  if (note) note.hidden = !visible;
+}
+
+function getServiceSpeciesText(service) {
+  if (service.species.includes("Dog") && service.species.includes("Cat")) return "Dogs and cats";
+  return service.species.map(species => `${species}s`).join(", ") + " only";
+}
+
+function getServiceCardHtml(catalog, service, selectedService) {
+  const selected = service.name === selectedService;
+  const stateClass = selected ? "border-orange-500 bg-orange-50" : "border-slate-200 bg-white hover:border-orange-300";
+  // The category is the heading of the card's group, so the card itself shows duration and species
+  const details = [catalog.formatDuration(service.name), getServiceSpeciesText(service)];
+  return `<button type="button" class="service-choice-card w-full rounded-xl border-2 px-3 py-2.5 text-left transition-colors cursor-pointer ${stateClass}" data-service-name="${escapeHtml(service.name)}" data-service-id="${escapeHtml(service.id)}" aria-pressed="${selected}">
+      <span class="flex items-start justify-between gap-2"><strong class="text-sm font-semibold text-slate-900">${escapeHtml(service.name)}</strong><i class="${selected ? "ri-checkbox-circle-fill text-orange-600" : "ri-checkbox-blank-circle-line text-slate-400"} text-lg leading-none" aria-hidden="true"></i></span>
+      ${service.description ? `<span class="mt-1 block text-xs text-slate-600 line-clamp-2">${escapeHtml(service.description)}</span>` : ""}
+      <span class="mt-2 block text-xs font-medium text-slate-600">${details.map(escapeHtml).join(" · ")}</span>
+    </button>`;
+}
+
+// The visible choice: only services open for online booking (and, once a pet is chosen, offered for its species),
+// grouped by category. Switched-off services are left out; a short note says some are unavailable.
 function renderServiceCards(catalog, species, selectedService) {
   const container = document.getElementById("serviceCardList");
   if (!container) return;
   if (serviceCatalogError) {
+    setServiceUnavailableNote(false);
     container.innerHTML = `<p class="ph-dash-error-text" role="alert">${escapeHtml(serviceCatalogError)}</p>`;
     return;
   }
@@ -610,25 +639,32 @@ function renderServiceCards(catalog, species, selectedService) {
     return;
   }
   const services = catalog.getServices();
-  if (!services.length) {
-    container.innerHTML = '<p class="ph-dash-note" role="status">The clinic service list is unavailable. Please contact the clinic for service information.</p>';
+  const bookable = services.filter(service => catalog.isBookable(service.name));
+  setServiceUnavailableNote(bookable.length > 0 && bookable.length < services.length);
+  if (!bookable.length) {
+    // The "temporarily unavailable" notice replaces the form (updateBookingClosedNotice)
+    container.innerHTML = "";
     return;
   }
-  container.innerHTML = services.map(service => {
-    let reason = service.unavailableReason || (!catalog.isBookable(service.name) ? "Online booking is not enabled" : "");
-    if (!reason && species && !catalog.isAvailableForSpecies(service.name, species)) {
-      reason = `Not offered for ${getSpeciesPluralLabel(species)}`;
+  const shown = species ? bookable.filter(service => catalog.isAvailableForSpecies(service.name, species)) : bookable;
+  if (!shown.length) {
+    container.innerHTML = `<p class="ph-dash-note" role="status">No service can be booked online for ${escapeHtml(getSpeciesPluralLabel(species))} right now. Choose another pet or <a href="../public/contact.html" class="ph-link-arrow">contact the clinic</a>.</p>`;
+    return;
+  }
+  const groups = [];
+  shown.forEach(service => {
+    let group = groups.find(entry => entry.category === service.category);
+    if (!group) {
+      group = { category: service.category, label: service.categoryLabel || service.category, services: [] };
+      groups.push(group);
     }
-    const canSelect = !reason && catalog.isBookable(service.name);
-    const selected = service.name === selectedService;
-    const stateClass = selected ? "border-orange-500 bg-orange-50" : "border-slate-200 bg-white hover:border-orange-300";
-    return `<button type="button" class="service-choice-card rounded-xl border-2 p-4 text-left transition-colors ${stateClass} ${canSelect ? "cursor-pointer" : "cursor-not-allowed opacity-75"}" data-service-name="${escapeHtml(service.name)}" aria-pressed="${selected}" ${canSelect ? "" : "disabled"}>
-      <span class="flex items-start justify-between gap-3"><span><strong class="block text-base text-slate-900">${escapeHtml(service.name)}</strong><span class="mt-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">${escapeHtml(service.categoryLabel || service.category)}</span></span><i class="${selected ? "ri-checkbox-circle-fill text-orange-600" : canSelect ? "ri-checkbox-blank-circle-line text-slate-400" : "ri-lock-line text-slate-400"}" aria-hidden="true"></i></span>
-      <span class="mt-3 block text-sm text-slate-600">${escapeHtml(service.description || "")}</span>
-      <span class="mt-3 block text-sm font-medium ${canSelect ? "text-emerald-700" : "text-slate-500"}">${canSelect ? `Duration: ${escapeHtml(catalog.formatDuration(service.name))}` : escapeHtml(reason || "Online booking is not available")}</span>
-      ${service.species.length ? `<span class="mt-1 block text-xs text-slate-500">For ${escapeHtml(service.species.join(" and "))}</span>` : '<span class="mt-1 block text-xs text-slate-500">Applicable species not confirmed</span>'}
-    </button>`;
-  }).join("");
+    group.services.push(service);
+  });
+  container.innerHTML = groups.map(group => `
+    <div class="service-choice-group">
+      <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">${escapeHtml(group.label)}</p>
+      <div class="grid gap-2 grid-cols-[repeat(auto-fill,minmax(13rem,1fr))]">${group.services.map(service => getServiceCardHtml(catalog, service, selectedService)).join("")}</div>
+    </div>`).join("");
 
   if (!serviceCardClickBound) {
     container.addEventListener("click", event => {
@@ -644,26 +680,20 @@ function renderServiceCards(catalog, species, selectedService) {
   }
 }
 
-// Under the service list: why services are unavailable, or what the selected service is
+// Under the service list: a load error, or what the selected service is
 function updateServiceTypeHint() {
   const hint = document.getElementById("serviceTypeHint");
   const catalog = window.AppointmentDurations;
   if (!hint || !catalog) return;
 
-  const services = catalog.getServices();
   const selected = catalog.getService(document.getElementById("serviceType")?.value);
-  const species = getSelectedPetSpecies();
   let text = "";
   let isError = false;
   if (serviceCatalogError) {
     text = serviceCatalogError;
     isError = true;
-  } else if (serviceCatalogLoaded && services.length > 0 && !services.some(service => catalog.isBookable(service.name))) {
-    text = "No service is currently open for online booking. Check the service cards for details, or contact the clinic.";
   } else if (selected) {
     text = selected.description;
-  } else if (species && services.some(service => catalog.isBookable(service.name) && !catalog.isAvailableForSpecies(service.name, species))) {
-    text = `Services marked "not offered for ${getSpeciesPluralLabel(species)}" can't be booked for this pet.`;
   }
 
   hint.textContent = text;
@@ -1413,6 +1443,7 @@ async function bookAppointment(details) {
     if (!response.ok) {
       const bookingError = new Error(data.error || "Could not book appointment.");
       bookingError.suggestedTime = data.suggested_time;
+      bookingError.status = response.status;
       throw bookingError;
     }
 
@@ -1432,6 +1463,9 @@ async function bookAppointment(details) {
     applyServerAppointmentDateTimeError(errorMessage);
     showAppointmentFeedback(messageContainer, errorMessage, "error");
     if (!error?.suggestedTime && typeof showError === "function") showError(errorMessage);
+    // A 409 without a suggested time means the service itself changed (e.g. the clinic switched it off after this
+    // page loaded): reload the list so it no longer offers what cannot be booked
+    if (error?.status === 409 && !error?.suggestedTime) await loadServiceCatalog();
   } finally {
     appointmentSubmitInProgress = false;
     setFormSubmitting(form, false, "Booking...", "Book Appointment");

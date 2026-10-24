@@ -6,6 +6,8 @@ const PAST_APPOINTMENT_DATE_MESSAGE = 'Appointment date cannot be in the past.';
 const PAST_APPOINTMENT_TIME_MESSAGE = 'Appointment time must be later than the current time when booking for today.';
 const SCHEDULE_CONFLICT_MESSAGE = 'Selected time is unavailable.';
 const APPOINTMENT_STATUS_CHANGED_MESSAGE = 'This appointment was just changed by someone else. Refresh the list and try again.';
+// A booking for a service the clinic has switched off (also when it was switched off after the page loaded)
+const SERVICE_TEMPORARILY_UNAVAILABLE_MESSAGE = 'This service is temporarily unavailable for online booking. Please select another service.';
 const CLINIC_TIME_ZONE = 'Asia/Manila';
 const APPOINTMENT_CANCELLATION_CUTOFF_HOURS = 2;
 const APPOINTMENT_CANCELLATION_CUTOFF_MESSAGE = 'Appointments can only be cancelled at least 2 hours before their scheduled start time. Please contact the clinic for help.';
@@ -20,6 +22,7 @@ module.exports = {
   PAST_APPOINTMENT_TIME_MESSAGE,
   SCHEDULE_CONFLICT_MESSAGE,
   APPOINTMENT_STATUS_CHANGED_MESSAGE,
+  SERVICE_TEMPORARILY_UNAVAILABLE_MESSAGE,
   CLINIC_TIME_ZONE,
   APPOINTMENT_CANCELLATION_CUTOFF_HOURS,
   APPOINTMENT_CANCELLATION_CUTOFF_MESSAGE,

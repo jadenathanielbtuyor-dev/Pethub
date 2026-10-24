@@ -264,8 +264,9 @@ describe('Pet Owner Dashboard in a browser (mocked API)', { skip }, () => {
       assert.doesNotMatch(list, /Checkup/);
       assert.equal(await tab.evaluate(`document.querySelectorAll('#appointmentsList button').length`), 0, 'no change or cancel buttons for owners');
 
-      // Booking: every service waits for a confirmed duration
+      // Booking: every service waits for a confirmed duration, so the notice replaces the form
       assert.ok(await tab.waitFor(`!document.getElementById('bookingClosedNotice').hidden`));
+      assert.equal(await tab.evaluate(`document.getElementById('appointmentForm').hidden`), true);
       assert.equal(await tab.evaluate(`document.querySelector('#appointmentForm button[type=submit]').disabled`), true);
       assert.deepEqual(await tab.evaluate(requests('POST', '/appointments/create')), []);
       assert.deepEqual(tab.errors, []);
@@ -528,6 +529,83 @@ describe('Admin Dashboard in a browser (mocked API)', { skip }, () => {
       assert.ok(await tab.waitFor(`document.querySelectorAll('#servicesCatalogContainer .service-config-form').length === 9`));
       assert.match(await tab.evaluate(textOf('#bookingStatusSummary')), /Online booking is closed/);
       assert.equal(await tab.evaluate(`document.querySelectorAll('#servicesCatalogContainer .ph-status-other').length`), 9, 'all services shown as closed');
+      // One availability switch per service; none can be switched on before a duration (and species) is confirmed
+      const switches = await tab.evaluate(`[...document.querySelectorAll('#servicesCatalogContainer [role="switch"]')].map(s => ({ label: s.getAttribute('aria-label'), checked: s.getAttribute('aria-checked'), disabled: s.disabled }))`);
+      assert.equal(switches.length, 9);
+      assert.ok(switches.every(s => s.checked === 'false' && s.disabled), JSON.stringify(switches));
+      assert.equal(switches[0].label, 'Online booking for Bath');
+      assert.match(await tab.evaluate(textOf('[data-service-row="b0000000-0000-4000-8000-000000000001"]')), /Needs a confirmed duration under Service details[\s\S]*Temporarily unavailable/);
+      assert.match(await tab.evaluate(textOf('[data-service-row="b0000000-0000-4000-8000-000000000003"]')), /Needs a confirmed duration and applicable species/, 'Puppy Cut');
+      // The detailed settings are folded away and no longer carry their own availability checkbox
+      assert.equal(await tab.evaluate(`document.querySelectorAll('#servicesCatalogContainer details.service-settings[open]').length`), 0);
+      assert.equal(await tab.evaluate(`document.querySelectorAll('#servicesCatalogContainer input[name="online_booking_enabled"]').length`), 0);
+      assert.deepEqual(tab.errors, []);
+    } finally { await tab.close(); }
+  });
+
+  it('an admin switches a service off and on from its row: saved through the API, shown at once, without reloading the list', async () => {
+    const configured = ADMIN_SERVICES.map(service => (['Bath', 'Trim'].includes(service.name)
+      ? { ...service, duration_minutes: service.name === 'Bath' ? 60 : 45, online_booking_enabled: true, bookable: true, unavailable_reason: '' }
+      : service));
+    const bath = configured[0];
+    const trim = configured[1];
+    const saved = (service, enabled, version) => ok({ service: { ...service, online_booking_enabled: enabled, bookable: enabled, unavailable_reason: enabled ? '' : 'Online booking is disabled for this service.' }, version, updated_at: new Date().toISOString() });
+    const routes = adminRoutes({
+      '/admin/services': ok({ services: configured }),
+      [`/admin/services/${bath.id}`]: [saved(bath, false, 2), saved(bath, true, 3)],
+      [`/admin/services/${trim.id}`]: { status: 500, body: { success: false, error: 'Could not save this service configuration.' } }
+    });
+    const tab = await open('pages/admin/dashboard.html', '#services', ADMIN, routes);
+    const bathSwitch = `[data-service-toggle="${bath.id}"]`;
+    const putBodies = `window.__requests.filter(r => r.method === 'PUT' && r.route === '/admin/services/${bath.id}').map(r => JSON.parse(r.body))`;
+    const serviceListLoads = `window.__requests.filter(r => r.method === 'GET' && r.route === '/admin/services').length`;
+    try {
+      assert.ok(await tab.waitFor(`document.querySelector('${bathSwitch}')?.getAttribute('aria-checked') === 'true'`));
+      assert.match(await tab.evaluate(textOf('#bookingStatusSummary')), /open for 2 of 9 services/);
+      const loadsBefore = await tab.evaluate(serviceListLoads);
+
+      await tab.click(bathSwitch);
+      assert.ok(await tab.waitFor(`document.querySelector('${bathSwitch}').getAttribute('aria-checked') === 'false'`));
+      assert.deepEqual((await tab.evaluate(putBodies))[0], {
+        name: 'Bath', description: bath.description, category: 'grooming', species: ['Dog', 'Cat'], duration_minutes: 60,
+        online_booking_enabled: false, display_order: 1, expected_version: 1
+      }, 'only the availability changes; duration and species are sent as saved');
+      assert.match(await tab.evaluate(textOf(`[data-service-row="${bath.id}"]`)), /Existing appointments are not affected[\s\S]*Temporarily unavailable/);
+      assert.match(await tab.evaluate(textOf('#adminDashboardStatus')), /Bath is temporarily unavailable for new online bookings/);
+      assert.match(await tab.evaluate(textOf('#bookingStatusSummary')), /open for 1 of 9 services/);
+      assert.equal(await tab.evaluate(`document.querySelector('.service-config-form[data-service-id="${bath.id}"]').dataset.serviceVersion`), '2', 'the settings form saves against the new version');
+      assert.equal(await tab.evaluate(serviceListLoads), loadsBefore, 'no full reload');
+
+      await tab.click(bathSwitch);
+      assert.ok(await tab.waitFor(`document.querySelector('${bathSwitch}').getAttribute('aria-checked') === 'true'`));
+      const second = (await tab.evaluate(putBodies))[1];
+      assert.equal(second.online_booking_enabled, true);
+      assert.equal(second.expected_version, 2);
+      assert.match(await tab.evaluate(textOf('#adminDashboardStatus')), /Bath is available for online booking/);
+
+      // A failed save leaves the switch as it was and says so
+      await tab.click(`[data-service-toggle="${trim.id}"]`);
+      assert.ok(await tab.waitFor(`/Could not save this service configuration/.test(document.getElementById('adminDashboardStatus').textContent)`));
+      assert.equal(await tab.evaluate(`document.querySelector('[data-service-toggle="${trim.id}"]').getAttribute('aria-checked')`), 'true');
+      assert.equal(await tab.evaluate(`document.querySelector('[data-service-toggle="${trim.id}"]').disabled`), false, 'ready to try again');
+      assert.deepEqual(tab.errors, []);
+    } finally { await tab.close(); }
+  });
+
+  it('a switch based on an outdated list reloads the latest settings instead of overwriting them', async () => {
+    const configured = ADMIN_SERVICES.map((service, index) => (index === 0 ? { ...service, duration_minutes: 60, online_booking_enabled: true, bookable: true } : service));
+    const latest = configured.map((service, index) => (index === 0 ? { ...service, online_booking_enabled: false, bookable: false, version: 4 } : service));
+    const routes = adminRoutes({
+      '/admin/services': [ok({ services: configured }), ok({ services: latest })],
+      [`/admin/services/${configured[0].id}`]: { status: 409, body: { success: false, error: 'This service changed after the page loaded. Reload it and try again.' } }
+    });
+    const tab = await open('pages/admin/dashboard.html', '#services', ADMIN, routes);
+    try {
+      assert.ok(await tab.waitFor(`document.querySelector('[data-service-toggle="${configured[0].id}"]')?.getAttribute('aria-checked') === 'true'`));
+      await tab.click(`[data-service-toggle="${configured[0].id}"]`);
+      assert.ok(await tab.waitFor(`/changed in another session/.test(document.getElementById('adminDashboardStatus').textContent)`));
+      assert.ok(await tab.waitFor(`document.querySelector('.service-config-form[data-service-id="${configured[0].id}"]')?.dataset.serviceVersion === '4'`), 'the latest version is loaded');
+      assert.equal(await tab.evaluate(`document.querySelector('[data-service-toggle="${configured[0].id}"]').getAttribute('aria-checked')`), 'false');
     } finally { await tab.close(); }
   });
 

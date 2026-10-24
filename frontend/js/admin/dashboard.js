@@ -3627,24 +3627,26 @@ function renderServiceCatalog() {
   if (feedback) feedback.textContent = adminDashboardData.serviceCatalogFeedback || '';
 
   const services = asArray(adminDashboardData.serviceCatalog);
-  const bookableCount = services.filter(service => service.bookable === true).length;
-  if (summary) {
-    summary.textContent = bookableCount === 0
-      ? `Online booking is closed for all ${services.length} services. Review each service's confirmed settings below; contact the clinic if you need to ask about booking.`
-      : `Online booking is open for ${bookableCount} of ${services.length} services.`;
-  }
+  updateServiceAvailabilitySummary();
 
   if (!services.length) {
     container.innerHTML = getAdminEmptyBlock('No services listed', 'The server returned an empty service catalog.');
     return;
   }
 
-  container.innerHTML = `<div class="ph-dash-stack">${services.map(service => `
-    <form class="service-config-form rounded-xl border border-slate-200 bg-white p-4 shadow-sm" data-service-id="${escapeHtml(service.id)}" data-service-version="${Number(service.version) || 1}">
-      <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div><h3 class="text-lg font-semibold">${escapeHtml(displayValue(service.name))}</h3><p class="ph-dash-muted">${service.bookable === true ? 'Online booking is open' : escapeHtml(service.unavailable_reason || 'Online booking is closed.')}</p></div>
-        <span class="${service.bookable === true ? 'ph-status ph-status-completed' : 'ph-status ph-status-other'} px-2.5 py-1 text-xs">${service.bookable === true ? 'Open' : 'Closed'}</span>
-      </div>
+  container.innerHTML = `
+    <section aria-labelledby="serviceAvailabilityHeading">
+      <h3 id="serviceAvailabilityHeading" class="text-base font-semibold text-slate-900">Online booking availability</h3>
+      <p class="ph-dash-muted mb-3">Switch a service off to stop new online bookings for it. Its settings, existing appointments and history stay as they are.</p>
+      <ul class="service-availability-list" role="list">${services.map(getServiceAvailabilityRowHtml).join('')}</ul>
+    </section>
+    <section class="mt-6" aria-labelledby="serviceDetailsHeading">
+      <h3 id="serviceDetailsHeading" class="text-base font-semibold text-slate-900">Service details</h3>
+      <p class="ph-dash-muted mb-3">Clinic-confirmed duration, applicable species and how each service is described to customers. A service can be switched on once its duration and species are set.</p>
+      <div class="ph-dash-stack">${services.map(service => `
+    <details class="service-settings rounded-xl border border-slate-200 bg-white shadow-sm">
+      <summary class="cursor-pointer px-4 py-3 font-semibold text-slate-900">Edit ${escapeHtml(displayValue(service.name))}</summary>
+    <form class="service-config-form border-t border-slate-200 p-4" data-service-id="${escapeHtml(service.id)}" data-service-version="${Number(service.version) || 1}">
       <div class="grid gap-4 md:grid-cols-2">
         <label class="block text-sm font-medium">Service name<input class="ph-input mt-1 w-full" name="name" maxlength="100" required value="${escapeHtml(service.name)}"></label>
         <label class="block text-sm font-medium">Category<select class="ph-input mt-1 w-full" name="category" required>
@@ -3663,15 +3665,159 @@ function renderServiceCatalog() {
           <label class="block text-sm font-medium">Duration in minutes<input class="ph-input mt-1 w-full" name="duration_minutes" type="number" min="5" max="480" step="1" inputmode="numeric" value="${Number.isInteger(service.duration_minutes) ? service.duration_minutes : ''}" placeholder="Not confirmed"></label>
           <label class="block text-sm font-medium">Display order<input class="ph-input mt-1 w-full" name="display_order" type="number" min="1" max="99" step="1" required value="${Number(service.display_order) || 1}"></label>
         </div>
-        <label class="flex items-center gap-2 text-sm font-medium"><input type="checkbox" name="online_booking_enabled" ${service.online_booking_enabled === true ? 'checked' : ''}>Enable online booking</label>
       </div>
       <div class="mt-4 flex flex-wrap items-center gap-3"><button class="ph-btn ph-btn-primary" type="submit">Save service settings</button><p id="serviceSaveStatus-${escapeHtml(service.id)}" class="text-sm" role="status" aria-live="polite"></p></div>
     </form>
-  `).join('')}</div>`;
+    </details>
+  `).join('')}</div>
+    </section>`;
 
   container.querySelectorAll('.service-config-form').forEach(form => {
     form.addEventListener('submit', saveServiceConfiguration);
   });
+  container.querySelectorAll('[data-service-toggle]').forEach(button => {
+    button.addEventListener('click', toggleServiceAvailability);
+  });
+}
+
+function findCatalogService(serviceId) {
+  return asArray(adminDashboardData.serviceCatalog).find(service => String(service.id) === String(serviceId)) || null;
+}
+
+// The two settings a service needs before it can be switched on (the server and the database check them too)
+function getMissingBookingSettings(service) {
+  const missing = [];
+  const minutes = service?.duration_minutes;
+  if (!Number.isInteger(minutes) || minutes < 5 || minutes > 480) missing.push('a confirmed duration');
+  if (!asArray(service?.species).length) missing.push('applicable species');
+  return missing;
+}
+
+function formatServiceSpecies(species) {
+  const list = asArray(species);
+  if (list.includes('Dog') && list.includes('Cat')) return 'Dogs and cats';
+  if (list.length === 1) return `${list[0]}s only`;
+  return 'Species not set';
+}
+
+function formatServiceDuration(minutes) {
+  if (!Number.isInteger(minutes) || minutes <= 0) return 'Duration not set';
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (!hours) return `${minutes} min`;
+  return rest ? `${hours} hr ${rest} min` : `${hours} hr`;
+}
+
+function getServiceAvailabilityState(service) {
+  const missing = getMissingBookingSettings(service);
+  if (service.online_booking_enabled === true && service.bookable === true) {
+    return { available: true, label: 'Available', detail: 'Customers can book this service online.' };
+  }
+  if (missing.length) {
+    return { available: false, label: 'Temporarily unavailable', detail: `Needs ${missing.join(' and ')} under Service details before it can be switched on.` };
+  }
+  return { available: false, label: 'Temporarily unavailable', detail: 'Not offered for new online bookings. Existing appointments are not affected.' };
+}
+
+function getServiceAvailabilityRowHtml(service) {
+  const id = escapeHtml(service.id);
+  const name = escapeHtml(displayValue(service.name));
+  const state = getServiceAvailabilityState(service);
+  const isOn = service.online_booking_enabled === true;
+  // Switching off is always allowed; switching on only once the service is fully set up
+  const canSwitch = isOn || getMissingBookingSettings(service).length === 0;
+  return `
+    <li class="service-availability-row" data-service-row="${id}">
+      <div class="service-availability-info">
+        <p class="service-availability-name">${name}</p>
+        <p class="service-availability-meta">${escapeHtml(service.category_label || service.category || '')} · ${escapeHtml(formatServiceSpecies(service.species))} · ${escapeHtml(formatServiceDuration(service.duration_minutes))}</p>
+        <p id="serviceAvailabilityDetail-${id}" class="service-availability-detail">${escapeHtml(state.detail)}</p>
+      </div>
+      <div class="service-availability-control">
+        <span class="ph-status ${state.available ? 'ph-status-completed' : 'ph-status-other'} px-2.5 py-1 text-xs">${state.label}</span>
+        <button type="button" class="ph-switch" role="switch" aria-checked="${isOn}" aria-label="Online booking for ${name}" aria-describedby="serviceAvailabilityDetail-${id}" data-service-toggle="${id}" ${canSwitch ? '' : 'disabled'}>
+          <span class="ph-switch-track" aria-hidden="true"><span class="ph-switch-thumb"></span></span>
+        </button>
+      </div>
+    </li>`;
+}
+
+function updateServiceAvailabilitySummary() {
+  const summary = document.getElementById('bookingStatusSummary');
+  if (!summary) return;
+  const services = asArray(adminDashboardData.serviceCatalog);
+  const bookableCount = services.filter(service => service.bookable === true).length;
+  summary.textContent = bookableCount === 0
+    ? `Online booking is closed for all ${services.length} services. Switch a service on below once its duration and species are confirmed.`
+    : `Online booking is open for ${bookableCount} of ${services.length} services.`;
+}
+
+// Replaces one row in place (and the version its settings form will send), so other rows and unsaved edits stay
+function refreshServiceAvailabilityRow(service) {
+  const row = document.querySelector(`[data-service-row="${CSS.escape(String(service.id))}"]`);
+  if (row) {
+    row.outerHTML = getServiceAvailabilityRowHtml(service);
+    document.querySelector(`[data-service-toggle="${CSS.escape(String(service.id))}"]`)?.addEventListener('click', toggleServiceAvailability);
+  }
+  const form = document.querySelector(`.service-config-form[data-service-id="${CSS.escape(String(service.id))}"]`);
+  if (form) form.dataset.serviceVersion = String(Number(service.version) || 1);
+  updateServiceAvailabilitySummary();
+}
+
+// The availability switch: PUT /admin/services/:id with the service's saved settings and only online_booking_enabled
+// changed. The server re-checks the admin role, the settings and expected_version.
+async function toggleServiceAvailability(event) {
+  const button = event.currentTarget;
+  const service = findCatalogService(button.dataset.serviceToggle);
+  if (!service || button.getAttribute('aria-busy') === 'true') return;
+  const enable = button.getAttribute('aria-checked') !== 'true';
+  const name = displayValue(service.name);
+  const missing = getMissingBookingSettings(service);
+  if (enable && missing.length) {
+    showAdminStatus('error', `${name} needs ${missing.join(' and ')} before it can be switched on.`);
+    return;
+  }
+
+  const detail = document.getElementById(`serviceAvailabilityDetail-${service.id}`);
+  button.setAttribute('aria-busy', 'true');
+  button.disabled = true;
+  if (detail) detail.textContent = 'Saving…';
+  try {
+    const response = await fetchWithRetry(() => fetch(`${window.API_BASE_URL}/admin/services/${encodeURIComponent(service.id)}${getAdminUserIdQuery()}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: service.name,
+        description: String(service.description || ''),
+        category: service.category,
+        species: asArray(service.species).map(String),
+        duration_minutes: Number.isInteger(service.duration_minutes) ? service.duration_minutes : null,
+        online_booking_enabled: enable,
+        display_order: Number(service.display_order),
+        expected_version: Number(service.version)
+      })
+    }));
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.success !== true) {
+      const error = new Error(data.error || `Could not change the availability of ${name} (${response.status}).`);
+      error.status = response.status;
+      throw error;
+    }
+    const updated = { ...service, ...data.service, version: data.version, updated_at: data.updated_at };
+    adminDashboardData.serviceCatalog = asArray(adminDashboardData.serviceCatalog).map(entry => (String(entry.id) === String(service.id) ? updated : entry));
+    refreshServiceAvailabilityRow(updated);
+    showAdminStatus('success', updated.online_booking_enabled === true
+      ? `${name} is available for online booking.`
+      : `${name} is temporarily unavailable for new online bookings. Existing appointments are unchanged.`);
+  } catch (error) {
+    if (error.status === 409) {
+      showAdminStatus('error', `${name} was changed in another session. The latest settings have been loaded; please try again.`);
+      await loadServiceCatalog();
+      return;
+    }
+    refreshServiceAvailabilityRow(service);
+    showAdminStatus('error', error.message || `Could not change the availability of ${name}.`);
+  }
 }
 
 async function saveServiceConfiguration(event) {
@@ -3689,7 +3835,8 @@ async function saveServiceConfiguration(event) {
     category: String(formData.get('category') || ''),
     species: formData.getAll('species').map(String),
     duration_minutes: durationText ? Number(durationText) : null,
-    online_booking_enabled: formData.get('online_booking_enabled') === 'on',
+    // Availability has its own switch; saving the details keeps it as it is
+    online_booking_enabled: findCatalogService(serviceId)?.online_booking_enabled === true,
     display_order: Number(formData.get('display_order')),
     expected_version: expectedVersion
   };
