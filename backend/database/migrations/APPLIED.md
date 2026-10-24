@@ -16,6 +16,7 @@ Never run an applied or superseded file again: each one's preflight stops it, bu
 | `2026-10-24_query_indexes.sql` | 2026-10-24 00:59:57 | Supabase MCP `execute_sql`, one transaction | Executed statement SHA-256 = file `572b1cb7dea3809a85419697dc9c173d46c2894386094b38963094bf9facfbb4`; public indexes 29 -> 37, all 8 valid and ready |
 | `2026-10-24_core_value_checks.sql` | 2026-10-24 01:00:10 | Supabase MCP `execute_sql`, one transaction | Executed statement SHA-256 = file `a02aac3899eeb5fc83b853004c34cd392994921f703c3858d19153b3ccc5dbab`; public constraints 68 -> 71, all three validated |
 | `2026-10-24_contact_cancellation_email_log.sql` | 2026-10-24 05:35:15 | Supabase MCP `execute_sql`, one transaction | Executed statement SHA-256 = file `ef12858793fe7a7389d54fc158a62cb80ca54e8489ba692c853ce6560a054cf8`; constraints 71 -> 82 (7 checks, 4 foreign keys), indexes 37 -> 41, status history trigger enabled, the 3 appointment functions and the trigger function executable only by postgres/service_role; every pre-existing row of every table hashed identically before and after |
+| `2026-10-24_user_sessions.sql` | 2026-10-24 10:47:05 | Supabase MCP `execute_sql`, one transaction | Executed statement SHA-256 = file `f5e6924feb5301ac273eecc141a0006d6e2af346b77d43629adcd104374245ef`; public tables 17 -> 18, indexes 41 -> 43, constraints 82 -> 87; RLS on, 0 policies, privileges only for postgres/service_role; users/pets/appointments counts unchanged. Preceded by a genuine live dry run (file without BEGIN/COMMIT plus behaviour checks: API roles have no privilege, insert + revoke work, 4 of 4 bad rows refused, ended with a deliberate error; table confirmed absent afterwards) |
 
 `2026-10-24_contact_cancellation_email_log.sql` was first run on the live database without its BEGIN/COMMIT, followed by
 behaviour checks and a deliberate error (genuine dry run, rolled back): owner cancellation sets cancelled_by and writes
@@ -32,6 +33,7 @@ row in every table hashed identically to the pre-change snapshot.
 
 | File | State |
 |---|---|
+| `2026-10-24_remove_legacy_plaintext_password.sql` | BLOCKED on 2026-10-24 by the Claude Code permission classifier before it reached the database. One customer account still stores a plaintext password value; the backend deployed in f7f8840 never accepts it (only scrypt hashes verify), so it cannot be used to log in. Run the file in the SQL Editor to remove the value from storage, or the owner removes it by completing Forgot password. Its preflight stops if more than one such account exists; its post-check verifies none remain |
 | `2026-10-24_optional_default_privileges.sql` | BLOCKED on 2026-10-24 by the Claude Code permission classifier before it reached the database (the statement is absent from the Postgres log; postgres's default privileges in `public` still grant anon/authenticated on future objects). It affects only objects created in the future. Run it in the SQL Editor, or allow the action, when wanted; its post-check verifies the result |
 
 ## Superseded or partially applied before 2026-10-23 (do not run)
