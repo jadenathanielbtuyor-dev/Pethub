@@ -3,7 +3,10 @@
 **A Web Portal for Pet Status Tracking and Service Scheduling.** Final stabilization phase, 2026-10-24 (Asia/Manila).
 
 - Starting point: commit `068d7e7`, already on `main` and already deployed.
-- Final code: commit `f7f8840`, pushed and deployed. A documentation-only commit follows it.
+- Hardening: commit `f7f8840`, pushed and deployed, with documentation commit `5990826`.
+- Additional requirements (section 29): commit `37742ab` (multi-pet booking, rescheduling, care reminders, service
+  management, paged lists) and commit `fefb13a` (faster dashboard reads), both pushed and deployed after the production
+  migration was applied. A documentation-only commit follows them.
 - Live systems: Vercel frontend `https://pethub-zzz-duke1-s-projects.vercel.app`, Railway backend
   `https://pethub-production-f14d.up.railway.app`, and Supabase project `crudvruwaptsvesheijv`.
 
@@ -38,10 +41,28 @@ security items and verified every workflow that can be verified without clinic d
 - **A real bug was found and fixed before deployment.** In the first version of the session change, logout did not
   actually end the session. The isolated full-stack run caught it, and a regression test now covers it.
 
-**What still prevents a fully live booking demonstration:** none of the 9 services has a clinic-confirmed duration,
-and Puppy Cut also has no species set. Online booking therefore stays closed until the clinic enters real values in
-System Management. The clinic's contact details are also unpublished. Neither problem is a code defect, and no values
-were invented.
+The additional requirements are also implemented, migrated, deployed and live-verified (section 29):
+
+- **Multi-pet booking.** One booking covers 2 to 6 of an owner's pets. Each pet gets its own appointment and its own
+  time slot, one after another. The booking is saved completely or not at all.
+- **Per-pet management.** The admin approves, completes, reschedules or cancels each pet's appointment separately, or
+  cancels the whole booking in one step. Each change is recorded on that pet's appointment, and the owner's email
+  names every pet.
+- **Pagination.** The breed catalog and the service activity history are paged and filtered in the database.
+- **Care reminders.** A reminder is created only after a completed visit. A due date comes only from a rule the clinic
+  configured; without a rule, the reminder tells the owner to ask the clinic and gives no date. Each reminder explains
+  itself, and none books anything. Owners can acknowledge or dismiss them; an admin can override one with a reason.
+- **Service management.** Admins add services and switch them on or off. A service that has appointments is never
+  deleted, and every change is recorded with who made it and when.
+- **The production migration was applied** on 2026-10-24 at 15:25:37 UTC, after a live dry run. Every pre-existing
+  row hashed identically before and after.
+- **The admin overview is faster.** It now runs its database reads in parallel, cutting its response time from
+  2.6–5.8 s to 1.1–1.9 s on Railway.
+
+**Live booking.** An administrator has since configured all 9 services in System Management (30 minutes each, Puppy
+Cut for dogs only) and switched them on, so online booking is now open. Real appointments exist (1 Pending, 1
+Approved, 2 Completed) and were not touched. The clinic's contact details are still unpublished. No values were
+invented.
 
 ## 2. Previous report reconciliation
 
@@ -71,8 +92,9 @@ Browser ──HTTPS──> Vercel (static HTML, Tailwind CSS, vanilla JS; CSP + 
    │
    └──fetch + Bearer token──> Railway (Node.js / Express 5 API; security headers; CORS allowlist)
                                  │  service-role key, server-side only
-                                 ├──> Supabase PostgreSQL (RLS on all 18 tables, no API-role grants;
-                                 │      booking/cancel/status as atomic SQL functions; status-history trigger)
+                                 ├──> Supabase PostgreSQL (RLS on all 21 tables, no API-role grants;
+                                 │      single and multi-pet booking, cancel, reschedule and status changes as
+                                 │      atomic SQL functions; status-history trigger)
                                  ├──> Brevo (transactional email; every appointment/reply email logged)
                                  └──> Google Gemini (general pet-care assistant; no pet records sent)
 ```
@@ -105,20 +127,35 @@ and is unchanged. The browser never talks to Supabase directly; every database q
 
 The live database was inspected through the Supabase MCP.
 
-**Structure.** There are 18 public tables. RLS is on for all 18, with 0 policies and 0 grants to
-`anon`/`authenticated`. Only the backend's service role reaches the data. The 4 functions
-(`create_appointment_if_available`, `cancel_appointment_for_owner`, `update_appointment_status_if_available` and the
-status-history trigger function) can be executed only by `postgres` and `service_role`.
+**Structure.** There are 21 public tables. RLS is on for all 21, with 0 policies and 0 grants to
+`anon`/`authenticated`. Only the backend's service role reaches the data. The 7 functions can be executed only by
+`postgres` and `service_role`:
 
-**Counts.** 87 constraints and 43 indexes. The new `user_sessions` table accounts for +5 constraints and +2 indexes.
+- `create_appointment_if_available`
+- `cancel_appointment_for_owner`
+- `update_appointment_status_if_available`
+- the status-history trigger function
+- `create_appointment_group_if_available` (new)
+- `cancel_appointment_group_by_clinic` (new)
+- `reschedule_appointment_if_available` (new)
+
+**Counts.** There are 118 constraints and 54 indexes. The `user_sessions` table added 5 constraints and 2 indexes. The
+additions migration then added 31 constraints and 11 indexes (section 29).
 
 **Supabase advisors** report INFO-level findings only:
 
 - RLS enabled with no policies: intentional, because only the backend reads the database.
 - 15 unindexed foreign keys and 7 unused indexes: on tables with single-digit row counts. Left alone.
 
-**Production data:** 5 users, 3 pets, 2 appointments (both Completed), 0 medical records, 90 breeds and 9 services.
-No production record was deleted or altered. The only additions are listed in section 24.
+**Production data at the start of this phase:** 5 users, 3 pets, 2 appointments (both Completed), 0 medical records,
+90 breeds and 9 services.
+
+**Production data after the additions migration (15:45 UTC):** 6 users, 5 pets, 4 appointments, 1 medical record, 90
+breeds and 9 services (all configured and switched on). The new tables are still empty: 0 multi-pet bookings, 0 care
+rules and 0 care reminders. The new users, pets, appointments and medical record were created through the
+application, not by this work. This work's own production writes are listed in section 24.
+
+No production record was deleted or altered.
 
 **Possibly unused objects.** Classified from code references, SQL and trigger references, foreign keys and data.
 Nothing was deleted.
@@ -270,11 +307,15 @@ booking, and no service is bookable (section 14).
 
 ## 12. Service availability verification
 
-**Live (read-only):**
+**Live (read-only), at the time of the hardening deploy:**
 
-- 9 services, all off. None has a clinic-confirmed duration; Puppy Cut also has no species.
-- The public catalog shows none of them as bookable.
+- 9 services, all off. None had a clinic-confirmed duration, and Puppy Cut also had no species.
+- The public catalog showed none of them as bookable.
 - The server refused to switch on an unconfigured service (422), and the service's version stayed 1.
+
+**Live, later the same day:** an administrator configured all 9 services in System Management between 11:14 and
+11:15 UTC: 30 minutes each, Puppy Cut for dogs, every service switched on. This work did not set these values. The public catalog now shows all 9 as
+bookable. The service activity history lists those changes (section 29).
 
 **Isolated full stack:**
 
@@ -317,9 +358,14 @@ No durations or species were invented, so online booking stays closed until the 
 - An appointment that had already started was completed.
 - The approve and complete buttons were hidden where those transitions are invalid.
 
-**Live:** booking was not possible because no service is bookable. Live read-only checks confirmed the owner can't
-cancel a Completed appointment (409), can't cancel an unknown appointment (404), and that an invalid id is handled
-safely (404). The appointment history is intact: 2 Completed rows.
+**Live:**
+
+- At the time of the hardening deploy, booking was not possible because no service was bookable.
+- Live read-only checks confirmed that the owner can't cancel a Completed appointment (409) or an unknown
+  appointment (404), and that an invalid id is handled safely (404).
+- Since the services were configured, appointments have been booked through the live site, though not by this work:
+  there is now 1 Pending and 1 Approved appointment, alongside the 2 Completed ones. They were not touched.
+- No test booking was made in production.
 
 **Opening hours.** The server accepts any valid date and time in the future on the clinic clock. Every request needs
 admin approval, and that is the safeguard against impossible times. No hours were invented, and no page displays
@@ -363,8 +409,10 @@ Management and Breed Catalog. There were no errors.
 - The overview counts come from live records: 4 owner accounts, 3 pets, 2 appointments, 0 pending.
 - Recent activity shows the test reply.
 - Charts are drawn through the SRI-checked Chart.js.
-- The overview endpoint takes about 2–2.7 s on Railway; signed-in requests take about 0.7 s, where network latency
-  dominates.
+- The overview endpoint took 2.6–5.8 s on Railway. Each backend-to-database round trip costs 220–450 ms, and the
+  overview made about nine of them one after another. Since `fefb13a` the independent reads run together, and the
+  overview takes 1.1–1.9 s. The Supabase edge log confirms the six reads now leave within 22 ms of each other.
+  Simple signed-in requests take about 0.85 s, where network latency dominates.
 - Admin-only behaviour (services, clinic settings, email resend, status changes) was verified live through refusals
   and the test reply, and the rest in the isolated full stack.
 
@@ -394,8 +442,47 @@ placeholders are presented as clinic facts.
 - **Changed, frontend:** 18 HTML pages: SRI on Remixicon on every page, Chart.js URL and SRI on the admin dashboard,
   and `dashboard.html` / `admin-dashboard.html` now use the redirect file.
 
-**Documentation commit:** this report, `backend/database/migrations/APPLIED.md` and
+**Documentation commit `5990826`:** this report, `backend/database/migrations/APPLIED.md` and
 `backend/docs/backend-maintenance.md`.
+
+**Commit `37742ab` (58 files, additional requirements):**
+
+- **New, backend:**
+  - `constants/careRecommendations.js`, `constants/serviceActivity.js`
+  - `controllers/careRecommendationsController.js`, `controllers/groupBookingController.js`
+  - `repositories/careRecommendationsRepository.js`
+  - `services/careRecommendationService.js`, `services/groupBookingService.js`, `services/rescheduleService.js`
+  - `utils/pagination.js`, `validators/careRecommendationValidator.js`
+  - `database/migrations/2026-10-24_multi_pet_booking_and_care_recommendations.sql`
+- **New, tests:** `tests/multi-pet-and-care.test.js`, `tests/group-booking-and-care.browser.test.js`,
+  `tests/admin-bookings-and-catalog.browser.test.js`.
+- **New, frontend:** `js/shared/pagination.js`, `js/admin/booking-tools.js`, `js/admin/catalog-tools.js`,
+  `js/user/group-booking.js`, `js/user/care-reminders.js`.
+- **Changed, backend:**
+  - constants: `appointments.js`, `email.js`
+  - controllers: `serviceCatalogController.js`
+  - repositories: `activityLogsRepository.js`, `appointmentsRepository.js`, `breedCatalogRepository.js`,
+    `serviceCatalogRepository.js`
+  - routes: `admin.js`, `appointments.js`, `pets.js`
+  - services: `adminService.js`, `appointmentNotificationsService.js`, `appointmentsService.js`,
+    `breedCatalogService.js`, `emailDeliveryService.js`, `emailRetryService.js`, `serviceCatalogService.js`
+  - email templates: `appointmentDecisionEmail.js`, `appointmentEmailParts.js`
+  - utils and validators: `utils/activityLogger.js`, `appointmentsValidator.js`, `breedCatalogValidator.js`,
+    `serviceCatalogValidator.js`
+  - docs: `docs/backend-maintenance.md`, `database/migrations/APPLIED.md`
+- **Changed, tests:** `tests/helpers/fakeSupabase.js`, `tests/helpers/browser.js`, `tests/breed-catalog.test.js`,
+  `tests/breed-catalog-page.browser.test.js`.
+- **Changed, frontend:**
+  - pages: `pages/admin/dashboard.html`, `pages/admin/breeds.html`, `pages/user/appointments.html`,
+    `pages/user/dashboard.html`, `pages/user/pets.html`
+  - scripts: `js/admin/dashboard.js`, `js/admin/breeds.js`, `js/user/appointments.js`
+  - styles: `assets/css/input.css`, and `style.css` rebuilt in one shot
+
+  No inline script changed, so `vercel.json` and its CSP hashes did not need to change. A check of all 20 pages
+  found 17 inline scripts, all hashed, and no inline event handlers.
+
+**Commit `fefb13a` (2 files):** `services/adminService.js` and `services/serviceCatalogService.js`. Their independent
+database reads now run in parallel, and nothing else changed.
 
 ## 20. Database objects modified
 
@@ -407,18 +494,52 @@ placeholders are presented as clinic facts.
 - partial index `user_sessions_user_id_open_idx`;
 - RLS on with no policies, privileges for `postgres` and `service_role` only.
 
-No other object was changed.
+**Created by the additions migration (section 29):**
+
+- **Tables:** `public.appointment_groups`, `public.care_recommendation_rules` and `public.pet_care_recommendations`.
+  Each has RLS on with no policies, and privileges for `postgres` and `service_role` only.
+- **Columns:** `appointments.group_id` and `appointments.group_position` (NULL for single-pet bookings), and
+  `activity_logs.event_type` (NULL for entries recorded before it existed).
+- **Functions:** `create_appointment_group_if_available`, `cancel_appointment_group_by_clinic` and
+  `reschedule_appointment_if_available`. Each is executable by `postgres` and `service_role` only.
+- **Indexes:**
+  - unique: one position and one pet per booking, one rule per service and species, and one open reminder per
+    source;
+  - lookup: booking requests, service activity by table and date, and owner reminders by status and due date.
+- **Constraints:** checks on statuses, intervals (1–1825 days, minimum ≤ maximum), positions and lengths, plus the
+  foreign keys.
+
+No existing row was changed, and no existing object was dropped or rewritten.
 
 ## 21. Migrations applied
 
 | File | State |
 | --- | --- |
 | `2026-10-24_user_sessions.sql` | **Applied** 10:47:05 UTC (dry run first; hash verified; recorded in `APPLIED.md`) |
-| `2026-10-24_remove_legacy_plaintext_password.sql` | **Not applied**: blocked by the permission classifier (section 8) |
+| `2026-10-24_multi_pet_booking_and_care_recommendations.sql` | **Applied** 15:25:37 UTC through the Supabase MCP, with the owner's authorization. A live dry run with 9 behaviour checks ran first, then rolled back. The executed statement's SHA-256 equals the file's (`37113ba5…45bc`); the committed copy is byte-identical. Tables 18 → 21, indexes 43 → 54, constraints 87 → 118. Recorded in `APPLIED.md` |
+| `2026-10-24_remove_legacy_plaintext_password.sql` | **Not applied**: blocked by the permission classifier on its first attempt; it changes a customer's stored credential, which needs its own explicit permission (section 8) |
 | Earlier files (including `2026-10-24_contact_cancellation_email_log.sql`) | Verified in place; **not re-run** |
 | `2026-10-24_optional_default_privileges.sql` | Still not applied (optional; affects future objects only) |
 
 ## 22. Test totals
+
+**Final totals, after the additions (run on the committed code):**
+
+| Level | Suite | Result |
+| --- | --- | --- |
+| Local | Backend (`npm test`) | **375 / 375** |
+| Local | Backend + headless browser (`PETHUB_BROWSER_TESTS=1`) | **494 / 494** |
+| Local | Mutation checks on the additions: 16 safeguards broken one at a time, files restored byte-for-byte | **15 / 16 caught.** The 16th ("reminder for any status change") has a second check behind it in the care-reminder service. The tests fail when both checks are removed |
+| Isolated full stack | Earlier workflows, rerun on the new code | **15 / 15** |
+| Isolated full stack | New workflows (section 29) | **10 / 10** |
+| Live DB | Additions migration: dry run (9 behaviour checks, rolled back), apply, hash, structure, privileges, data fingerprints | Pass |
+| Live DB | Query plans at realistic volumes, measured in rolled-back transactions | All under 13 ms (section 29) |
+| Live schema, local backend | The new backend run locally against the migrated production database, before deploying | **23 / 23** |
+| Live read-only | Additions on the deployed Railway backend | **23 / 23** |
+| Live read-only | Earlier checks, rerun after the deploy | **31 / 33.** The 2 failures expected all services to be switched off; an administrator has since switched them on (section 12). No regression |
+| Live browser | New screens on the deployed site: 2 sizes (1280 px light, 390 px dark), both roles, paging clicked, booking form opened and nothing submitted | **46 / 46**, with 0 CSP, SRI, JS or request errors |
+
+**Totals from the hardening deploy (`f7f8840`):**
 
 | Level | Suite | Result |
 | --- | --- | --- |
@@ -441,6 +562,14 @@ No other object was changed.
 | 1 new test (regex) and 1 new migration-file test | My own test patterns: a lost escape, and a pattern that was too broad | Corrected |
 | `server.js` CORS regex lost its escapes during an edit | Edit tooling | Caught by inspection before any test run, and fixed |
 | Classifier block on the legacy-password file | Production credential write needs explicit permission | Not worked around (section 8) |
+| Breed catalog test after paging was added | The new default status filter was "active", which hid inactive breeds from an existing caller | The API default stays "all" (backward compatible). The test now finds the breed by search |
+| Reschedule test | My test moved the in-memory row it was still reading | The test copies the row first |
+| Admin browser test, intermittent | The test clicked a tab while the dashboard was still restoring the saved tab | The test waits until the dashboard has finished loading |
+| Care rules and activity loaded twice when the Services tab opened | A click listener and the tab-switch hook both started them | **Real defect**, fixed with a once-only start |
+| Whole-booking cancel button off-screen on a wide table | Layout | The booking header now stacks its button |
+| Rolled-back performance query | Type cast in my query (`uuid` compared with `text`) | Query corrected; no code change |
+| Classifier block on the additions migration (first attempt) | Production schema change | Not worked around. Applied only after the owner's explicit authorization |
+| Admin overview 2.6–5.8 s live | About nine sequential database round trips at 220–450 ms each | **Fixed in `fefb13a`**: now 1.1–1.9 s |
 
 ## 24. Live production verification
 
@@ -452,7 +581,17 @@ No other object was changed.
   UTC.
 - About 21 `activity_logs` rows from sign-ins, sign-outs, mark-read and reply.
 
-**Live read-only:** sections 12–18 and 22.
+**Live writes during the additions phase (15:20–15:45 UTC).** Every write used the two test accounts.
+
+- The additions migration: schema only (section 21). No row was changed.
+- 18 `user_sessions` rows (10 admin, 8 owner). 17 were ended by logout. One owner test session stays open until it
+  expires at 23:27:49 UTC.
+- 35 `activity_logs` rows: 18 sign-ins and 17 sign-outs.
+- Nothing else. Since 15:20 there are 0 new appointments, 0 status-history rows, 0 service changes and 0 email logs.
+  Every multi-pet, reschedule, rule and service request sent to the live API was one the server refuses before
+  writing.
+
+**Live read-only:** sections 12–18, 22 and 29.
 
 **Production records not touched:** no customer appointment, pet, profile, password, service or setting was changed.
 No message went to anyone other than the owner test account.
@@ -466,31 +605,50 @@ No message went to anyone other than the owner test account.
 | Railway backend | **Deployed and verified** 10:48:56 UTC. New API headers live; sessions working live |
 | Frontend ↔ backend connectivity | Verified live: logins, dashboards and contact from the deployed site; CORS allows only the expected origins |
 | Backend ↔ Supabase | Verified: production project `crudvruwaptsvesheijv`; sessions written there |
-| Documentation commit | Pushed after this report. Docs only; no code changes |
+| Documentation commit `5990826` | Pushed. Docs only |
+| Additions migration | Applied to production at 15:25:37 UTC, **before** any code that uses it was pushed |
+| Commit `37742ab` pushed to `origin/main` | 15:33:49 UTC |
+| Vercel frontend (`37742ab`) | **Deployed and verified** by 15:34:21 UTC. All 14 changed pages, scripts and styles served byte-identical to the commit; CSP header unchanged and live |
+| Railway backend (`37742ab`) | **Deployed and verified** by 15:34:41 UTC. The live additions checks passed 23 / 23 against it |
+| Deployment order | Both hosts deploy automatically from the same push, and neither has a CLI here, so their order could not be set by hand. Ordering the migration first is what made this safe: the new frontend only calls endpoints that are live, and the old backend kept working against the migrated database during the seconds between the two deploys (the migration is additive) |
+| Commit `fefb13a` pushed | 15:38:53 UTC. Backend only (2 files) |
+| Railway backend (`fefb13a`) | **Deployed and verified** by 15:44 UTC. The Supabase edge log shows the overview's reads now run in parallel, and live timings dropped (section 17) |
+| Documentation commit for the additions | Pushed after this report. Docs only |
 
 ## 26. Remaining configuration requirements
 
 These are owner or clinic actions. The system is in a safe state without them.
 
-1. **Service durations and species.** Enter real values in System Management → Services & booking. All 9 services
-   need a duration; Puppy Cut also needs species. Until then online booking is closed.
+1. **Service durations and species: done.** An administrator entered them at 11:14–11:15 UTC (30 minutes each,
+   Puppy Cut for dogs). If 30 minutes is not each service's real length, correct it in System Management →
+   Services & booking. The system does not know the clinic's real durations.
 2. **Clinic contact details.** Enter phone, email, address and hours in System Management → Contact messages, so they
-   appear on the Contact page and in emails.
-3. **Legacy password value.** Run `2026-10-24_remove_legacy_plaintext_password.sql`, or have that account owner use
-   "Forgot password?".
-4. **Optional:** on Railway, set `BREVO_SENDER_EMAIL` / `BREVO_SENDER_NAME`, then remove the `SENDGRID_*` variables.
+   appear on the Contact page and in emails. Still empty.
+3. **Care reminder rules.** None exist yet. Until one does, a completed visit creates only an "Ask the clinic"
+   reminder with no date. To get dated reminders, add a rule per service (and per species where needed) in System
+   Management → Services & booking → Care reminder rules. The starting guidance shown there is reference material
+   only, not clinic policy, and it is never applied by itself.
+4. **Legacy password value.** Run `2026-10-24_remove_legacy_plaintext_password.sql`, or have that account owner use
+   "Forgot password?". The owner authorized the additions migration. This file changes a customer's stored
+   credential, so it waits for its own explicit permission.
+5. **Optional:** on Railway, set `BREVO_SENDER_EMAIL` / `BREVO_SENDER_NAME`, then remove the `SENDGRID_*` variables.
    Not required today.
-5. **Optional:** delete the stale `pethub-beige.vercel.app` deployment. It runs old frontend code and is still on the
+6. **Optional:** delete the stale `pethub-beige.vercel.app` deployment. It runs old frontend code and is still on the
    backend's explicit CORS list.
-6. **Optional:** run `2026-10-24_optional_default_privileges.sql`, so future tables are never granted to API roles by
-   default.
+7. **Optional:** run `2026-10-24_optional_default_privileges.sql`, so future tables are never granted to API roles by
+   default. Until then, every new migration must revoke those grants itself, as the additions migration does.
 
 ## 27. Known limitations
 
 **Not tested live:**
 
-- Booking, approval, cancellation and their emails: no bookable service exists yet. These were verified locally and
-  in the isolated full stack.
+- Booking, approval, cancellation and their emails, by this work. No bookable service existed during the hardening
+  pass, and no test booking was made afterwards so that real records stay as they are. These were verified locally
+  and in the isolated full stack.
+- A multi-pet booking, a whole-booking cancel, a reschedule and a care reminder were not created in production. The
+  owner test account has one pet, and making production records only to test them was avoided. They were verified in
+  the isolated full stack, and against the live database functions in the rolled-back dry run. Live, the requests the
+  server refuses were exercised (section 29).
 
 **Not built (future recommendations, out of scope for this phase):**
 
@@ -501,7 +659,12 @@ These are owner or clinic actions. The system is in a safe state without them.
 - Logging of verification and reset emails in `email_logs`.
 - An attempt counter for the email verification code.
 - Registering pets under 1 year old.
-- Pagination of admin lists.
+- Pagination of the remaining admin lists. The breed catalog and the service activity history are paged (section 29);
+  the overview, appointment and owner lists load whole, which suits the current volumes.
+- Parallel appointments. The schedule allows one appointment at a time, so the pets in a multi-pet booking are seen
+  one after another.
+- Owner-side cancellation of a whole multi-pet booking at once. Owners cancel each pet's appointment, under the
+  existing 2-hour rule; the clinic can cancel the whole booking.
 
 **Known behaviours of what exists:**
 
@@ -521,9 +684,11 @@ These are owner or clinic actions. The system is in a safe state without them.
 Before the demonstration:
 
 - [ ] Sign in again on every demo device: earlier tokens are no longer valid.
-- [ ] Optional, only if the demo should include live booking: enter the clinic's real durations, and Puppy Cut's
-  species, in System Management. Otherwise show the "temporarily unavailable" state and the setup dialog without
-  saving.
+- [ ] Check that the service durations (now 30 minutes each) are the clinic's real ones.
+- [ ] To show multi-pet booking, the demo owner account needs at least two pets. The test owner account has one, so
+  add a second through My Pets during the demo.
+- [ ] To show a dated care reminder, add a care rule for a service first. Then mark an appointment of that service
+  Completed, which is allowed once its start time has passed. Without a rule, the reminder says "Ask the clinic".
 - [ ] Optional: enter the clinic's real contact details.
 
 During the demonstration:
@@ -535,16 +700,210 @@ During the demonstration:
   Management → Contact messages (open, reply, delivery status) → Services & booking (setup dialog) → Activity logs.
 - [ ] **Security:** log out and show that the old session is refused. Point to the CSP header in the browser's
   developer tools, and to RLS with no API grants in Supabase.
-- [ ] **Explain the distinction:** contact, sessions and headers are *implemented, deployed and live-tested*. Booking
-  and cancellation are *implemented, deployed and tested in isolation*. They become live-usable once the clinic
-  configures its services.
+- [ ] **Additions:**
+  - Owner: Appointments → "Several pets" (summary with each pet's time) → book.
+  - Admin: the booking appears grouped. Approve one pet, reschedule one, and cancel the whole booking after the
+    confirmation.
+  - Admin: Services & booking. Add a service (it starts switched off), page through the activity history and filter
+    it, then add a care rule.
+  - Admin: Breed Catalog pages.
+  - Owner: Overview and My Pets → Care reminders (why, acknowledge, dismiss).
+- [ ] **Explain the distinction:** contact, sessions, headers, paging and the new screens are *implemented, deployed
+  and live-tested*. Booking, cancellation, multi-pet booking, rescheduling and care reminders are *implemented,
+  deployed and tested in isolation*, with the live database functions dry-run. Their live refusals were tested.
 
 | Acceptance area | Status |
 | --- | --- |
 | Core application (pages, login, dashboards, correct backend and database) | Pass (live) |
-| Services (configure, switch, refuse unavailable, history intact) | Pass (isolated full stack + live refusals). Live activation waits for clinic data |
-| Appointments (book, approve, transitions, 2 h cutoff, history, email) | Pass (local + isolated full stack). Live booking waits for clinic data |
+| Services (add, configure, switch, refuse unavailable, never delete used ones, typed history) | Pass (isolated full stack + live refusals; live services configured by an administrator) |
+| Appointments (book, approve, transitions, 2 h cutoff, history, email) | Pass (local + isolated full stack). Live booking open since the services were configured |
+| Multi-pet booking (atomic, per-pet management, whole-booking cancel, notifications) | Pass (local + isolated full stack + live dry run + live refusals) |
+| Pagination (breeds, service activity; server-side, filters, newest first) | Pass (live) |
+| Care reminders (rules, explainable, completed visits only, acknowledge/dismiss, override, no auto-booking) | Pass (local + isolated full stack + live endpoints); no rules configured yet |
+| Performance (indexes, measured queries, dashboard response) | Pass (all measured queries under 13 ms; overview 1.1–1.9 s live) |
 | Contact (login required, verified sender, read, reply, email) | Pass (live, delivered) |
 | Security (no new plaintext, sessions, roles, ownership, keys, headers) | Pass (live). Legacy value: storage removal pending (section 8) |
 | Database (migration state, no duplicates, no deletions, constraints, RLS) | Pass (live) |
 | Deployment (backend, frontend, connectivity) | Pass (live) |
+
+## 29. Additional requirements: implementation, migration and verification
+
+This phase covered the requested additions: multi-pet booking, server-side pagination, pet care reminders, an
+admin-managed service catalog, connected dashboards and performance. Existing features were not rebuilt. No clinic
+policy, duration or interval was invented.
+
+### 29.1 Multi-pet booking
+
+**Data model.** One `appointment_groups` row represents the owner's booking. Each pet keeps its own `appointments`
+row, with its own pet, service, duration, time and status, linked by `group_id` and ordered by `group_position`.
+Every existing per-appointment feature therefore keeps working per pet: approval, completion, cancellation, emails,
+status history and the owner's 2-hour rule. Single-pet bookings have `group_id` NULL and are unchanged.
+
+**Booking.** The owner uses Appointments → "Several pets" and `POST /appointments/group`.
+
+- A booking covers 2 to 6 of the owner's own pets, each with its own service.
+- The clinic serves one appointment at a time, so the pets are scheduled one after another from the chosen start.
+  The summary shows each pet's time before anything is sent.
+- `create_appointment_group_if_available` checks every pet (owned by the account, species offered) and every service
+  (switched on, same name and duration as the catalog). It runs under the same per-date locks as single bookings,
+  then saves the booking and every appointment, or nothing at all.
+- A repeated request with the same `request_key` (a double click or a retry) is stored once.
+- If one pet's slot or choice is refused, only that pet is marked, with a suggested time where one exists. The other
+  choices stay as they were.
+
+**Management.**
+
+- The admin's Appointment Management lists a booking's pets together under one heading.
+- Each pet's appointment is approved, completed or cancelled on its own.
+- `POST /admin/appointment-groups/:id/cancel` cancels every still-open appointment of the booking in one transaction,
+  after a confirmation dialog. Each cancellation is recorded on that pet's appointment and in its status history.
+- `PUT /admin/appointments/:id/schedule` moves one Pending or Approved appointment to a free time, under the same
+  locks. The request carries what the admin's screen showed, so a change made meanwhile by another admin returns 409.
+- Owners see "Pet 1 of 3 in one booking" on each appointment, and cancel each pet's appointment under the existing
+  2-hour rule.
+
+**Notifications.** Approval, cancellation and reschedule emails for a pet in a booking name all the pets in it. A
+whole-booking cancel sends the usual cancellation email for each pet's appointment it cancelled; each is logged in
+`email_logs` and can be resent. The reschedule email gives the old and new times. A failed email never undoes the
+change.
+
+### 29.2 Server-side pagination
+
+**Breed catalog** (`GET /admin/breeds`):
+
+- 20 per page, at most 50.
+- Filters by species, status and name search, with four sort orders.
+- The filters are kept while paging.
+- A page past the end shows the last page.
+- Live: 90 breeds over 5 pages; the Cat search gave 41 matches.
+
+**Service activity history** (`GET /admin/services/activity`):
+
+- Newest first. The dashboard shows 10 per page; the API allows at most 50.
+- Filters by service, event type, administrator and clinic date range, all applied in the database.
+- Live: the 15 earlier entries over 2 pages. Pages 1 and 2 contain different entries.
+
+Both lists use `utils/pagination.js` and `js/shared/pagination.js`. Activity entries recorded before `event_type`
+existed are shown honestly as "Settings changed (details were not recorded then)".
+
+### 29.3 Pet care reminders
+
+**Rules.** The clinic configures rules in Services & booking → Care reminder rules (`/admin/care-rules`). A rule
+belongs to a service and, optionally, one species. It sets a minimum and maximum interval (1–1825 days), says whether
+the guidance is general or veterinarian-approved, and carries a description and an explanation. A species-specific
+rule wins over an all-species rule. PetHub ships with no rules. The starting guidance shown to staff is reference
+material only, never applied by itself.
+
+**Reminders.**
+
+- A reminder is created only when an appointment is marked **Completed**.
+- With a rule, the reminder gives a due range counted from the service date, plus the explanation.
+- Without a rule, it says the clinic has not set a schedule and tells the owner to ask. No date is invented.
+- There is one open reminder per source appointment. A newer one for the same pet and service supersedes the older
+  one.
+- Reminders appear on the owner's Overview and My Pets. Owners acknowledge or dismiss only their own reminders.
+- The "Book this service" link appears only when the service is bookable. Nothing is ever booked automatically.
+
+**Admin.** From a pet's record, an admin sees its reminders and can set the pet's next date with a reason. That
+replaces the earlier reminder and is marked "Set by the clinic for this pet". Rule changes are typed entries in the
+service activity history, and every reminder keeps its source, rule and explanation for audit.
+
+### 29.4 Admin-managed service catalog
+
+- Admins add services in Services & booking (`POST /admin/services`). A new service starts switched off unless it has
+  a duration and at least one species; the database refuses "on" without them.
+- Admins can edit a service or switch it on or off at any time, with no redeploy.
+- A service that has appointments keeps its name, because appointments store the name. Services are never deleted,
+  and the list shows how many appointments use each one.
+- Every add, change, activation and deactivation is recorded with the administrator, the time, the type of change and
+  what changed.
+
+### 29.5 Connected dashboards
+
+- **Owner Overview:** care reminders sit beside upcoming appointments.
+- **My Pets:** shows each pet's reminders.
+- **Appointments:** offers "One pet" and "Several pets". Each appointment of a multi-pet booking says which pets were
+  booked with it.
+- **Appointment Management:** groups multi-pet bookings and offers per-pet reschedule and whole-booking cancel. The
+  email-delivery badges include the reschedule email.
+- **Pet record:** shows the pet's reminders, with the override.
+- **Services & booking:** holds the catalog, the care rules and the paged activity history.
+
+Each screen reads the same backend data, so a change on one appears on the others on their next load.
+
+### 29.6 Production migration
+
+`2026-10-24_multi_pet_booking_and_care_recommendations.sql` ran through the Supabase MCP `execute_sql` tool, with the
+owner's explicit authorization. The first attempt had been blocked by the permission classifier and was not worked
+around.
+
+1. **Review.** The file is additive only. It has a preflight that stops unless the database is in the expected state,
+   a post-check, explicit `REVOKE`s of the API-role privileges that this project's default privileges would grant,
+   and RLS on.
+2. **Dry run.** The file ran on the live database without its BEGIN/COMMIT, followed by 9 behaviour checks, and ended
+   with a deliberate error. The checks covered a group booking, an overlap refusal, a whole-booking cancel, a
+   reschedule, the stale and conflict outcomes, and the rule and reminder constraints. Everything rolled back, and the
+   database was confirmed unchanged.
+3. **Apply.** One transaction, committed at 15:25:37 UTC. The SHA-256 of the executed statement in the Postgres log
+   equals the file's hash, `37113ba5…45bc`, and the committed copy is byte-identical.
+4. **Verify.**
+   - Tables 18 → 21, indexes 43 → 54, constraints 87 → 118.
+   - RLS on with 0 policies, and no `anon`/`authenticated` privilege on the new tables.
+   - The new functions are executable by `postgres`/`service_role` only.
+   - Rolled-back calls with named arguments matched the backend's calls.
+5. **Data preserved.** Column-list hashes of every pre-existing row were identical before and after for `users`,
+   `pets`, `appointments`, `pethub_service_catalog` and `activity_logs`.
+6. **Order.** The new backend was first run locally against the migrated production database (23 / 23). Only then
+   was the code pushed.
+
+### 29.7 Performance
+
+**Database.** Query plans were measured on the live database with realistic volumes: 50,000 activity rows (20,000 of
+them service changes), 5,000 breeds and 10,000 care reminders. The rows were inserted in a transaction that was
+rolled back.
+
+| Query | Time |
+| --- | --- |
+| Activity page | 0.48 ms |
+| Activity page count | 12.1 ms |
+| Activity page, filtered | 0.15 ms |
+| Breed page | 0.99 ms |
+| Breed page count | 1.05 ms |
+| Breed name search | 6.47 ms |
+| Owner's reminders | 2.28 ms |
+| Owner's pets for booking | 0.06 ms |
+
+**API.** On the live API, network round trips dominate: each backend-to-database round trip costs 220–450 ms. The
+admin overview's sequential reads were therefore made parallel in `fefb13a`.
+
+| Endpoint (live, 4 runs each) | Before | After |
+| --- | --- | --- |
+| Admin overview | 2.6–5.8 s | 1.1–1.9 s |
+| Service activity page | 1.3–2.0 s | 1.05–1.5 s |
+| Admin services list | 1.0–1.9 s | 0.85–0.89 s |
+| Breed page, care rules | 0.85–1.6 s | 0.85–1.3 s (unchanged code) |
+
+### 29.8 Verification summary
+
+The test totals are in section 22.
+
+**Isolated full stack (10 / 10 new workflows):**
+
+1. Admin adds a service; it starts off; the admin sets it up and turns it on; the owner can book it at once.
+2. Activity history is newest first, typed, filtered and paged by the server.
+3. Breed pages come from the server, with the filters kept.
+4. The owner books three pets with different services, and sees each pet.
+5. A busy slot marks only that pet, and the suggested time books it.
+6. The admin sees the booking grouped, approves one pet, then cancels the whole booking.
+7. The admin reschedules one appointment; the owner is emailed and sees the new time.
+8. An admin rule plus a completed visit gives a reminder that explains why; the owner acknowledges and dismisses it,
+   and books only by choice.
+9. The admin sets a pet's next date from the pet record.
+10. The new screens at phone width and in dark mode show no sideways scroll and no CSP or JS problems.
+
+**Live (deployed):**
+
+- 23 / 23 API checks: the new columns load, real paged history and breeds, the filters, the rules and reminders
+  endpoints, and the refusals. The refusals cover a one-pet group, another owner's pets, owner access to admin
+  actions, a backwards rule range, a service switched on without setup, and an unknown booking or appointment.
+- 46 / 46 browser checks on the deployed site.
