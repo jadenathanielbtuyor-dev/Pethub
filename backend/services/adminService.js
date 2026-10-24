@@ -533,7 +533,22 @@ const getDashboardOverview = async (req) => {
     const appointments = appointmentsResult.data || [];
     const configuredServices = servicesResult || [];
 
-    const { data: medicalRecords, error: medicalRecordsError } = await medicalRecordsRepository.listAllRecords();
+    // Everything below needs only the rows above, so it is read at once (each read is a round trip to the database)
+    const [
+      { data: medicalRecords, error: medicalRecordsError },
+      { data: legacyMedicalRecordLogs, error: legacyLogsError },
+      appointmentEmails,
+      { verifiedUsers, unverifiedUsers },
+      pendingVerificationsResult,
+      activityLogsResult
+    ] = await Promise.all([
+      medicalRecordsRepository.listAllRecords(),
+      activityLogsRepository.listCompletedMedicalRecordActions(MEDICAL_RECORD_COMPLETED_APPOINTMENT_ACTION, 5000),
+      loadAppointmentEmails(appointments.map(apt => String(apt.id))),
+      getVerifiedTotals(users),
+      emailVerificationsRepository.countPending(),
+      activityLogsRepository.countAll()
+    ]);
 
     // The rest of the dashboard still loads, but records that could not be read are reported as unavailable, never as zero
     const medicalRecordsAvailable = !medicalRecordsError;
@@ -543,16 +558,17 @@ const getDashboardOverview = async (req) => {
 
     const userMap = buildUserNameMap(users);
 
-    // Get pet names for medical records
-    const petIds = [...new Set((medicalRecords || []).map(r => String(r.pet_id)).filter(Boolean))];
-    let petNameMap = {};
-    if (petIds.length > 0) {
-      const { data: petsList } = await petsRepository.listNamesByIds(petIds);
+    // Pet names for medical records: from the pets already loaded; only a pet missing there is looked up
+    const petNameMap = pets.reduce((map, pet) => {
+      map[String(pet.id)] = pet.name || 'Unknown Pet';
+      return map;
+    }, {});
+    const missingPetIds = [...new Set((medicalRecords || []).map(r => String(r.pet_id)).filter(Boolean))]
+      .filter(id => !(id in petNameMap));
+    if (missingPetIds.length > 0) {
+      const { data: petsList } = await petsRepository.listNamesByIds(missingPetIds);
       if (Array.isArray(petsList)) {
-        petNameMap = petsList.reduce((map, pet) => {
-          map[String(pet.id)] = pet.name || 'Unknown Pet';
-          return map;
-        }, {});
+        petsList.forEach(pet => { petNameMap[String(pet.id)] = pet.name || 'Unknown Pet'; });
       }
     }
 
@@ -580,29 +596,17 @@ const getDashboardOverview = async (req) => {
       };
     });
 
-    const { data: legacyMedicalRecordLogs, error: legacyLogsError } = await activityLogsRepository.listCompletedMedicalRecordActions(
-      MEDICAL_RECORD_COMPLETED_APPOINTMENT_ACTION,
-      5000
-    );
     const normalizedAppointments = applyMedicalRecordAssociationState(
       normalizeAppointmentNames(appointments, userMap),
       medicalRecordsAvailable ? medicalRecords || [] : null,
       legacyLogsError ? null : legacyMedicalRecordLogs || []
     );
 
-    const appointmentEmails = await loadAppointmentEmails(appointments.map(apt => String(apt.id)));
-
     const totalUsers = users.length;
     const totalPets = pets.length;
     const totalAppointments = appointments.length;
     const pendingAppointments = appointments.filter(apt => apt.status === 'Pending').length;
     const completedAppointments = appointments.filter(apt => apt.status === 'Completed').length;
-    const { verifiedUsers, unverifiedUsers } = await getVerifiedTotals(users);
-
-    const [pendingVerificationsResult, activityLogsResult] = await Promise.all([
-      emailVerificationsRepository.countPending(),
-      activityLogsRepository.countAll()
-    ]);
 
     if (pendingVerificationsResult.error) throw pendingVerificationsResult.error;
     if (activityLogsResult.error) throw activityLogsResult.error;

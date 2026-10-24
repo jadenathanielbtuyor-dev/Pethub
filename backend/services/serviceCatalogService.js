@@ -42,13 +42,15 @@ async function listServices() {
 
 async function listAdminServices() {
   try {
-    const { data, error } = await serviceCatalogRepository.listAll();
+    // Booked services keep their name (see updateService); the settings form shows the name as locked for them, and the
+    // list says how many appointments depend on each service (deactivating never touches them)
+    const [{ data, error }, { data: bookedTypes, error: bookedError }] = await Promise.all([
+      serviceCatalogRepository.listAll(),
+      appointmentsRepository.listServiceTypes()
+    ]);
     if (error) return failedCatalogLoad(error);
     // listServicesForClient re-sorts the rows, so each service's version is looked up by id, not by position
     const rowsById = new Map((data || []).map(row => [String(row.id), row]));
-    // Booked services keep their name (see updateService); the settings form shows the name as locked for them, and the
-    // list says how many appointments depend on each service (deactivating never touches them)
-    const { data: bookedTypes, error: bookedError } = await appointmentsRepository.listServiceTypes();
     const bookedCounts = new Map();
     (bookedError ? [] : bookedTypes || []).forEach(row => {
       const name = String(row.service_type || '');
@@ -234,11 +236,14 @@ async function listServiceActivity(req) {
   const { page, pageSize } = parsePageQuery(req.query, { defaultSize: SERVICE_ACTIVITY_PAGE_SIZE, maxSize: SERVICE_ACTIVITY_MAX_PAGE_SIZE });
 
   try {
-    const result = await fetchPage(range => activityLogsRepository.listServiceActivityPage(validation.filters, range), page, pageSize);
+    // The administrators filter list does not depend on the page, so both are read at once
+    const [result, actorRows] = await Promise.all([
+      fetchPage(range => activityLogsRepository.listServiceActivityPage(validation.filters, range), page, pageSize),
+      activityLogsRepository.listServiceActivityActors()
+    ]);
     if (result.error) throw result.error;
 
     const serviceIds = [...new Set(result.rows.map(row => row.target_id).filter(Boolean).map(String))];
-    const actorRows = await activityLogsRepository.listServiceActivityActors();
     const actorIds = [...new Set([...result.rows.map(row => row.actor_id), ...(actorRows.data || []).map(row => row.actor_id)].filter(Boolean).map(String))];
     const [services, actors] = await Promise.all([
       serviceIds.length ? serviceCatalogRepository.listNamesByIds(serviceIds) : Promise.resolve({ data: [] }),
