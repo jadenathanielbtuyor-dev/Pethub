@@ -3,7 +3,7 @@ const { sendEmail } = require('../utils/email');
 const env = require('../config/env');
 const { buildPasswordResetEmail } = require('../templates/email/passwordResetEmail');
 const { logUserActivity } = require('../utils/activityLogger');
-const { hashPassword } = require('../utils/passwordHash');
+const { toStoredPassword } = require('../utils/passwordHash');
 const { AUTH_TOKEN_MIN_SECRET_LENGTH, SESSION_REVOKED_REASONS } = require('../constants/auth');
 const {
   PASSWORD_RESET_CODE_TTL_MINUTES,
@@ -220,8 +220,7 @@ const resetPassword = async (req) => {
       return INVALID_RESET_CODE;
     }
 
-    // Hashed before the code is used up, so a hashing failure leaves the code usable
-    const passwordHash = await hashPassword(newPassword);
+    const storedPassword = toStoredPassword(newPassword);
 
     const usedAt = new Date().toISOString();
     const { data: consumed, error: consumeError } = await passwordResetsRepository.consumeById(reset.id, usedAt);
@@ -233,7 +232,7 @@ const resetPassword = async (req) => {
     // Another request used or replaced this code first
     if (!consumed || consumed.length === 0) return INVALID_RESET_CODE;
 
-    const { data: updatedUsers, error: updateError } = await usersRepository.updatePassword(user.id, passwordHash);
+    const { data: updatedUsers, error: updateError } = await usersRepository.updatePassword(user.id, storedPassword);
     // Supabase reports no error when a policy blocks an update, so require a changed row
     if (!updateError && Array.isArray(updatedUsers) && updatedUsers.length > 0) {
       await endSessionsAfterReset(user.id);

@@ -14,7 +14,7 @@ const { startTestApp } = require('./helpers/harness');
 
 const BACKEND = path.join(__dirname, '..');
 const FRONTEND = path.join(BACKEND, '..', 'frontend');
-const { hashPassword, isPasswordHash } = require('../utils/passwordHash');
+const { toStoredPassword, verifyPassword, isPasswordHash } = require('../utils/passwordHash');
 
 const newEmail = () => `${crypto.randomUUID()}@example.test`;
 
@@ -41,8 +41,8 @@ describe('Error replies and logs', () => {
     await t.api('POST', '/auth/login', { body: { email, password } });
     const hashed = t.createUser({ password });
     assert.equal((await t.api('POST', '/auth/login', { body: { email: hashed.email, password } })).status, 200);
-    const legacy = t.createUser({ storedPassword: password });
-    assert.equal((await t.api('POST', '/auth/login', { body: { email: legacy.email, password } })).status, 403);
+    const plain = t.createUser({ storedPassword: password });
+    assert.equal((await t.api('POST', '/auth/login', { body: { email: plain.email, password } })).status, 200);
     await t.api('POST', '/auth/login', { body: { email: hashed.email, password: `${password}-wrong` } });
     assert.ok(t.logs.length > 0);
     t.logs.forEach(line => assert.ok(!line.includes(password), `a log line contains the password: ${line.slice(0, 80)}`));
@@ -71,25 +71,30 @@ describe('Contact form limits', () => {
   });
 });
 
-describe('Passwords saved before hashing', () => {
+describe('Plain-text passwords', () => {
 
-  it('a plaintext value never logs in, is not echoed and is not written anywhere by the attempt', async () => {
+  it('a plain-text password logs in, is not echoed and is not written to the log', async () => {
     const user = t.createUser({ storedPassword: 'Plain#Before1' });
     const login = await t.api('POST', '/auth/login', { body: { email: user.email, password: 'Plain#Before1' } });
-    assert.equal(login.status, 403);
-    assert.equal(login.body.code, 'password_reset_required');
+    assert.equal(login.status, 200);
+    assert.ok(login.body.token);
     assert.ok(!login.text.includes('Plain#Before1'));
+    assert.equal((await t.api('POST', '/auth/login', { body: { email: user.email, password: 'Plain#Before2' } })).status, 403);
     assert.equal(t.db.find('users', row => row.id === user.id).password, 'Plain#Before1');
     t.logs.forEach(line => assert.ok(!line.includes('Plain#Before1'), line.slice(0, 80)));
   });
 
-  it('only scrypt hashes verify', async () => {
-    const { verifyPassword } = require('../utils/passwordHash');
-    assert.equal(await verifyPassword('Reset#New1', await hashPassword('Reset#New1')), true);
-    assert.equal(await verifyPassword('Plain#Old1', 'Plain#Old1'), false);
-    const sha = `sha256$${crypto.createHash('sha256').update('Plain#Old1', 'utf8').digest('hex')}`;
-    assert.equal(await verifyPassword('Plain#Old1', sha), false);
-    assert.equal(isPasswordHash(`reset-required$${'a'.repeat(64)}`), false);
+  it('new passwords are stored as typed; plain text and existing scrypt hashes both verify', async () => {
+    assert.equal(toStoredPassword('Reset#New1'), 'Reset#New1');
+    assert.equal(await verifyPassword('Plain#Old1', 'Plain#Old1'), true);
+    assert.equal(await verifyPassword('Plain#Old2', 'Plain#Old1'), false);
+    assert.equal(await verifyPassword('', 'Plain#Old1'), false);
+    const salt = crypto.randomBytes(16);
+    const key = crypto.scryptSync('Hashed#Old1', salt, 64, { N: 1024, r: 8, p: 1 });
+    const hash = `scrypt$1024$8$1$${salt.toString('base64')}$${key.toString('base64')}`;
+    assert.ok(isPasswordHash(hash));
+    assert.equal(await verifyPassword('Hashed#Old1', hash), true);
+    assert.equal(await verifyPassword(hash, hash), false, 'typing the stored hash itself does not log in');
   });
 });
 

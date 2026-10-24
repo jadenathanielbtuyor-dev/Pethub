@@ -11,7 +11,7 @@ const path = require('path');
 const { startTestApp } = require('./helpers/harness');
 
 const BACKEND = path.join(__dirname, '..');
-const { isPasswordHash, hashPassword, verifyPassword } = require(path.join(BACKEND, 'utils', 'passwordHash.js'));
+const { isPasswordHash, toStoredPassword, verifyPassword } = require(path.join(BACKEND, 'utils', 'passwordHash.js'));
 
 let t;
 
@@ -99,7 +99,7 @@ async function assertRefused(body, field, message) {
 }
 
 describe('Registering an account', () => {
-  it('creates an unverified customer account with a hashed password and emails one verification code', async () => {
+  it('creates an unverified customer account with a plain-text password and emails one verification code', async () => {
     const body = registration();
     const response = await register(body);
 
@@ -115,9 +115,8 @@ describe('Registering an account', () => {
     assert.equal(row.role, 'user');
     assert.equal(row.is_verified, false);
     assert.equal(row.status, 'Active', 'database default kept');
-    assert.ok(isPasswordHash(row.password), 'the password is stored as a scrypt hash');
-    assert.notEqual(row.password, body.password);
-    assert.ok(!row.password.includes(body.password));
+    assert.equal(row.password, body.password, 'the password is stored as typed');
+    assert.ok(!isPasswordHash(row.password));
     assert.equal(row.phone_number, '+639187654321');
     assert.equal(row.date_of_birth, '1994-06-15');
     assert.equal(row.postal_code, '1605');
@@ -470,60 +469,30 @@ describe('Registration failures', () => {
 });
 
 describe('Password storage and existing accounts', () => {
-  it('hashes with a random salt and verifies only the right password', async () => {
-    const first = await hashPassword('Same#Password1');
-    const second = await hashPassword('Same#Password1');
-    assert.notEqual(first, second);
-    assert.match(first, /^scrypt\$16384\$8\$1\$[A-Za-z0-9+/]{22}==\$[A-Za-z0-9+/]{86}==$/);
-    assert.equal(await verifyPassword('Same#Password1', first), true);
-    assert.equal(await verifyPassword('Same#Password2', first), false);
-    assert.equal(await verifyPassword('', first), false);
+  it('stores passwords as typed and verifies only the right password', async () => {
+    assert.equal(toStoredPassword('Same#Password1'), 'Same#Password1');
+    assert.equal(await verifyPassword('Same#Password1', 'Same#Password1'), true);
+    assert.equal(await verifyPassword('Same#Password2', 'Same#Password1'), false);
+    assert.equal(await verifyPassword('', 'Same#Password1'), false);
     assert.equal(await verifyPassword('anything', ''), false);
     assert.equal(await verifyPassword('anything', null), false);
   });
 
-  it('passwords saved before hashing never log in, even typed exactly; the owner is sent to Forgot password', async () => {
+  it('existing accounts keep their stored password: scrypt hashes and plain text both log in', async () => {
+    const hashed = t.createUser({ password: 'Hashed#Before1' });
+    assert.ok(isPasswordHash(t.db.find('users', row => row.id === hashed.id).password));
     const plaintext = t.createUser({ storedPassword: 'Legacy#Plain1' });
-    const legacyHash = `sha256$${crypto.createHash('sha256').update('Legacy#Sha256', 'utf8').digest('hex')}`;
-    const sha256User = t.createUser({ storedPassword: legacyHash });
-    // A plaintext password that merely starts like a hash is not a hash either
-    const lookalike = t.createUser({ storedPassword: 'scrypt$not-a-hash' });
-    const sessionsBefore = t.db.table('user_sessions').length;
 
-    for (const [user, password] of [
-      [plaintext, 'Legacy#Plain1'], [plaintext, 'Legacy#Plain2'],
-      [sha256User, 'Legacy#Sha256'], [sha256User, legacyHash],
-      [lookalike, 'scrypt$not-a-hash']
-    ]) {
-      const login = await t.api('POST', '/auth/login', { body: { email: user.email, password } });
-      assert.equal(login.status, 403, password);
-      assert.equal(login.body.code, 'password_reset_required');
-      assert.match(login.body.error, /needs a new password\. Use "Forgot password\?"/);
-      assert.equal(login.body.token, undefined);
-    }
+    assert.equal((await t.api('POST', '/auth/login', { body: { email: hashed.email, password: 'Hashed#Before1' } })).status, 200);
+    assert.equal((await t.api('POST', '/auth/login', { body: { email: plaintext.email, password: 'Legacy#Plain1' } })).status, 200);
+    assert.equal((await t.api('POST', '/auth/login', { body: { email: plaintext.email, password: 'Legacy#Plain2' } })).status, 403);
 
-    // A login attempt rewrites nothing and opens no session: the value stays until the owner resets it
+    // Logging in rewrites nothing
+    assert.ok(isPasswordHash(t.db.find('users', row => row.id === hashed.id).password));
     assert.equal(t.db.find('users', row => row.id === plaintext.id).password, 'Legacy#Plain1');
-    assert.equal(t.db.find('users', row => row.id === sha256User.id).password, legacyHash);
-    assert.equal(t.db.find('users', row => row.id === lookalike.id).password, 'scrypt$not-a-hash');
-    assert.equal(t.db.table('user_sessions').length, sessionsBefore);
   });
 
-  it('an account whose old password was removed gets back in with Forgot password, and the new one is a hash', async () => {
-    const user = t.createUser({ storedPassword: `reset-required$${crypto.randomBytes(32).toString('hex')}` });
-    assert.equal((await t.api('POST', '/auth/login', { body: { email: user.email, password: 'Anything#1' } })).body.code, 'password_reset_required');
-
-    assert.equal((await t.api('POST', '/auth/forgot-password', { body: { email: user.email } })).status, 200);
-    const resetEmail = await waitFor(() => t.emailsTo(user.email).find(email => /reset code/i.test(email.text)), 'the reset email');
-    assert.equal((await t.api('POST', '/auth/reset-password', { body: { email: user.email, code: codeIn(resetEmail), password: 'Fresh#Start1' } })).status, 200);
-
-    assert.ok(isPasswordHash(t.db.find('users', row => row.id === user.id).password));
-    const login = await t.api('POST', '/auth/login', { body: { email: user.email, password: 'Fresh#Start1' } });
-    assert.equal(login.status, 200);
-    assert.ok(login.body.token);
-  });
-
-  it('a password reset stores the new password as a hash', async () => {
+  it('a password reset stores the new password as typed', async () => {
     const user = t.createUser({ password: 'Before#Reset1' });
     assert.equal((await t.api('POST', '/auth/forgot-password', { body: { email: user.email } })).status, 200);
     const resetEmail = await waitFor(() => t.emailsTo(user.email).find(email => /reset code/i.test(email.text)), 'the reset email');
@@ -535,7 +504,7 @@ describe('Password storage and existing accounts', () => {
     const reset = await t.api('POST', '/auth/reset-password', { body: { email: user.email, code: codeIn(resetEmail), password: 'After#Reset1' } });
     assert.equal(reset.status, 200);
     const stored = t.db.find('users', row => row.id === user.id).password;
-    assert.ok(isPasswordHash(stored));
+    assert.equal(stored, 'After#Reset1');
     assert.equal((await t.api('POST', '/auth/login', { body: { email: user.email, password: 'After#Reset1' } })).status, 200);
     assert.equal((await t.api('POST', '/auth/login', { body: { email: user.email, password: 'Before#Reset1' } })).status, 403);
   });
@@ -573,7 +542,7 @@ describe('Profile on the user dashboard (GET /auth/user-status?include=profile)'
       postal_code: '1605'
     });
     assert.deepEqual(Object.keys(response.body.user).sort(), ['created_at', 'email', 'fullname', 'id', 'is_verified', 'role']);
-    assert.ok(!response.text.includes('scrypt$'), 'the password hash is never returned');
+    assert.ok(!response.text.includes('Clinic#Pass2026') && !response.text.includes('"password"'), 'the password is never returned');
   });
 
   it('is left out unless asked for; an account created before the details were required gets nulls', async () => {
@@ -603,7 +572,7 @@ describe('Profile on the user dashboard (GET /auth/user-status?include=profile)'
     for (const url of [`/admin/dashboard/users?user_id=${admin.id}`, `/admin/dashboard/overview?user_id=${admin.id}`]) {
       const response = await t.api('GET', url, { token: admin.token });
       assert.equal(response.status, 200, url);
-      for (const value of ['+639187654321', '1994-06-15', 'Mabini Street', 'scrypt$']) {
+      for (const value of ['+639187654321', '1994-06-15', 'Mabini Street', 'Clinic#Pass2026', '"password"']) {
         assert.ok(!response.text.includes(value), `${url} does not include ${value}`);
       }
     }

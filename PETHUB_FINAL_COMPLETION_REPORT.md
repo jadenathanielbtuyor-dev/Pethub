@@ -29,9 +29,9 @@ security items and verified every workflow that can be verified without clinic d
 - **Sessions now end when they should.** Every login creates a server-side session row, and the backend checks it on
   every signed-in request. Logging out ends that session immediately, and a password reset ends every session of the
   account. Both were verified live: after logout, the old token gets 401.
-- **Plaintext passwords no longer work.** Only salted scrypt hashes verify. The one account that still has a plaintext
-  value can no longer log in with it and is told to use "Forgot password?". Removing that value from storage is the
-  one database step that remains (section 8).
+- **Passwords are stored as plain text (changed 2026-10-25).** On 2026-10-24 only salted scrypt hashes verified.
+  On 2026-10-25 the project owner decided otherwise: new and reset passwords are now saved exactly as typed, and
+  plain-text values log in. Accounts that already hold a scrypt hash keep it and still log in (section 8).
 - **Security headers are live.** The frontend has a Content-Security-Policy plus frame, sniffing, referrer and
   permissions headers. Chart.js and Remixicon load with Subresource Integrity. The API sends its own strict headers.
   CORS is limited to PetHub's own Vercel deployments. All of this was verified on the deployed site: 0 CSP
@@ -188,6 +188,13 @@ Each control is listed with how it was verified.
 | Headers, SRI, CORS | Section 10 |
 
 ## 8. Password migration findings
+
+> **Changed on 2026-10-25 by the project owner's decision.** New passwords from registration and password reset are
+> stored in `users.password` as plain text, exactly as typed. Login accepts a plain-text value, or an existing PetHub
+> scrypt hash, which accounts created or reset between 2026-10-17 and 2026-10-24 keep until their next reset.
+> Passwords are still never returned by the API or written to the server log. The registration page and the privacy
+> notice no longer say passwords are hashed. `2026-10-24_remove_legacy_plaintext_password.sql` is withdrawn and must
+> not be run. The rest of this section describes the 2026-10-24 state.
 
 **State before this phase.** Four accounts held scrypt hashes and one held a plaintext value: a verified customer
 account (not a test account) with 0 pets and 0 appointments, last active 2026-10-18. The value itself was never read
@@ -517,7 +524,7 @@ No existing row was changed, and no existing object was dropped or rewritten.
 | --- | --- |
 | `2026-10-24_user_sessions.sql` | **Applied** 10:47:05 UTC (dry run first; hash verified; recorded in `APPLIED.md`) |
 | `2026-10-24_multi_pet_booking_and_care_recommendations.sql` | **Applied** 15:25:37 UTC through the Supabase MCP, with the owner's authorization. A live dry run with 9 behaviour checks ran first, then rolled back. The executed statement's SHA-256 equals the file's (`37113ba5…45bc`); the committed copy is byte-identical. Tables 18 → 21, indexes 43 → 54, constraints 87 → 118. Recorded in `APPLIED.md` |
-| `2026-10-24_remove_legacy_plaintext_password.sql` | **Not applied**: blocked by the permission classifier on its first attempt; it changes a customer's stored credential, which needs its own explicit permission (section 8) |
+| `2026-10-24_remove_legacy_plaintext_password.sql` | **Never applied; withdrawn 2026-10-25.** Do not run it: plain-text passwords are now the intended storage (section 8) |
 | Earlier files (including `2026-10-24_contact_cancellation_email_log.sql`) | Verified in place; **not re-run** |
 | `2026-10-24_optional_default_privileges.sql` | Still not applied (optional; affects future objects only) |
 
@@ -527,8 +534,8 @@ No existing row was changed, and no existing object was dropped or rewritten.
 
 | Level | Suite | Result |
 | --- | --- | --- |
-| Local | Backend (`npm test`) | **375 / 375** |
-| Local | Backend + headless browser (`PETHUB_BROWSER_TESTS=1`) | **494 / 494** |
+| Local | Backend (`npm test`) | **375 / 375**. After the 2026-10-25 password change: **374 / 374** (three hashing tests replaced by two plain-text tests) |
+| Local | Backend + headless browser (`PETHUB_BROWSER_TESTS=1`) | **494 / 494**. After the password change: 492 / 493 in the full run; the one failure, a My Pets browser test unrelated to passwords, passed 3 / 3 when rerun alone |
 | Local | Mutation checks on the additions: 16 safeguards broken one at a time, files restored byte-for-byte | **15 / 16 caught.** The 16th ("reminder for any status change") has a second check behind it in the care-reminder service. The tests fail when both checks are removed |
 | Isolated full stack | Earlier workflows, rerun on the new code | **15 / 15** |
 | Isolated full stack | New workflows (section 29) | **10 / 10** |
@@ -628,9 +635,8 @@ These are owner or clinic actions. The system is in a safe state without them.
    reminder with no date. To get dated reminders, add a rule per service (and per species where needed) in System
    Management → Services & booking → Care reminder rules. The starting guidance shown there is reference material
    only, not clinic policy, and it is never applied by itself.
-4. **Legacy password value.** Run `2026-10-24_remove_legacy_plaintext_password.sql`, or have that account owner use
-   "Forgot password?". The owner authorized the additions migration. This file changes a customer's stored
-   credential, so it waits for its own explicit permission.
+4. **Passwords:** nothing to do. Plain-text storage is the owner's decision since 2026-10-25, and the legacy-password
+   removal file is withdrawn (section 8).
 5. **Optional:** on Railway, set `BREVO_SENDER_EMAIL` / `BREVO_SENDER_NAME`, then remove the `SENDGRID_*` variables.
    Not required today.
 6. **Optional:** delete the stale `pethub-beige.vercel.app` deployment. It runs old frontend code and is still on the
@@ -722,7 +728,7 @@ During the demonstration:
 | Care reminders (rules, explainable, completed visits only, acknowledge/dismiss, override, no auto-booking) | Pass (local + isolated full stack + live endpoints); no rules configured yet |
 | Performance (indexes, measured queries, dashboard response) | Pass (all measured queries under 13 ms; overview 1.1–1.9 s live) |
 | Contact (login required, verified sender, read, reply, email) | Pass (live, delivered) |
-| Security (no new plaintext, sessions, roles, ownership, keys, headers) | Pass (live). Legacy value: storage removal pending (section 8) |
+| Security (sessions, roles, ownership, keys, headers) | Pass (live). Passwords are stored as plain text by the owner's decision of 2026-10-25 (section 8) |
 | Database (migration state, no duplicates, no deletions, constraints, RLS) | Pass (live) |
 | Deployment (backend, frontend, connectivity) | Pass (live) |
 

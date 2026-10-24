@@ -1,18 +1,13 @@
-// Password storage for PetHub accounts (Node's built-in crypto, no extra dependency).
-// New passwords (registration and password reset) are stored as salted scrypt hashes:
+// Password checks for PetHub accounts (Node's built-in crypto, no extra dependency).
+// New passwords (registration and password reset) are stored as plain text, as typed (owner's decision, 2026-10-25).
+// Accounts that already hold a salted scrypt hash keep it and still log in with it:
 //   scrypt$<N>$<r>$<p>$<salt, base64>$<derived key, base64>
-// Only these hashes ever verify. Values saved before hashing (plaintext, sha256$<hex>) are no longer accepted: their
-// owners set a new password with "Forgot password?" (database/migrations/2026-10-24_remove_legacy_plaintext_password.sql
-// removed the last one), so a password that was readable in the database never works again.
 const crypto = require('crypto');
 const util = require('util');
 
 const scrypt = util.promisify(crypto.scrypt);
 
-const SCRYPT_COST = Object.freeze({ N: 16384, r: 8, p: 1 });
-const SALT_BYTES = 16;
-const KEY_BYTES = 64;
-// Enough for the parameters above (128 * N * r = 16 MiB) and for a stored hash made with up to N = 65536
+// Enough for a stored hash made with up to N = 65536, r = 8
 const SCRYPT_MAX_MEMORY = 128 * 65536 * 8 * 2;
 
 const SCRYPT_HASH_PATTERN = /^scrypt\$(\d{4,6})\$(\d{1,2})\$(\d)\$([A-Za-z0-9+/]{22}==)\$([A-Za-z0-9+/]{86}==)$/;
@@ -37,11 +32,15 @@ function isPasswordHash(storedPassword) {
   return typeof storedPassword === 'string' && parseScryptHash(storedPassword) !== null;
 }
 
-async function hashPassword(password) {
-  const salt = crypto.randomBytes(SALT_BYTES);
-  const key = await scrypt(normalizePassword(password), salt, KEY_BYTES, { ...SCRYPT_COST, maxmem: SCRYPT_MAX_MEMORY });
-  const { N, r, p } = SCRYPT_COST;
-  return `scrypt$${N}$${r}$${p}$${salt.toString('base64')}$${key.toString('base64')}`;
+// The value saved in users.password for a new or reset password
+function toStoredPassword(password) {
+  return String(password);
+}
+
+// Compares fixed-length digests so the time taken does not depend on where the two values differ
+function plainTextMatches(candidate, storedPassword) {
+  const digest = value => crypto.createHash('sha256').update(normalizePassword(value)).digest();
+  return crypto.timingSafeEqual(digest(candidate), digest(storedPassword));
 }
 
 async function verifyPassword(password, storedPassword) {
@@ -49,7 +48,7 @@ async function verifyPassword(password, storedPassword) {
   const candidate = String(password ?? '');
 
   const stored = parseScryptHash(storedPassword);
-  if (!stored) return false;
+  if (!stored) return candidate !== '' && plainTextMatches(candidate, storedPassword);
 
   const key = await scrypt(normalizePassword(candidate), stored.salt, stored.key.length, {
     N: stored.N,
@@ -61,7 +60,7 @@ async function verifyPassword(password, storedPassword) {
 }
 
 module.exports = {
-  hashPassword,
+  toStoredPassword,
   verifyPassword,
   isPasswordHash
 };

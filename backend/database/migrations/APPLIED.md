@@ -34,7 +34,7 @@ row in every table hashed identically to the pre-change snapshot.
 
 | File | State |
 |---|---|
-| `2026-10-24_remove_legacy_plaintext_password.sql` | BLOCKED on 2026-10-24 by the Claude Code permission classifier before it reached the database. One customer account still stores a plaintext password value; the backend deployed in f7f8840 never accepts it (only scrypt hashes verify), so it cannot be used to log in. Run the file in the SQL Editor to remove the value from storage, or the owner removes it by completing Forgot password. Its preflight stops if more than one such account exists; its post-check verifies none remain |
+| `2026-10-24_remove_legacy_plaintext_password.sql` | WITHDRAWN on 2026-10-25: DO NOT RUN. Never applied (blocked by the Claude Code permission classifier on 2026-10-24). Since 2026-10-25 the project owner decided that new passwords are stored as plain text and plain-text values log in (`docs/backend-maintenance.md`, Accounts and Passwords), so this file would lock those accounts out |
 | `2026-10-24_optional_default_privileges.sql` | BLOCKED on 2026-10-24 by the Claude Code permission classifier before it reached the database (the statement is absent from the Postgres log; postgres's default privileges in `public` still grant anon/authenticated on future objects). It affects only objects created in the future. Run it in the SQL Editor, or allow the action, when wanted; its post-check verifies the result |
 
 ## Superseded or partially applied before 2026-10-23 (do not run)

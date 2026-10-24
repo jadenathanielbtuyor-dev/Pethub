@@ -4,12 +4,11 @@ const env = require('../config/env');
 const { buildVerificationEmail } = require('../templates/email/verificationEmail');
 const { logUserActivity } = require('../utils/activityLogger');
 const { createAuthToken, getSessionExpiry } = require('../utils/authToken');
-const { hashPassword, verifyPassword, isPasswordHash } = require('../utils/passwordHash');
-const logger = require('../utils/logger');
+const { toStoredPassword, verifyPassword } = require('../utils/passwordHash');
 const { runExclusive } = require('../utils/keyedLock');
 const { VERIFICATION_CODE_TTL_MINUTES, VERIFICATION_RESEND_COOLDOWN_SECONDS } = require('../constants/email');
 const { PROFILE_COLUMNS } = require('../constants/userProfile');
-const { PASSWORD_RESET_REQUIRED_MESSAGE, SESSION_REVOKED_REASONS } = require('../constants/auth');
+const { SESSION_REVOKED_REASONS } = require('../constants/auth');
 const usersRepository = require('../repositories/usersRepository');
 const userSessionsRepository = require('../repositories/userSessionsRepository');
 const emailVerificationsRepository = require('../repositories/emailVerificationsRepository');
@@ -57,7 +56,7 @@ function createAccount({ cleanName, normalizedEmail, cleanPassword, profile }) {
     const { data: newUsers, error: insertError } = await usersRepository.createUser({
       fullname: cleanName,
       email: normalizedEmail,
-      password: await hashPassword(cleanPassword),
+      password: toStoredPassword(cleanPassword),
       role: 'user',
       is_verified: false,
       ...profile
@@ -142,12 +141,6 @@ const login = async (req) => {
     }
 
     const user = users[0];
-
-    // A password saved before hashing (or removed for that reason) can only be replaced through the emailed reset code
-    if (!isPasswordHash(user.password)) {
-      logger.authEvent('login.password_reset_required', { user_id: String(user.id) });
-      return { statusCode: 403, body: { success: false, code: 'password_reset_required', error: PASSWORD_RESET_REQUIRED_MESSAGE } };
-    }
 
     if (!(await verifyPassword(cleanPassword, user.password))) {
       return { statusCode: 403, body: { success: false, error: 'Invalid email or password' } };
