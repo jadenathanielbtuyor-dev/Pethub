@@ -194,7 +194,7 @@ describe('Email failures and content safety', () => {
     await t.settleEmails();
 
     const logText = t.logs.join('\n');
-    assert.ok(logText.includes('email.delivered'));
+    assert.ok(logText.includes('email.accepted'));
     assert.ok(!logText.includes(t.secrets.brevoApiKey));
     assert.ok(!logText.includes(user.email));
     assert.ok(!logText.includes('Private Person'));

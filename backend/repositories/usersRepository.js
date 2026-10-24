@@ -55,18 +55,6 @@ function updatePassword(userId, password) {
     .select('id');
 }
 
-// Replaces a password stored before hashing (plaintext or sha256$) with a new hash after a successful login. Only a row
-// whose value is still not a scrypt hash changes, so a password set meanwhile through reset is never overwritten, and
-// the old value is never sent to the database.
-function upgradeLegacyPassword(userId, passwordHash) {
-  return supabase
-    .from('users')
-    .update({ password: passwordHash })
-    .eq('id', userId)
-    .not('password', 'like', 'scrypt$%')
-    .select('id');
-}
-
 function findStatusById(userId) {
   return supabase
     .from('users')
@@ -159,7 +147,6 @@ module.exports = {
   findByEmailForVerification,
   updateVerificationStatus,
   updatePassword,
-  upgradeLegacyPassword,
   findStatusById,
   findProfileById,
   updateProfile,

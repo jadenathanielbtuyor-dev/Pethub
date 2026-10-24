@@ -85,9 +85,11 @@ const env = {
   },
   brevo: {
     apiKey: readEnv('BREVO_API_KEY'),
-    // Sender settings keep their existing variable names for now
-    fromEmail: readEnv('SENDGRID_FROM_EMAIL'),
-    fromName: readEnv('SENDGRID_FROM_NAME', 'PetHub')
+    // Email is sent through Brevo. The sender is read from BREVO_SENDER_EMAIL / BREVO_SENDER_NAME; deployments set up
+    // before those names existed still use SENDGRID_FROM_EMAIL / SENDGRID_FROM_NAME (legacy names, same meaning).
+    // SENDGRID_API_KEY is not read anywhere.
+    fromEmail: readFirstEnv(['BREVO_SENDER_EMAIL', 'SENDGRID_FROM_EMAIL']).value,
+    fromName: readFirstEnv(['BREVO_SENDER_NAME', 'SENDGRID_FROM_NAME']).value || 'PetHub'
   },
   gemini: {
     apiKey: readEnv('GEMINI_API_KEY'),

@@ -5,6 +5,7 @@ const env = require('./config/env');
 const { API_PREFIXES } = require('./constants/apiRoutes');
 const apiNotFoundHandler = require('./middleware/apiNotFoundHandler');
 const errorHandler = require('./middleware/errorHandler');
+const securityHeaders = require('./middleware/securityHeaders');
 const logger = require('./utils/logger');
 
 const app = express();
@@ -15,9 +16,15 @@ const PORT = env.port;
 app.set('trust proxy', 1);
 // Replies do not advertise the server framework
 app.disable('x-powered-by');
+app.use(securityHeaders);
 
 // Middleware
 const allowedOrigins = env.cors.allowedOrigins;
+
+// Preview and branch deployments of PetHub's own Vercel project (pethub-<id>-zzz-duke1-s-projects.vercel.app,
+// pethub-git-<branch>-zzz-duke1-s-projects.vercel.app). Other *.vercel.app sites are refused; more origins can be
+// added with FRONTEND_URL or CORS_ORIGINS.
+const PETHUB_VERCEL_PREVIEW_ORIGIN = /^https:\/\/pethub-[a-z0-9-]+-zzz-duke1-s-projects\.vercel\.app$/;
 
 // The local host itself on any port; "localhost" anywhere in the origin also matched sites such as https://localhost.example.com
 function isLocalhostOrigin(origin) {
@@ -33,10 +40,10 @@ const corsOptions = {
     // Allow requests with no origin (Postman/mobile apps/local tools)
     if (!origin) return callback(null, true);
 
-    // Allow Vercel deployments + localhost
+    // Allow PetHub's Vercel deployments + localhost
     if (
       allowedOrigins.includes(origin) ||
-      origin.endsWith('.vercel.app') ||
+      PETHUB_VERCEL_PREVIEW_ORIGIN.test(origin) ||
       isLocalhostOrigin(origin)
     ) {
       return callback(null, true);

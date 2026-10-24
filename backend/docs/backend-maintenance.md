@@ -11,11 +11,16 @@ Environment variables are centralized in `config/env.js`. Railway should continu
 - `SUPABASE_SERVICE_KEY` (the service role / secret key). The backend's shared database client uses it when it is set (`config/env.js`), falling back to `SUPABASE_ANON_KEY` otherwise; a public key pasted into `SUPABASE_SERVICE_KEY` by mistake is ignored. Password reset uses it too (`config/supabaseAdmin.js`, never the anon key). At startup the log line `supabase.client_key` names the variable and the kind of key in use (never the key). It must be the service role key before row level security is switched on (`database/migrations/2026-10-20_rls_least_privilege.sql`). Server-side only: never put it in frontend code or Vercel.
 - `SUPABASE_ANON_KEY` (fallback only; the browser never talks to Supabase directly)
 - `BREVO_API_KEY` (Brevo transactional email API key; verification, password reset and appointment approved/cancelled emails are sent through Brevo)
-- `SENDGRID_FROM_EMAIL` (sender address for Brevo emails; the name is kept from the earlier SendGrid setup and must be a sender verified in Brevo)
-- `SENDGRID_FROM_NAME` (sender display name for Brevo emails; defaults to `PetHub`)
+- `BREVO_SENDER_EMAIL` (sender address for Brevo emails; must be a sender verified in Brevo). Deployments set up before this name existed use `SENDGRID_FROM_EMAIL`, which is still read when `BREVO_SENDER_EMAIL` is not set, so nothing has to change on Railway; set the new name when convenient and then remove the old one.
+- `BREVO_SENDER_NAME` (sender display name; defaults to `PetHub`; `SENDGRID_FROM_NAME` is the legacy fallback)
+- `SENDGRID_API_KEY` is not read anywhere (email goes through Brevo with `BREVO_API_KEY`) and can be deleted wherever it is set.
 - `GEMINI_API_KEY`
 - `GEMINI_MODEL`
 - `AUTH_TOKEN_SECRET` (at least 32 random characters; signs login session tokens. Without it, login is refused. Changing it signs every user out.)
+
+## Sessions
+
+Each login stores a row in `user_sessions` (`database/migrations/2026-10-24_user_sessions.sql`: who, created, expires, revoked; no token, IP or device) and the signed token names that row. `middleware/requireAuth.js` checks on every signed-in request that the row belongs to the token's account, is not revoked and has not expired (8 hours, `constants/auth.js`). `POST /auth/logout` revokes the session it was sent with (other devices stay signed in until they log out); a completed password reset revokes every open session of the account. If the session table cannot be read the request gets a 503 (the browser keeps its sign-in) instead of a 401. Tokens issued before sessions existed carry no session id and are refused, so everyone signed in once more after that deployment. Apply the migration BEFORE deploying a backend with this code, otherwise every login fails.
 
 Optional frontend origin settings:
 
@@ -26,7 +31,7 @@ Online payments (PayMongo deposits) were removed from PetHub. `PAYMENTS_ENABLED`
 
 ## Accounts and Passwords
 
-New passwords (registration and password reset) are stored as salted scrypt hashes by `utils/passwordHash.js` (Node's built-in `crypto`, no dependency). Login also accepts the values stored before hashing was introduced (plaintext and `sha256$...`), and the first successful login with such a value replaces it with a scrypt hash (`usersRepository.upgradeLegacyPassword`; it only touches rows that are not scrypt hashes yet, so a password reset made meanwhile is never overwritten, and the old value is never sent to the database). Accounts whose owners never log in again keep their old value until they reset it. Do not roll the backend back to a version older than the hashing change: older code compares plaintext and would refuse every account created or reset since.
+New passwords (registration and password reset) are stored as salted scrypt hashes by `utils/passwordHash.js` (Node's built-in `crypto`, no dependency), and only scrypt hashes ever verify. Values stored before hashing was introduced (plaintext, `sha256$...`) are no longer accepted: such an account is told at login that it needs a new password and uses "Forgot password?" (the emailed-code reset), which stores a scrypt hash. Until 2026-10-24 the first login replaced such a value; the last remaining plaintext value was then removed with `database/migrations/2026-10-24_remove_legacy_plaintext_password.sql` (replaced inside the database by a random `reset-required$...` marker that matches no password; the old value was never read out). Do not roll the backend back to a version older than the hashing change: older code compares plaintext and would refuse every account created or reset since.
 
 Registration requires every field: full legal name, email, password and its confirmation, date of birth, gender ("Prefer not to say" is a valid answer), contact number (Philippine mobile or landline, or another country's number starting with + and its country code) and a Philippine home address (house/unit and street, barangay, city/municipality, province, 4-digit postal code). The rules are in `validators/authValidator.js` with the limits in `constants/userProfile.js`; `frontend/js/shared/profile-fields.js` repeats them for the forms and `tests/profile-fields.test.js` keeps the two in step. The details need `database/migrations/2026-10-20_users_profile_fields.sql`: apply it BEFORE deploying this backend, otherwise every registration is refused (503, nothing saved). `users.phone_number` already existed and holds the contact number.
 

@@ -29,7 +29,7 @@ const retryEmail = async (req) => {
     if (!existing) return { statusCode: 404, body: { success: false, error: 'Email record not found.' } };
     if (existing.status !== 'Failed') {
       return { statusCode: 409, body: { success: false, error: existing.status === 'Sent'
-        ? 'This email was already delivered.'
+        ? 'This email was already sent (the email service accepted it).'
         : 'This email is being sent right now. Refresh in a moment.' } };
     }
 
@@ -47,7 +47,7 @@ const retryEmail = async (req) => {
 
     return result.status === 'sent'
       ? { statusCode: 200, body: { success: true, email_status: 'sent', message: 'Email sent.' } }
-      : { statusCode: 502, body: { success: false, email_status: 'failed', error: 'The email could not be delivered again. Check the email service, then try later.' } };
+      : { statusCode: 502, body: { success: false, email_status: 'failed', error: 'The email service did not accept the email again. Check the email service, then try later.' } };
   } catch (error) {
     console.error('Email retry error:', { code: error?.code || 'unknown' });
     return { statusCode: 500, body: { success: false, error: 'Could not retry this email.' } };

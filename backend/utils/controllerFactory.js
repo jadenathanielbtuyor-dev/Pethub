@@ -8,7 +8,8 @@ function getRequestContext(req) {
     query: req.query || {},
     params: req.params || {},
     headers: req.headers || {},
-    authUserId: req.authUserId || ''
+    authUserId: req.authUserId || '',
+    authSessionId: req.authSessionId || ''
   };
 }
 

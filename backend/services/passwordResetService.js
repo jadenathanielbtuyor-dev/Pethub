@@ -4,7 +4,7 @@ const env = require('../config/env');
 const { buildPasswordResetEmail } = require('../templates/email/passwordResetEmail');
 const { logUserActivity } = require('../utils/activityLogger');
 const { hashPassword } = require('../utils/passwordHash');
-const { AUTH_TOKEN_MIN_SECRET_LENGTH } = require('../constants/auth');
+const { AUTH_TOKEN_MIN_SECRET_LENGTH, SESSION_REVOKED_REASONS } = require('../constants/auth');
 const {
   PASSWORD_RESET_CODE_TTL_MINUTES,
   PASSWORD_RESET_RESEND_COOLDOWN_SECONDS,
@@ -12,6 +12,7 @@ const {
 } = require('../constants/email');
 const usersRepository = require('../repositories/usersRepository');
 const passwordResetsRepository = require('../repositories/passwordResetsRepository');
+const userSessionsRepository = require('../repositories/userSessionsRepository');
 const {
   validatePasswordResetRequest,
   validatePasswordReset
@@ -73,6 +74,21 @@ function generateResetCode() {
 
 function logDatabaseError(label, error) {
   console.error(label, { code: error && error.code, message: error && error.message });
+}
+
+// After a new password is saved, every session signed in with the old one ends. The new password is already stored,
+// so a failure here is logged (those sessions still expire within AUTH_TOKEN_TTL_HOURS) and the reset still succeeds.
+async function endSessionsAfterReset(userId) {
+  try {
+    const { data, error } = await userSessionsRepository.revokeAllForUser(userId, SESSION_REVOKED_REASONS.passwordReset);
+    if (error) {
+      logDatabaseError('Password reset session revoke error:', error);
+      return;
+    }
+    if (Array.isArray(data) && data.length > 0) console.info('Password reset ended open sessions', { user_id: userId, sessions: data.length });
+  } catch (error) {
+    console.error('Password reset session revoke error:', error.message);
+  }
 }
 
 function sendPasswordResetEmail(user, code) {
@@ -220,8 +236,9 @@ const resetPassword = async (req) => {
     const { data: updatedUsers, error: updateError } = await usersRepository.updatePassword(user.id, passwordHash);
     // Supabase reports no error when a policy blocks an update, so require a changed row
     if (!updateError && Array.isArray(updatedUsers) && updatedUsers.length > 0) {
+      await endSessionsAfterReset(user.id);
       await logUserActivity(user.id, 'password_reset_completed', 'Password reset with an email code');
-      return { statusCode: 200, body: { success: true, message: 'Your password has been reset. You can now log in with your new password.' } };
+      return { statusCode: 200, body: { success: true, message: 'Your password has been reset. You can now log in with your new password. Any other signed-in sessions were signed out.' } };
     }
 
     if (updateError) logDatabaseError('Password reset update error:', updateError);

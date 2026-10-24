@@ -1,6 +1,6 @@
 // Security hardening checks: error replies that do not echo internals, the database key the backend chooses, no
-// database credentials in the frontend, no passwords in server logs, and the legacy password upgrade never overwriting
-// a newer password. Request limits are checked in tests/rate-limits.test.js.
+// database credentials in the frontend, no passwords in server logs, and passwords saved before hashing never working.
+// Request limits are checked in tests/rate-limits.test.js.
 // MOCKED: the real Express app with the in-memory database and fake Brevo (helpers/harness.js); no Supabase, Brevo or
 // Gemini request leaves the machine.
 const { describe, it, before, after } = require('node:test');
@@ -39,9 +39,11 @@ describe('Error replies and logs', () => {
     const email = newEmail();
     await t.api('POST', '/auth/register', { body: { fullname: 'Log Check', email, password, confirm_password: `${password}x` } });
     await t.api('POST', '/auth/login', { body: { email, password } });
-    const legacy = t.createUser({ password });
-    t.db.failNext({ table: 'users', action: 'update' }, { code: '57014', message: 'canceling statement due to statement timeout' });
-    assert.equal((await t.api('POST', '/auth/login', { body: { email: legacy.email, password } })).status, 200);
+    const hashed = t.createUser({ password });
+    assert.equal((await t.api('POST', '/auth/login', { body: { email: hashed.email, password } })).status, 200);
+    const legacy = t.createUser({ storedPassword: password });
+    assert.equal((await t.api('POST', '/auth/login', { body: { email: legacy.email, password } })).status, 403);
+    await t.api('POST', '/auth/login', { body: { email: hashed.email, password: `${password}-wrong` } });
     assert.ok(t.logs.length > 0);
     t.logs.forEach(line => assert.ok(!line.includes(password), `a log line contains the password: ${line.slice(0, 80)}`));
   });
@@ -69,30 +71,25 @@ describe('Contact form limits', () => {
   });
 });
 
-describe('Legacy password upgrade', () => {
+describe('Passwords saved before hashing', () => {
 
-  it('a failed upgrade still lets the customer in and leaves the stored value for the next login', async () => {
-    const user = t.createUser({ password: 'Plain#Before1' });
-    t.db.failNext({ table: 'users', action: 'update' }, { code: '57014', message: 'canceling statement due to statement timeout' });
-    assert.equal((await t.api('POST', '/auth/login', { body: { email: user.email, password: 'Plain#Before1' } })).status, 200);
+  it('a plaintext value never logs in, is not echoed and is not written anywhere by the attempt', async () => {
+    const user = t.createUser({ storedPassword: 'Plain#Before1' });
+    const login = await t.api('POST', '/auth/login', { body: { email: user.email, password: 'Plain#Before1' } });
+    assert.equal(login.status, 403);
+    assert.equal(login.body.code, 'password_reset_required');
+    assert.ok(!login.text.includes('Plain#Before1'));
     assert.equal(t.db.find('users', row => row.id === user.id).password, 'Plain#Before1');
-
-    assert.equal((await t.api('POST', '/auth/login', { body: { email: user.email, password: 'Plain#Before1' } })).status, 200);
-    assert.ok(isPasswordHash(t.db.find('users', row => row.id === user.id).password));
+    t.logs.forEach(line => assert.ok(!line.includes('Plain#Before1'), line.slice(0, 80)));
   });
 
-  it('never overwrites a password that was reset while the login was being checked', async () => {
-    const user = t.createUser({ password: 'Plain#Old1' });
-    const resetHash = await hashPassword('Reset#New1');
-    // A password reset lands just before the upgrade's update runs
-    t.db.interceptNext({ table: 'users', action: 'update' }, (query, database) => {
-      database.find('users', row => row.id === user.id).password = resetHash;
-      return null;
-    });
-    assert.equal((await t.api('POST', '/auth/login', { body: { email: user.email, password: 'Plain#Old1' } })).status, 200);
-    assert.equal(t.db.find('users', row => row.id === user.id).password, resetHash);
-    assert.equal((await t.api('POST', '/auth/login', { body: { email: user.email, password: 'Reset#New1' } })).status, 200);
-    assert.equal((await t.api('POST', '/auth/login', { body: { email: user.email, password: 'Plain#Old1' } })).status, 403);
+  it('only scrypt hashes verify', async () => {
+    const { verifyPassword } = require('../utils/passwordHash');
+    assert.equal(await verifyPassword('Reset#New1', await hashPassword('Reset#New1')), true);
+    assert.equal(await verifyPassword('Plain#Old1', 'Plain#Old1'), false);
+    const sha = `sha256$${crypto.createHash('sha256').update('Plain#Old1', 'utf8').digest('hex')}`;
+    assert.equal(await verifyPassword('Plain#Old1', sha), false);
+    assert.equal(isPasswordHash(`reset-required$${'a'.repeat(64)}`), false);
   });
 });
 

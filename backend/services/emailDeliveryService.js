@@ -1,8 +1,9 @@
 // ==================== LOGGED EMAIL DELIVERY ====================
 // Sends one appointment or contact-reply email through Brevo and records it in email_logs: a Pending row before the
-// request, then Sent or Failed. The database allows one row per (appointment, email type) and per (contact message,
-// email type), so a repeated request is refused at the insert and the email is not sent twice. Logging problems never
-// stop an email, and a failed email never undoes the change that caused it. Nothing here throws.
+// request, then Sent (Brevo accepted it for delivery; its message id is in the server log, so Brevo's own logs can
+// show whether it was delivered) or Failed. The database allows one row per (appointment, email type) and per
+// (contact message, email type), so a repeated request is refused at the insert and the email is not sent twice.
+// Logging problems never stop an email, and a failed email never undoes the change that caused it. Nothing here throws.
 
 const logger = require('../utils/logger');
 const { sendEmail } = require('../utils/email');
@@ -31,8 +32,9 @@ async function updateLog(update, context) {
 }
 
 async function deliver(logId, { to, email, context }) {
+  let accepted;
   try {
-    await sendEmail({ to, ...email });
+    accepted = await sendEmail({ to, ...email });
   } catch (error) {
     logger.error('email.delivery_failed', { ...context, error: describeSendError(error) });
     if (logId) await updateLog(() => emailLogsRepository.markFailed(logId, describeSendError(error)), context);
@@ -40,7 +42,7 @@ async function deliver(logId, { to, email, context }) {
   }
 
   if (logId) await updateLog(() => emailLogsRepository.markSent(logId), context);
-  logger.info('email.delivered', context);
+  logger.info('email.accepted', { ...context, brevo_message_id: accepted?.messageId || undefined });
   return { status: 'sent', logId };
 }
 

@@ -3,13 +3,15 @@ const { generateVerificationCode, getExpiryTimestamp } = require('../utils/otp')
 const env = require('../config/env');
 const { buildVerificationEmail } = require('../templates/email/verificationEmail');
 const { logUserActivity } = require('../utils/activityLogger');
-const { createAuthToken } = require('../utils/authToken');
+const { createAuthToken, getSessionExpiry } = require('../utils/authToken');
 const { hashPassword, verifyPassword, isPasswordHash } = require('../utils/passwordHash');
 const logger = require('../utils/logger');
 const { runExclusive } = require('../utils/keyedLock');
 const { VERIFICATION_CODE_TTL_MINUTES, VERIFICATION_RESEND_COOLDOWN_SECONDS } = require('../constants/email');
 const { PROFILE_COLUMNS } = require('../constants/userProfile');
+const { PASSWORD_RESET_REQUIRED_MESSAGE, SESSION_REVOKED_REASONS } = require('../constants/auth');
 const usersRepository = require('../repositories/usersRepository');
+const userSessionsRepository = require('../repositories/userSessionsRepository');
 const emailVerificationsRepository = require('../repositories/emailVerificationsRepository');
 const activityLogsRepository = require('../repositories/activityLogsRepository');
 const {
@@ -105,18 +107,19 @@ async function loadProfile(userId) {
   return pickProfile(row);
 }
 
-// Accounts created before hashing still hold their password as plaintext or sha256$<hex>: the first successful login
-// replaces it with a scrypt hash. A failure here never blocks the login; the next login tries again.
-async function upgradeStoredPassword(userId, password) {
+// Starts the server-side session the token names (user_sessions); null when it cannot be stored, so no token is issued
+async function startSession(userId) {
+  const expiresAt = getSessionExpiry();
   try {
-    const { data, error } = await usersRepository.upgradeLegacyPassword(userId, await hashPassword(password));
-    if (error) {
-      console.warn('Password upgrade failed:', { code: error.code });
-      return;
+    const { data, error } = await userSessionsRepository.createSession(userId, expiresAt);
+    if (error || !data?.id) {
+      console.error('Session start error:', { code: error?.code || 'no_row' });
+      return null;
     }
-    if (Array.isArray(data) && data.length > 0) logger.authEvent('password.upgraded', { user_id: String(userId) });
+    return createAuthToken(userId, data.id, expiresAt);
   } catch (error) {
-    console.warn('Password upgrade failed:', error.message);
+    console.error('Session start error:', error.message);
+    return null;
   }
 }
 
@@ -140,11 +143,15 @@ const login = async (req) => {
 
     const user = users[0];
 
+    // A password saved before hashing (or removed for that reason) can only be replaced through the emailed reset code
+    if (!isPasswordHash(user.password)) {
+      logger.authEvent('login.password_reset_required', { user_id: String(user.id) });
+      return { statusCode: 403, body: { success: false, code: 'password_reset_required', error: PASSWORD_RESET_REQUIRED_MESSAGE } };
+    }
+
     if (!(await verifyPassword(cleanPassword, user.password))) {
       return { statusCode: 403, body: { success: false, error: 'Invalid email or password' } };
     }
-
-    if (!isPasswordHash(user.password)) await upgradeStoredPassword(user.id, cleanPassword);
 
     // Same rule as user-status and isUserVerified(): verified if the users flag is set OR the account
     // has a completed email verification record (only written after a correct, unexpired code).
@@ -170,11 +177,8 @@ const login = async (req) => {
       created_at: user.created_at
     };
 
-    let token;
-    try {
-      token = createAuthToken(user.id);
-    } catch (tokenError) {
-      console.error('Auth token error:', tokenError.message);
+    const token = await startSession(user.id);
+    if (!token) {
       return { statusCode: 500, body: { success: false, error: 'Login is temporarily unavailable. Please try again later.' } };
     }
 
@@ -465,6 +469,8 @@ const resendVerificationCode = async (req) => {
   }
 };
 
+// POST /auth/logout (requireAuth): ends the session this token belongs to, so the token stops working at once.
+// The browser forgets its copy whatever the reply; other devices stay signed in until they log out themselves.
 const logout = async (req) => {
   try {
     const { userId } = req.body || {};
@@ -472,6 +478,14 @@ const logout = async (req) => {
     if (validation.error) return validation.error;
 
     const normalizedUserId = validation.userId;
+    // requireAuth always sets it; without it nothing could be ended, so the request is not reported as a logout
+    if (!req.authSessionId) return { statusCode: 401, body: { success: false, error: 'Authentication required. Please log in again.' } };
+
+    const { error: revokeError } = await userSessionsRepository.revokeSession(req.authSessionId, normalizedUserId, SESSION_REVOKED_REASONS.logout);
+    if (revokeError) {
+      console.error('Logout session revoke error:', { code: revokeError.code });
+      return { statusCode: 503, body: { success: false, error: 'Your session could not be ended on the server. Please try logging out again.' } };
+    }
 
     await logUserActivity(normalizedUserId, 'user_logged_out', 'User logged out');
 

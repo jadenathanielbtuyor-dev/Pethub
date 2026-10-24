@@ -482,33 +482,45 @@ describe('Password storage and existing accounts', () => {
     assert.equal(await verifyPassword('anything', null), false);
   });
 
-  it('accounts stored before hashing still log in, and the first successful login upgrades them to a hash', async () => {
-    const plaintext = t.createUser({ password: 'Legacy#Plain1' });
+  it('passwords saved before hashing never log in, even typed exactly; the owner is sent to Forgot password', async () => {
+    const plaintext = t.createUser({ storedPassword: 'Legacy#Plain1' });
     const legacyHash = `sha256$${crypto.createHash('sha256').update('Legacy#Sha256', 'utf8').digest('hex')}`;
-    const sha256User = t.createUser({ password: legacyHash });
-    // A plaintext password that merely starts like a hash is still compared as plaintext
-    const lookalike = t.createUser({ password: 'scrypt$not-a-hash' });
+    const sha256User = t.createUser({ storedPassword: legacyHash });
+    // A plaintext password that merely starts like a hash is not a hash either
+    const lookalike = t.createUser({ storedPassword: 'scrypt$not-a-hash' });
+    const sessionsBefore = t.db.table('user_sessions').length;
 
-    assert.equal((await t.api('POST', '/auth/login', { body: { email: plaintext.email, password: 'Legacy#Plain1' } })).status, 200);
-    assert.equal((await t.api('POST', '/auth/login', { body: { email: plaintext.email, password: 'Legacy#Plain2' } })).status, 403);
-    assert.equal((await t.api('POST', '/auth/login', { body: { email: sha256User.email, password: 'Legacy#Sha256' } })).status, 200);
-    assert.equal((await t.api('POST', '/auth/login', { body: { email: sha256User.email, password: legacyHash } })).status, 403);
-    assert.equal((await t.api('POST', '/auth/login', { body: { email: lookalike.email, password: 'scrypt$not-a-hash' } })).status, 200);
+    for (const [user, password] of [
+      [plaintext, 'Legacy#Plain1'], [plaintext, 'Legacy#Plain2'],
+      [sha256User, 'Legacy#Sha256'], [sha256User, legacyHash],
+      [lookalike, 'scrypt$not-a-hash']
+    ]) {
+      const login = await t.api('POST', '/auth/login', { body: { email: user.email, password } });
+      assert.equal(login.status, 403, password);
+      assert.equal(login.body.code, 'password_reset_required');
+      assert.match(login.body.error, /needs a new password\. Use "Forgot password\?"/);
+      assert.equal(login.body.token, undefined);
+    }
 
-    // A successful login replaced the plaintext and sha256$ values with scrypt hashes of the same passwords
-    const storedPlain = t.db.find('users', row => row.id === plaintext.id).password;
-    const storedSha = t.db.find('users', row => row.id === sha256User.id).password;
-    assert.ok(isPasswordHash(storedPlain));
-    assert.ok(isPasswordHash(storedSha));
-    assert.equal((await t.api('POST', '/auth/login', { body: { email: plaintext.email, password: 'Legacy#Plain1' } })).status, 200);
-    assert.equal((await t.api('POST', '/auth/login', { body: { email: sha256User.email, password: 'Legacy#Sha256' } })).status, 200);
-    assert.equal((await t.api('POST', '/auth/login', { body: { email: sha256User.email, password: legacyHash } })).status, 403);
-    // The upgrade only touches rows that are not scrypt values yet, so a lookalike value is left for a password reset
+    // A login attempt rewrites nothing and opens no session: the value stays until the owner resets it
+    assert.equal(t.db.find('users', row => row.id === plaintext.id).password, 'Legacy#Plain1');
+    assert.equal(t.db.find('users', row => row.id === sha256User.id).password, legacyHash);
     assert.equal(t.db.find('users', row => row.id === lookalike.id).password, 'scrypt$not-a-hash');
-    // A failed login never rewrites anything
-    const untouched = t.createUser({ password: 'Legacy#Plain3' });
-    assert.equal((await t.api('POST', '/auth/login', { body: { email: untouched.email, password: 'Wrong#Plain3' } })).status, 403);
-    assert.equal(t.db.find('users', row => row.id === untouched.id).password, 'Legacy#Plain3');
+    assert.equal(t.db.table('user_sessions').length, sessionsBefore);
+  });
+
+  it('an account whose old password was removed gets back in with Forgot password, and the new one is a hash', async () => {
+    const user = t.createUser({ storedPassword: `reset-required$${crypto.randomBytes(32).toString('hex')}` });
+    assert.equal((await t.api('POST', '/auth/login', { body: { email: user.email, password: 'Anything#1' } })).body.code, 'password_reset_required');
+
+    assert.equal((await t.api('POST', '/auth/forgot-password', { body: { email: user.email } })).status, 200);
+    const resetEmail = await waitFor(() => t.emailsTo(user.email).find(email => /reset code/i.test(email.text)), 'the reset email');
+    assert.equal((await t.api('POST', '/auth/reset-password', { body: { email: user.email, code: codeIn(resetEmail), password: 'Fresh#Start1' } })).status, 200);
+
+    assert.ok(isPasswordHash(t.db.find('users', row => row.id === user.id).password));
+    const login = await t.api('POST', '/auth/login', { body: { email: user.email, password: 'Fresh#Start1' } });
+    assert.equal(login.status, 200);
+    assert.ok(login.body.token);
   });
 
   it('a password reset stores the new password as a hash', async () => {

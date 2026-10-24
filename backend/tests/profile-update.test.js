@@ -41,6 +41,7 @@ function row(user) {
 describe('Completing the details of an account created before they were required', () => {
   it('saves every detail normalised, returns them with the public account fields, and logs no personal values', async () => {
     const user = t.createUser({ name: 'Maria Santos', password: 'Legacy#Plain1' });
+    const storedPassword = row(user).password;
     PROFILE_FIELDS.forEach(field => assert.equal(row(user)[field] ?? null, null));
 
     const response = await update(user, DETAILS);
@@ -63,7 +64,7 @@ describe('Completing the details of an account created before they were required
     const stored = row(user);
     assert.equal(stored.fullname, 'Maria Clara Santos');
     assert.equal(stored.phone_number, '+63281234567');
-    assert.equal(stored.password, 'Legacy#Plain1', 'the password is untouched');
+    assert.equal(stored.password, storedPassword, 'the password is untouched');
     assert.equal(stored.role, 'user');
 
     const activity = t.db.table('activity_logs').filter(entry => entry.user_id === user.id && entry.action === 'profile_updated');

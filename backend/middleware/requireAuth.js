@@ -1,7 +1,12 @@
 const apiResponse = require('../utils/apiResponse');
 const logger = require('../utils/logger');
 const { verifyAuthToken } = require('../utils/authToken');
-const { AUTH_REQUIRED_MESSAGE, IDENTITY_MISMATCH_MESSAGE } = require('../constants/auth');
+const userSessionsRepository = require('../repositories/userSessionsRepository');
+const {
+  AUTH_REQUIRED_MESSAGE,
+  IDENTITY_MISMATCH_MESSAGE,
+  SESSION_CHECK_UNAVAILABLE_MESSAGE
+} = require('../constants/auth');
 
 function getBearerToken(req) {
   const match = String(req.headers?.authorization || '').match(/^Bearer\s+(\S+)$/i);
@@ -17,43 +22,43 @@ function getClaimedUserIds(req) {
 }
 
 /**
- * Rejects the request unless it carries a valid signed token; exposes the verified id as req.authUserId.
+ * Rejects the request unless it carries a valid signed token whose server-side session is still open (not logged
+ * out, not ended by a password reset, not expired); exposes the verified ids as req.authUserId / req.authSessionId.
+ * When the session cannot be checked the request gets a 503, so a brief database problem does not sign anyone out.
  */
-function requireAuth(req, res, next) {
-  const session = verifyAuthToken(getBearerToken(req));
-  if (!session) {
+async function requireAuth(req, res, next) {
+  const token = verifyAuthToken(getBearerToken(req));
+  if (!token) {
     logger.authEvent('token.rejected', logger.getRequestDetails(req));
     return apiResponse.error(res, AUTH_REQUIRED_MESSAGE, 401);
   }
 
+  let sessionOpen = false;
+  try {
+    const { data, error } = await userSessionsRepository.findActiveSession(token.sessionId, token.userId);
+    if (error) throw error;
+    sessionOpen = Boolean(data);
+  } catch (error) {
+    logger.error('auth.session_check_failed', { ...logger.getRequestDetails(req), code: error?.code || 'unknown' });
+    return apiResponse.error(res, SESSION_CHECK_UNAVAILABLE_MESSAGE, 503);
+  }
+  if (!sessionOpen) {
+    logger.authEvent('session.ended', { ...logger.getRequestDetails(req), token_user_id: token.userId });
+    return apiResponse.error(res, AUTH_REQUIRED_MESSAGE, 401);
+  }
+
   const claimsAnotherUser = getClaimedUserIds(req)
-    .some(value => Array.isArray(value) || String(value).trim() !== session.userId);
+    .some(value => Array.isArray(value) || String(value).trim() !== token.userId);
   if (claimsAnotherUser) {
-    logger.authEvent('identity.mismatch', { ...logger.getRequestDetails(req), token_user_id: session.userId });
+    logger.authEvent('identity.mismatch', { ...logger.getRequestDetails(req), token_user_id: token.userId });
     return apiResponse.error(res, IDENTITY_MISMATCH_MESSAGE, 403);
   }
 
-  req.authUserId = session.userId;
-  next();
-}
-
-/**
- * For public routes that optionally attribute the request to a signed-in user (e.g. contact form):
- * a body user_id is kept only when a valid token proves it.
- */
-function optionalAuth(req, res, next) {
-  const session = verifyAuthToken(getBearerToken(req));
-  req.authUserId = session ? session.userId : '';
-
-  const body = req.body && typeof req.body === 'object' ? req.body : null;
-  if (body && Object.prototype.hasOwnProperty.call(body, 'user_id') && String(body.user_id).trim() !== req.authUserId) {
-    delete body.user_id;
-  }
-
+  req.authUserId = token.userId;
+  req.authSessionId = token.sessionId;
   next();
 }
 
 module.exports = {
-  requireAuth,
-  optionalAuth
+  requireAuth
 };

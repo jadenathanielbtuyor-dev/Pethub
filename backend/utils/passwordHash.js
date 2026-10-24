@@ -1,8 +1,9 @@
 // Password storage for PetHub accounts (Node's built-in crypto, no extra dependency).
 // New passwords (registration and password reset) are stored as salted scrypt hashes:
 //   scrypt$<N>$<r>$<p>$<salt, base64>$<derived key, base64>
-// Accounts created before hashing keep their stored value until the owner sets a new password: login still accepts
-// the earlier plaintext and sha256$<hex> values, so no existing account is locked out or silently changed.
+// Only these hashes ever verify. Values saved before hashing (plaintext, sha256$<hex>) are no longer accepted: their
+// owners set a new password with "Forgot password?" (database/migrations/2026-10-24_remove_legacy_plaintext_password.sql
+// removed the last one), so a password that was readable in the database never works again.
 const crypto = require('crypto');
 const util = require('util');
 
@@ -43,35 +44,20 @@ async function hashPassword(password) {
   return `scrypt$${N}$${r}$${p}$${salt.toString('base64')}$${key.toString('base64')}`;
 }
 
-// Compares two strings in constant time (equal-length digests, so their lengths don't leak either)
-function safeEqual(left, right) {
-  const leftDigest = crypto.createHash('sha256').update(String(left), 'utf8').digest();
-  const rightDigest = crypto.createHash('sha256').update(String(right), 'utf8').digest();
-  return crypto.timingSafeEqual(leftDigest, rightDigest);
-}
-
-function legacySha256(password) {
-  return `sha256$${crypto.createHash('sha256').update(password, 'utf8').digest('hex')}`;
-}
-
 async function verifyPassword(password, storedPassword) {
   if (typeof storedPassword !== 'string' || storedPassword === '') return false;
   const candidate = String(password ?? '');
 
   const stored = parseScryptHash(storedPassword);
-  if (stored) {
-    const key = await scrypt(normalizePassword(candidate), stored.salt, stored.key.length, {
-      N: stored.N,
-      r: stored.r,
-      p: stored.p,
-      maxmem: SCRYPT_MAX_MEMORY
-    });
-    return crypto.timingSafeEqual(key, stored.key);
-  }
+  if (!stored) return false;
 
-  // Values stored before hashing was introduced
-  if (storedPassword.startsWith('sha256$')) return safeEqual(storedPassword, legacySha256(candidate));
-  return safeEqual(storedPassword, candidate);
+  const key = await scrypt(normalizePassword(candidate), stored.salt, stored.key.length, {
+    N: stored.N,
+    r: stored.r,
+    p: stored.p,
+    maxmem: SCRYPT_MAX_MEMORY
+  });
+  return crypto.timingSafeEqual(key, stored.key);
 }
 
 module.exports = {

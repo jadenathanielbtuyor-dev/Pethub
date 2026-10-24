@@ -1,0 +1,18 @@
+{
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js 'sha256-n57oX7qc2UlmgK/hJTkYuygcfuyvbohQ6LxONaD2DtM=' 'sha256-kt4qQimaLxguCUd9ATWV1QR70QiiDCJZrpAKhQcvbUk=' 'sha256-5tdxYQN64COvSsdrhr93vLUJEiFakvV2glkkkQwAVWY=' 'sha256-kp+C5pmIAWMp2ZUcqsLLKQcPOCCjSrLmp1RhP5en90o='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net/npm/remixicon@4.3.0/fonts/; img-src 'self' data:; connect-src 'self' https://pethub-production-f14d.up.railway.app; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
+        },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=(), payment=(), usb=()" },
+        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" }
+      ]
+    }
+  ]
+}

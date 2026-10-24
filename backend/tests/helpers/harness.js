@@ -23,6 +23,14 @@ function stubModule(filename, exports) {
   require.cache[filename] = stub;
 }
 
+// The stored form of a test password: a real PetHub scrypt hash (utils/passwordHash.js format), made with the lowest
+// cost the verifier accepts (N = 1024) so that creating many users stays fast
+function hashTestPassword(password) {
+  const salt = crypto.randomBytes(16);
+  const key = crypto.scryptSync(String(password).normalize('NFC'), salt, 64, { N: 1024, r: 8, p: 1 });
+  return `scrypt$1024$8$1$${salt.toString('base64')}$${key.toString('base64')}`;
+}
+
 function manilaDate(daysFromToday) {
   const date = new Date(Date.now() + daysFromToday * 24 * 60 * 60 * 1000);
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
@@ -142,6 +150,7 @@ async function startTestApp({
 
     const payload = JSON.parse(init.body);
     emails.push({
+      from: payload.sender?.email || '',
       to: payload.to.map(recipient => recipient.email),
       subject: payload.subject,
       text: payload.textContent || '',
@@ -162,7 +171,7 @@ async function startTestApp({
   };
 
   const app = require(path.join(BACKEND_DIR, 'server.js'));
-  const { createAuthToken } = require(path.join(BACKEND_DIR, 'utils', 'authToken.js'));
+  const { createAuthToken, getSessionExpiry } = require(path.join(BACKEND_DIR, 'utils', 'authToken.js'));
   const appointmentNotifications = require(path.join(BACKEND_DIR, 'services', 'appointmentNotificationsService.js'));
 
   const server = app.listen(0, '127.0.0.1');
@@ -197,15 +206,24 @@ async function startTestApp({
     return emails.filter(email => email.to.includes(address));
   }
 
-  function createUser({ role = 'user', verified = true, name = 'Test User', password = 'not-used' } = {}) {
+  // A signed-in session for user (a user_sessions row and the token that names it), as POST /auth/login creates
+  function createSessionToken(user) {
+    const expiresAt = getSessionExpiry();
+    const session = db.seed('user_sessions', { user_id: user.id, expires_at: expiresAt.toISOString() });
+    return createAuthToken(user.id, session.id, expiresAt);
+  }
+
+  // password: the account can log in with it (stored as a scrypt hash). storedPassword: the users.password value as is,
+  // for accounts saved before hashing. Neither: a value no password matches (the account signs in with its token only).
+  function createUser({ role = 'user', verified = true, name = 'Test User', password, storedPassword } = {}) {
     const user = db.seed('users', {
       fullname: name,
       email: `${crypto.randomUUID()}@example.test`,
-      password,
+      password: storedPassword ?? (password === undefined ? 'not-a-password-hash' : hashTestPassword(password)),
       role,
       is_verified: verified
     });
-    return { ...user, token: createAuthToken(user.id) };
+    return { ...user, token: createSessionToken(user) };
   }
 
   function createPet(user, name = 'Mochi') {
@@ -252,6 +270,7 @@ async function startTestApp({
     settleEmails,
     blockedRequests,
     createUser,
+    createSessionToken,
     createPet,
     createAppointment,
     appointmentRow,

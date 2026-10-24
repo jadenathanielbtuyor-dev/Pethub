@@ -15,20 +15,6 @@
 
   <script src="js/core/api.js"></script>
   <script src="js/core/storage.js"></script>
-  <script>
-    // Redirect to appropriate dashboard based on auth state
-    (function() {
-      const user = getUser();
-      if (user) {
-        try {
-          redirectToDashboardForRole(user.role);
-        } catch (error) {
-          redirectToLogin();
-        }
-      } else {
-        redirectToLogin();
-      }
-    })();
-  </script>
+  <script src="js/core/role-redirect.js"></script>
 </body>
 </html>

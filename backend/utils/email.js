@@ -14,6 +14,8 @@ if (!fromEmail) {
   logger.warn('email.from_email_missing');
 }
 
+// Resolves with { messageId } once Brevo has accepted the email for delivery (HTTP 201). Acceptance is not proof
+// that it reached the inbox: Brevo's transactional logs (by messageId) show delivered / bounced / blocked.
 async function sendEmail({ to, subject, text, html }) {
   if (!apiKey) {
     throw new Error('Brevo API key is not configured');
@@ -66,6 +68,9 @@ async function sendEmail({ to, subject, text, html }) {
     // "rate limited" keeps authService's existing delayed-delivery message for throttled sends
     throw new Error(`Brevo error: ${response.status} (${isRateLimited ? 'rate limited' : details.code || 'request rejected'})`);
   }
+
+  const accepted = await response.json().catch(() => ({}));
+  return { messageId: typeof accepted.messageId === 'string' ? accepted.messageId : null };
 }
 
 module.exports = {

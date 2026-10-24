@@ -560,6 +560,12 @@ function createPetHubDatabase({ usersProfileColumns = true } = {}) {
         { name: 'email_logs_one_per_contact_message_type', columns: ['contact_message_id', 'email_type'] }
       ]
     },
+    // database/migrations/2026-10-24_user_sessions.sql: one row per login, named by the signed token
+    user_sessions: {
+      columns: ['id', 'user_id', 'created_at', 'expires_at', 'revoked_at', 'revoked_reason'],
+      uuidColumns: ['id', 'user_id'],
+      defaults: { id: uuid, created_at: now, revoked_at: () => null, revoked_reason: () => null }
+    },
     system_settings: {
       columns: ['id', 'setting_key', 'setting_value', 'updated_at'],
       uuidColumns: ['id'],
