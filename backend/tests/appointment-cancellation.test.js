@@ -46,11 +46,21 @@ describe('Owner appointment cancellation', () => {
       const logs = t.db.table('activity_logs').filter(row => row.action === 'appointment_cancelled');
       assert.equal(logs.length, 1);
 
-      await t.settleEmails();
+      // The confirmation is sent before the response, which says it was sent
+      assert.equal(cancelled.body.email_status, 'sent');
+      assert.equal(cancelled.body.appointment.cancelled_by_owner, true);
+      assert.equal(cancelled.body.appointment.cancelled_by, undefined, 'the owner is not sent an account id');
+      assert.equal(t.appointmentRow(appointment.id).cancelled_by, owner.id);
       const [email] = t.emailsTo(owner.email);
       assert.ok(email);
-      assert.match(email.text, /You cancelled the appointment below in PetHub/);
+      assert.equal(email.subject, 'Your PetHub Appointment Has Been Cancelled');
+      assert.match(email.text, /Your appointment has been successfully cancelled\./);
+      assert.match(email.text, /Customer: Mina Cruz/);
+      assert.match(email.text, /Original date: /);
+      assert.match(email.text, /Cancelled on: .*\(Philippine time\)/);
       assert.doesNotMatch(email.text, /The clinic cancelled/);
+      const deliveries = t.db.table('email_logs').filter(row => row.appointment_id === appointment.id);
+      assert.deepEqual(deliveries.map(row => [row.email_type, row.status]), [['appointment_cancelled_by_owner', 'Sent']]);
 
       const again = await t.api('POST', `/appointments/cancel/${appointment.id}`, { token: owner.token });
       assert.equal(again.status, 200);

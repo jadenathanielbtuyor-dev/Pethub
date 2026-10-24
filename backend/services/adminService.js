@@ -8,6 +8,7 @@ const {
   OCCUPIED_APPOINTMENT_STATUSES,
   getAppointmentTimeRange,
   getClinicDateValue,
+  getAppointmentStartTimestamp,
   validateAdminAppointmentStatusRequest
 } = require('../validators/appointmentsValidator');
 const { runExclusive } = require('../utils/keyedLock');
@@ -30,10 +31,10 @@ const petsRepository = require('../repositories/petsRepository');
 const appointmentsRepository = require('../repositories/appointmentsRepository');
 const medicalRecordsRepository = require('../repositories/medicalRecordsRepository');
 const activityLogsRepository = require('../repositories/activityLogsRepository');
-const contactRepository = require('../repositories/contactRepository');
+const emailLogsRepository = require('../repositories/emailLogsRepository');
 const appointmentNotificationsService = require('./appointmentNotificationsService');
 const { APPOINTMENT_STATUS_CHANGED_MESSAGE } = require('../constants/appointments');
-const { countServicesForAnalytics, isCheckupService, normalizeSpecies } = require('../utils/serviceCatalog');
+const { countServicesForAnalytics, isCheckupService, normalizeSpecies, isServiceBookable } = require('../utils/serviceCatalog');
 const serviceCatalogRepository = require('../repositories/serviceCatalogRepository');
 
 // "Upcoming check-ups" = Pending or Approved check-up appointments (constants/services.js CHECKUP_SERVICE_NAMES) from
@@ -42,6 +43,8 @@ const UPCOMING_CHECKUPS_WINDOW_DAYS = 7;
 const UPCOMING_CHECKUPS_STATUSES = ['Pending', 'Approved'];
 // GET /admin/system-logs?limit= is capped so one request cannot ask for the whole activity log
 const SYSTEM_LOG_MAX_LIMIT = 200;
+// ?exclude=sign_ins leaves these out of the activity log view
+const SIGN_IN_ACTIONS = Object.freeze(['user_logged_in', 'user_logged_out']);
 
 function getUpcomingCheckupsEndDate(today) {
   const endDate = new Date(`${today}T00:00:00.000Z`);
@@ -192,15 +195,18 @@ function getSystemActionLabel(action, details) {
   const actionKey = String(action || '').trim();
   const labels = {
     user_logged_in: 'signed in',
+    user_logged_out: 'signed out',
     user_registered: 'registered an account',
     email_verified: 'verified email',
     pet_created: 'added a pet profile',
     pet_updated: 'updated a pet profile',
-    appointment_booked: 'booked an appointment',
+    appointment_booked: 'requested an appointment',
     appointment_completed: 'completed an appointment',
-    appointment_cancelled: 'cancelled an appointment',
+    appointment_cancelled: 'cancelled their appointment',
     profile_updated: 'updated profile',
-    contact_message: 'submitted a contact message'
+    contact_message: 'sent the clinic a message',
+    owner_weight_reported: 'reported a pet weight',
+    password_reset_completed: 'reset their password'
   };
 
   if (labels[actionKey]) return labels[actionKey];
@@ -240,8 +246,34 @@ function normalizeAppointmentNames(appointments, userMap) {
   return (Array.isArray(appointments) ? appointments : []).map(apt => ({
     ...apt,
     owner_fullname: names[String(apt.user_id)] || 'Unknown',
-    handled_by_name: apt.handled_by ? (names[String(apt.handled_by)] || null) : null
+    handled_by_name: apt.handled_by ? (names[String(apt.handled_by)] || null) : null,
+    // Cancelled by the owner (POST /appointments/cancel/:id) or by the clinic; null when not cancelled or not recorded
+    cancelled_by_owner: apt.status === 'Cancelled' && apt.cancelled_by ? String(apt.cancelled_by) === String(apt.user_id) : null,
+    cancelled_by_name: apt.cancelled_by ? (names[String(apt.cancelled_by)] || null) : null
   }));
+}
+
+// The appointment emails recorded in email_logs, per appointment id: [{ log_id, type, status, sent_at, error }]. A Failed
+// one can be sent again from Appointment Management (POST /admin/email-logs/:id/retry). Empty when the log is unreadable.
+async function loadAppointmentEmails(appointmentIds) {
+  if (!appointmentIds.length) return {};
+  const { data, error } = await emailLogsRepository.listByAppointmentIds(appointmentIds);
+  if (error) {
+    console.warn('Unable to load appointment email deliveries:', { code: error.code || 'unknown' });
+    return {};
+  }
+  return (data || []).reduce((map, log) => {
+    const key = String(log.appointment_id);
+    (map[key] = map[key] || []).push({
+      log_id: log.id,
+      type: log.email_type,
+      status: log.status,
+      sent_at: log.sent_at || null,
+      created_at: log.created_at,
+      error: log.status === 'Failed' ? log.error_message || null : null
+    });
+    return map;
+  }, {});
 }
 
 // records is null when the medical records could not be read: completed appointments are then marked 'unavailable'
@@ -557,6 +589,8 @@ const getDashboardOverview = async (req) => {
       legacyLogsError ? null : legacyMedicalRecordLogs || []
     );
 
+    const appointmentEmails = await loadAppointmentEmails(appointments.map(apt => String(apt.id)));
+
     const totalUsers = users.length;
     const totalPets = pets.length;
     const totalAppointments = appointments.length;
@@ -632,11 +666,14 @@ const getDashboardOverview = async (req) => {
         unverifiedUsers,
         pendingVerifications,
         activityLogCount,
-        totalMedicalRecords: medicalRecordsAvailable ? (medicalRecords || []).length : null
+        totalMedicalRecords: medicalRecordsAvailable ? (medicalRecords || []).length : null,
+        // Services customers can book online right now, out of the whole catalog (System Management > Services & booking)
+        bookableServices: configuredServices.filter(isServiceBookable).length,
+        totalServices: configuredServices.length
       },
       users,
       pets: normalizedPets,
-      appointments: normalizedAppointments,
+      appointments: normalizedAppointments.map(apt => ({ ...apt, emails: appointmentEmails[String(apt.id)] || [] })),
       medicalRecords: normalizedMedicalRecords,
       medicalRecordsAvailable,
       petTypes: {
@@ -979,7 +1016,8 @@ const getSystemLogs = async (req) => {
     // 20 by default, never more than SYSTEM_LOG_MAX_LIMIT entries per request
     const requestedLimit = parseInt(req.query.limit, 10);
     const limit = Number.isInteger(requestedLimit) && requestedLimit > 0 ? Math.min(requestedLimit, SYSTEM_LOG_MAX_LIMIT) : 20;
-    const { data: logs, error } = await activityLogsRepository.listRecentSystemLogs(limit);
+    const excludeActions = String(req.query.exclude || '') === 'sign_ins' ? [...SIGN_IN_ACTIONS] : [];
+    const { data: logs, error } = await activityLogsRepository.listRecentSystemLogs(limit, { excludeActions });
 
     if (error) {
       console.error('Error fetching system logs:', error);
@@ -1070,86 +1108,6 @@ const getSystemLogs = async (req) => {
 };
 
 /**
- * Get all contact messages
- */
-const getContactMessages = async (req) => {
-  try {
-    const { data: messages, error } = await contactRepository.listMessages();
-
-    if (error) {
-      console.error('Error fetching contact messages:', error);
-      return { statusCode: 500, body: { error: 'Failed to fetch contact messages' } };
-    }
-
-    return { statusCode: 200, body: { success: true, messages: messages || [] } };
-  } catch (error) {
-    console.error('Get contact messages error:', error);
-    return { statusCode: 500, body: { error: 'Server error' } };
-  }
-};
-
-/**
- * Update contact message status
- * Body: { id, status }
- */
-const updateContactMessageStatus = async (req) => {
-  try {
-    const { id, status } = req.body || {};
-    const normalizedMessageId = hasValue(id) ? String(id).trim() : '';
-    const normalizedStatus = hasValue(status) ? String(status).trim() : '';
-
-    if (!normalizedMessageId || !normalizedStatus) {
-      return { statusCode: 400, body: { success: false, error: 'id and status are required' } };
-    }
-
-    if (normalizedStatus !== 'Read') {
-      return { statusCode: 400, body: {
-        success: false,
-        error: 'Contact messages can only be marked as Read.'
-      } };
-    }
-
-    const { data: existingMessage, error: existingError } = await contactRepository.findStatusById(normalizedMessageId);
-
-    if (existingError) {
-      console.error('Error loading contact message:', existingError);
-      return { statusCode: 500, body: { success: false, error: 'Failed to load contact message' } };
-    }
-
-    if (!existingMessage) {
-      return { statusCode: 404, body: { success: false, error: 'Contact message not found' } };
-    }
-
-    if (existingMessage.status === normalizedStatus) {
-      return { statusCode: 200, body: { success: true, message: existingMessage } };
-    }
-
-    const { data, error } = await contactRepository.updateStatus(normalizedMessageId, normalizedStatus);
-
-    if (error) {
-      console.error('Error updating contact message status:', error);
-      return { statusCode: 500, body: { success: false, error: 'Failed to update contact message status' } };
-    }
-
-    if (!data) {
-      return { statusCode: 404, body: { success: false, error: 'Contact message not found' } };
-    }
-
-    await logAdminActivity(
-      req,
-      'contact_messages',
-      normalizedMessageId,
-      `Updated contact message status from ${existingMessage.status} to ${normalizedStatus}`
-    );
-
-    return { statusCode: 200, body: { success: true, message: data } };
-  } catch (error) {
-    console.error('Update contact message status error:', error);
-    return { statusCode: 500, body: { success: false, error: 'Server error' } };
-  }
-};
-
-/**
  * Update appointment status
  * Body: { id, status }
  */
@@ -1187,6 +1145,23 @@ const updateAppointmentStatus = async (req) => {
     if (!allowedTransitions[currentStatus] || !allowedTransitions[currentStatus].includes(normalizedStatus)) {
       return { statusCode: 400, body: {
         error: `Cannot change appointment from ${currentStatus || 'unknown'} to ${normalizedStatus}.`
+      } };
+    }
+
+    // Clinic time decides what makes sense: a request is approved only before it starts (the owner would otherwise be
+    // emailed an approval for a time already gone) and marked Completed only once its start time has passed. Earlier
+    // appointments whose date or time cannot be read are not blocked.
+    const startMs = getAppointmentStartTimestamp(existingData.appointment_date, existingData.appointment_time);
+    if (Number.isFinite(startMs) && normalizedStatus === 'Approved' && startMs <= Date.now()) {
+      return { statusCode: 409, body: {
+        error: 'The start time of this appointment has already passed, so it can no longer be approved. Cancel it, or ask the owner to book a new time.',
+        code: 'APPOINTMENT_START_PASSED'
+      } };
+    }
+    if (Number.isFinite(startMs) && normalizedStatus === 'Completed' && startMs > Date.now()) {
+      return { statusCode: 409, body: {
+        error: 'An appointment can be marked Completed only after its scheduled start time.',
+        code: 'APPOINTMENT_NOT_STARTED'
       } };
     }
 
@@ -1408,8 +1383,6 @@ module.exports = {
   getAnalyticsServices,
   getAnalyticsAppointmentsTrend,
   getSystemLogs,
-  getContactMessages,
-  updateContactMessageStatus,
   getAllUsers,
   getAllPets,
   getAllAppointments,

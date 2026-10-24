@@ -15,8 +15,15 @@ Never run an applied or superseded file again: each one's preflight stops it, bu
 | `2026-10-24_revoke_api_role_table_grants.sql` | 2026-10-24 00:59:19 | Supabase MCP `execute_sql`, one transaction | Executed statement SHA-256 = file `bbd075f78fcc827c20d37b2c3ae14dc8417413a8160f1b2d424980a834a98db1`; anon/authenticated table grant entries 224 -> 0; service_role full access on all 17 tables; the public key now gets 401 / 42501 on every table |
 | `2026-10-24_query_indexes.sql` | 2026-10-24 00:59:57 | Supabase MCP `execute_sql`, one transaction | Executed statement SHA-256 = file `572b1cb7dea3809a85419697dc9c173d46c2894386094b38963094bf9facfbb4`; public indexes 29 -> 37, all 8 valid and ready |
 | `2026-10-24_core_value_checks.sql` | 2026-10-24 01:00:10 | Supabase MCP `execute_sql`, one transaction | Executed statement SHA-256 = file `a02aac3899eeb5fc83b853004c34cd392994921f703c3858d19153b3ccc5dbab`; public constraints 68 -> 71, all three validated |
+| `2026-10-24_contact_cancellation_email_log.sql` | 2026-10-24 05:35:15 | Supabase MCP `execute_sql`, one transaction | Executed statement SHA-256 = file `ef12858793fe7a7389d54fc158a62cb80ca54e8489ba692c853ce6560a054cf8`; constraints 71 -> 82 (7 checks, 4 foreign keys), indexes 37 -> 41, status history trigger enabled, the 3 appointment functions and the trigger function executable only by postgres/service_role; every pre-existing row of every table hashed identically before and after |
 
-Before applying, all four 2026-10-24 files ran together on the live database in one transaction that ended with a
+`2026-10-24_contact_cancellation_email_log.sql` was first run on the live database without its BEGIN/COMMIT, followed by
+behaviour checks and a deliberate error (genuine dry run, rolled back): owner cancellation sets cancelled_by and writes
+history, another account's cancellation and a repeat cancellation return false, a start 1 h 59 min away is refused,
+the admin path records history by the admin, the new checks and the unique email-log index refuse bad rows, and the
+anon role cannot execute the cancellation function. The database was confirmed unchanged afterwards.
+
+Before applying, all four earlier 2026-10-24 files ran together on the live database in one transaction that ended with a
 deliberate error (genuine dry run: every preflight and post-check passed, then everything rolled back; grants,
 indexes, constraints and default privileges were confirmed unchanged afterwards). After applying, every pre-existing
 row in every table hashed identically to the pre-change snapshot.

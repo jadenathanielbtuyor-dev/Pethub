@@ -194,6 +194,24 @@
                 <p class="ph-dash-note mt-4">Need to add a pet? <a class="ph-dash-link" href="pets.html">Register a pet first</a>, then return here.</p>
               </div>
             </dialog>
+
+            <!-- Cancellation confirmation, filled in by js/user/appointments.js. The server re-checks the 2-hour cutoff. -->
+            <dialog id="cancelAppointmentDialog" class="ph-dialog" aria-labelledby="cancelAppointmentTitle" aria-describedby="cancelAppointmentText">
+              <form method="dialog" class="ph-dialog-content">
+                <div class="ph-dialog-head">
+                  <h3 id="cancelAppointmentTitle" class="ph-dialog-title">Cancel this appointment?</h3>
+                  <button type="submit" value="keep" class="ph-btn ph-btn-ghost ph-btn-sm" aria-label="Close without cancelling"><i class="ri-close-line" aria-hidden="true"></i></button>
+                </div>
+                <p id="cancelAppointmentText" class="ph-dash-note">The appointment below will be cancelled and its time slot released. It stays in your appointment history.</p>
+                <dl id="cancelAppointmentFacts" class="ph-dash-facts"></dl>
+                <p id="cancelAppointmentDeadline" class="ph-dash-note"></p>
+                <p id="cancelAppointmentError" class="ph-field-error" role="alert" hidden></p>
+                <div class="ph-dialog-actions">
+                  <button type="submit" value="keep" class="ph-btn ph-btn-secondary">Keep appointment</button>
+                  <button type="button" id="confirmCancelAppointment" class="ph-btn ph-btn-danger"><i class="ri-close-circle-line" aria-hidden="true"></i>Cancel appointment</button>
+                </div>
+              </form>
+            </dialog>
           </section>
 
         </div>

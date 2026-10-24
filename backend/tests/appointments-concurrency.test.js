@@ -21,15 +21,13 @@ after(async () => {
   await t.close();
 });
 
+// The admin status endpoint is the only one (the unused PUT /appointments/updateStatus duplicate was removed)
 function approveVia(endpoint, admin, appointmentId) {
-  if (endpoint === 'admin') {
-    return t.api('PUT', `/admin/dashboard/appointment-status?user_id=${admin.id}`, { token: admin.token, body: { id: appointmentId, status: 'Approved' } });
-  }
-  return t.api('PUT', '/appointments/updateStatus', { token: admin.token, body: { id: appointmentId, status: 'Approved', user_id: admin.id } });
+  return t.api('PUT', `/admin/dashboard/appointment-status?user_id=${admin.id}`, { token: admin.token, body: { id: appointmentId, status: 'Approved' } });
 }
 
 describe('simultaneous approvals of overlapping appointments', () => {
-  for (const [first, second] of [['admin', 'admin'], ['admin', 'legacy'], ['legacy', 'legacy']]) {
+  for (const [first, second] of [['admin', 'admin']]) {
     it(`${first} + ${second} endpoint: exactly one is approved, the other gets the schedule conflict`, async () => {
       const adminA = t.createUser({ role: 'admin', name: 'Admin A' });
       const adminB = t.createUser({ role: 'admin', name: 'Admin B' });

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" type="image/png" href="../../assets/images/paw.png">
   <title>PetHub | Contact</title>
-  <meta name="description" content="Send the clinic a message about bookings, your PetHub account or your pets' records.">
+  <meta name="description" content="The clinic's contact details, and messages to the clinic from your PetHub account about bookings, your account or your pets' records.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800&amp;display=swap">
@@ -53,43 +53,76 @@
       <div class="ph-container">
         <p class="ph-eyebrow"><i class="ri-chat-3-line" aria-hidden="true"></i>Contact</p>
         <h1 id="pageTitle" class="ph-display">Contact the clinic</h1>
-        <p class="ph-lead">Send the clinic a message about a booking, your account or your pet's records.</p>
+        <p class="ph-lead">Questions about a booking, your account or your pet's records? Reach the clinic below, or send a message from your PetHub account.</p>
       </div>
     </section>
 
-    <section class="ph-section" aria-label="Message form">
-      <div class="ph-container max-w-3xl">
+    <section class="ph-section" aria-label="Contact the clinic">
+      <div class="ph-container">
+        <div class="ph-contact-grid">
 
-        <!-- Contact Form (POST /contact) -->
-        <div class="ph-card">
-          <h2 class="ph-title">Send a message</h2>
-          <p class="ph-card-text">Every field is required. Your message is saved in the clinic team's admin message list. No response time is shown here.</p>
+          <!-- Clinic details: what the clinic has published (GET /contact/clinic-info), never placeholder values -->
+          <div class="ph-card" aria-labelledby="clinicDetailsTitle">
+            <h2 id="clinicDetailsTitle" class="ph-title">Clinic details</h2>
+            <div id="clinicDetails" class="mt-4" aria-live="polite">
+              <p class="ph-card-text">Loading the clinic's contact details...</p>
+            </div>
+          </div>
 
-          <form id="contactForm" class="ph-form mt-6" novalidate>
-            <div id="formMessage" aria-live="polite"></div>
+          <!-- Messages (POST /contact) require a PetHub account; js/public/contact.js shows one of the three panels -->
+          <div class="ph-card" aria-labelledby="messageTitle">
+            <h2 id="messageTitle" class="ph-title">Send a message</h2>
 
-            <div class="ph-field">
-              <label for="name" class="ph-label">Your name<span class="ph-required" aria-hidden="true">*</span></label>
-              <input type="text" id="name" name="name" class="ph-input" autocomplete="name" maxlength="100" required>
+            <div id="contactSignedOut" class="ph-alert ph-alert-info mt-4" role="note">
+              <i class="ri-lock-line ph-alert-icon" aria-hidden="true"></i>
+              <div class="ph-alert-body">
+                <p class="ph-alert-title">Please log in to your PetHub account to send us a message.</p>
+                <p>Messages are linked to your account, so the clinic knows who wrote and can reply to you by email and here on this page.</p>
+                <div class="ph-form-actions mt-3">
+                  <a href="../auth/login.html?next=contact" class="ph-btn ph-btn-primary ph-btn-sm"><i class="ri-login-box-line" aria-hidden="true"></i>Log in</a>
+                  <a href="../auth/register.html?next=contact" class="ph-btn ph-btn-secondary ph-btn-sm"><i class="ri-user-add-line" aria-hidden="true"></i>Create an account</a>
+                </div>
+              </div>
             </div>
 
-            <div class="ph-field">
-              <label for="email" class="ph-label">Email address<span class="ph-required" aria-hidden="true">*</span></label>
-              <input type="email" id="email" name="email" class="ph-input" autocomplete="email" inputmode="email" maxlength="254" required>
+            <div id="contactStaffNote" class="ph-alert ph-alert-info mt-4" role="note" hidden>
+              <i class="ri-shield-user-line ph-alert-icon" aria-hidden="true"></i>
+              <div class="ph-alert-body">
+                <p class="ph-alert-title">You're signed in as clinic staff.</p>
+                <p>Customer messages arrive in the Admin Dashboard, where you can read and answer them.</p>
+                <a href="../admin/dashboard.html#system" class="ph-link-arrow mt-2 inline-flex">Open contact messages</a>
+              </div>
             </div>
 
-            <div class="ph-field">
-              <label for="message" class="ph-label">Message<span class="ph-required" aria-hidden="true">*</span></label>
-              <textarea id="message" name="message" rows="6" class="ph-input" maxlength="2000" required aria-describedby="messageHelp"></textarea>
-              <p id="messageHelp" class="ph-help">Up to 2,000 characters. Please don't include passwords or bank card numbers.</p>
-            </div>
+            <form id="contactForm" class="ph-form mt-4" novalidate hidden>
+              <div id="formMessage" class="ph-form-message" aria-live="polite"></div>
+              <p id="contactSender" class="ph-help"></p>
 
-            <button type="submit" class="ph-btn ph-btn-primary">
-              Send Message
-            </button>
-          </form>
+              <div class="ph-field">
+                <label for="subject" class="ph-label">Subject<span class="ph-required" aria-hidden="true">*</span></label>
+                <input type="text" id="subject" name="subject" class="ph-input" maxlength="120" required aria-describedby="subjectError" placeholder="For example: Question about my booking">
+                <p id="subjectError" class="ph-field-error" hidden></p>
+              </div>
+
+              <div class="ph-field">
+                <label for="message" class="ph-label">Message<span class="ph-required" aria-hidden="true">*</span></label>
+                <textarea id="message" name="message" rows="6" class="ph-input" maxlength="2000" required aria-describedby="messageHelp messageCount messageError"></textarea>
+                <p id="messageHelp" class="ph-help">Please don't include passwords or bank card numbers.</p>
+                <p id="messageCount" class="ph-char-count" aria-live="polite">0 / 2,000</p>
+                <p id="messageError" class="ph-field-error" hidden></p>
+              </div>
+
+              <button type="submit" class="ph-btn ph-btn-primary"><i class="ri-send-plane-line" aria-hidden="true"></i>Send Message</button>
+            </form>
+          </div>
         </div>
 
+        <!-- The signed-in customer's own messages and the clinic's replies (GET /contact/mine) -->
+        <section id="myMessages" class="ph-card mt-8" aria-labelledby="myMessagesTitle" hidden>
+          <h2 id="myMessagesTitle" class="ph-title">Your messages</h2>
+          <p class="ph-card-text">Messages you've sent and the clinic's replies. Replies are also emailed to you.</p>
+          <div id="myMessagesList" class="ph-message-list mt-4" aria-live="polite"></div>
+        </section>
       </div>
     </section>
 
@@ -141,81 +174,7 @@
   <script src="../../js/main.js"></script>
   <script src="../../js/shared/ai-widget.js"></script>
 
-  <!-- Contact Form Handler -->
-  <script>
-    let contactSubmitInProgress = false;
-
-    document.addEventListener('DOMContentLoaded', () => {
-      const contactForm = document.getElementById('contactForm');
-      if (contactForm) {
-        contactForm.addEventListener('submit', handleContactSubmit);
-      }
-    });
-
-    async function handleContactSubmit(e) {
-      e.preventDefault();
-      const form = e.target;
-      if (contactSubmitInProgress || isFormSubmitting(form)) return;
-
-      const messageEl = document.getElementById('formMessage');
-      const name = document.getElementById('name').value.trim();
-      const email = document.getElementById('email').value.trim();
-      const message = document.getElementById('message').value.trim();
-
-      if (!name || !email || !message) {
-        showMessage(messageEl, 'All fields are required', 'error');
-        return;
-      }
-
-      if (!isValidEmail(email)) {
-        showMessage(messageEl, 'Please enter a valid email address', 'error');
-        return;
-      }
-
-      contactSubmitInProgress = true;
-      setFormSubmitting(form, true, 'Sending...', 'Send Message');
-
-      try {
-        const user = getUser();
-        const payload = {
-          name,
-          email,
-          message,
-          user_id: user?.id || undefined
-        };
-
-        const response = await fetch(`${window.API_BASE_URL}/contact`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(data.error || 'Unable to submit message');
-        }
-
-        showMessage(messageEl, '✓ Your message has been submitted successfully.', 'success');
-        form.reset();
-      } catch (error) {
-        console.error('Contact submit failed:', error);
-        showMessage(messageEl, error.message || 'An error occurred. Please try again later.', 'error');
-      } finally {
-        contactSubmitInProgress = false;
-        setFormSubmitting(form, false, 'Sending...', 'Send Message');
-      }
-    }
-
-    function showMessage(element, message, type) {
-      if (!element) return;
-      const wrapper = document.createElement('div');
-      wrapper.className = `${type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'} p-4 rounded-lg font-medium`;
-      wrapper.textContent = message;
-      wrapper.setAttribute('role', type === 'error' ? 'alert' : 'status');
-      wrapper.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
-      element.replaceChildren(wrapper);
-    }
-  </script>
+  <script src="../../js/public/contact.js"></script>
 
 </body>
 </html>

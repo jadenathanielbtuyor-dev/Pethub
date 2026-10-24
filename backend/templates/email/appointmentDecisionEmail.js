@@ -1,11 +1,19 @@
 const {
   APPOINTMENT_APPROVED_EMAIL_SUBJECT,
-  APPOINTMENT_CANCELLED_EMAIL_SUBJECT
+  APPOINTMENT_CANCELLED_EMAIL_SUBJECT,
+  APPOINTMENT_OWNER_CANCELLED_EMAIL_SUBJECT
 } = require('../../constants/email');
-const { getAppointmentDetails, buildAppointmentEmail } = require('./appointmentEmailParts');
+const {
+  getAppointmentDetails,
+  buildAppointmentEmail,
+  formatClinicTimestamp,
+  getClinicHelp
+} = require('./appointmentEmailParts');
 
 // decision: 'approved' | 'cancelled'. previousStatus tells a cancelled request (Pending) from a cancelled booking (Approved).
-function buildAppointmentDecisionEmail({ name, appointment, decision, previousStatus, appointmentsUrl = '' }) {
+// clinic / contactPageUrl: the clinic's contact details for the "Need help?" block (appointmentEmailParts.getClinicHelp).
+function buildAppointmentDecisionEmail({ name, appointment, decision, previousStatus, appointmentsUrl = '', clinic = {}, contactPageUrl = '' }) {
+  const help = getClinicHelp(clinic, contactPageUrl);
   if (decision === 'approved') {
     return buildAppointmentEmail({
       subject: APPOINTMENT_APPROVED_EMAIL_SUBJECT,
@@ -16,8 +24,12 @@ function buildAppointmentDecisionEmail({ name, appointment, decision, previousSt
         ...getAppointmentDetails(appointment),
         ['Appointment status', 'Approved']
       ],
-      paragraphs: ['Please arrive a few minutes early. If you need to change this appointment, contact the clinic.'],
-      appointmentsUrl
+      paragraphs: [
+        'Please arrive a few minutes early. If you need to change this appointment, contact the clinic.',
+        'You can cancel it yourself in My Appointments until 2 hours before it starts.'
+      ],
+      appointmentsUrl,
+      help
     });
   }
 
@@ -33,22 +45,35 @@ function buildAppointmentDecisionEmail({ name, appointment, decision, previousSt
       ['Appointment status', 'Cancelled']
     ],
     paragraphs: ['If you have questions about this, contact the clinic. You can request another time from My Appointments in PetHub.'],
-    appointmentsUrl
+    appointmentsUrl,
+    help
   });
 }
 
-function buildOwnerCancellationEmail({ name, appointment, appointmentsUrl = '' }) {
+// Sent once, after the owner's own cancellation is stored (POST /appointments/cancel/:id)
+function buildOwnerCancellationEmail({ name, appointment, appointmentsUrl = '', clinic = {}, contactPageUrl = '' }) {
+  const [reference, pet, service, date, time] = getAppointmentDetails(appointment);
   return buildAppointmentEmail({
-    subject: APPOINTMENT_CANCELLED_EMAIL_SUBJECT,
-    heading: 'Appointment Cancelled',
+    subject: APPOINTMENT_OWNER_CANCELLED_EMAIL_SUBJECT,
+    heading: 'Your Appointment Has Been Cancelled',
     name,
-    intro: 'You cancelled the appointment below in PetHub.',
+    intro: 'Your appointment has been successfully cancelled. Your PetHub appointment details are listed below for your reference.',
     details: [
-      ...getAppointmentDetails(appointment),
-      ['Appointment status', 'Cancelled']
+      reference,
+      ['Customer', String(name || '').trim() || 'Not recorded'],
+      pet,
+      service,
+      ['Original date', date[1]],
+      ['Original time', time[1]],
+      ['Appointment status', 'Cancelled'],
+      ['Cancelled on', formatClinicTimestamp(appointment?.cancelled_at)]
     ],
-    paragraphs: ['If you did not request this cancellation, contact the clinic.'],
-    appointmentsUrl
+    paragraphs: [
+      'This confirms your cancellation; you do not need to do anything else.',
+      'If you did not cancel this appointment, contact the clinic right away. You can book a new appointment from My Appointments whenever online booking is open.'
+    ],
+    appointmentsUrl,
+    help: getClinicHelp(clinic, contactPageUrl)
   });
 }
 

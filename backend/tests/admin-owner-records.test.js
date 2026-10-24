@@ -108,6 +108,8 @@ describe('Owner, pet and appointment links in the admin records', () => {
 
     assert.equal((await change('Approved')).status, 200);
     assert.equal(t.db.table('medical_records').length, recordsBefore);
+    // The visit takes place (an appointment can be completed only after its start time)
+    t.appointmentRow(visit.id).appointment_date = t.manilaDate(-1);
     assert.equal((await change('Completed')).status, 200);
     assert.equal(t.db.table('medical_records').length, recordsBefore);
     assert.equal(t.appointmentRow(visit.id).status, 'Completed');

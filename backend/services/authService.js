@@ -591,7 +591,9 @@ const getActivityLogs = async (req) => {
 
     const userId = validation.userId;
 
-    const { data: logs, error } = await activityLogsRepository.listUserActivityLogs(userId, 20);
+    // ?exclude=sign_ins leaves out sign-ins and sign-outs, which otherwise fill the owner's recent activity
+    const excludeActions = String(req.query.exclude || '') === 'sign_ins' ? ['user_logged_in', 'user_logged_out'] : [];
+    const { data: logs, error } = await activityLogsRepository.listUserActivityLogs(userId, 20, { excludeActions });
 
     if (error) {
       console.error('Activity logs query error:', error);

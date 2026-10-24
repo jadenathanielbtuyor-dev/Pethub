@@ -728,7 +728,9 @@ async function loadSystemLogs(shouldRender = true) {
   }
 
   try {
-    const response = await fetchWithRetry(() => fetch(`${window.API_BASE_URL}/admin/system-logs${getAdminUserIdQuery()}&limit=${SYSTEM_LOG_LIMIT}`));
+    // Sign-ins and sign-outs make up most entries, so they are left out unless the admin asks for them
+    const excludeSignIns = document.getElementById('showSignInsToggle')?.checked ? '' : '&exclude=sign_ins';
+    const response = await fetchWithRetry(() => fetch(`${window.API_BASE_URL}/admin/system-logs${getAdminUserIdQuery()}&limit=${SYSTEM_LOG_LIMIT}${excludeSignIns}`));
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: response.statusText }));
       throw new Error(errorData.error || `Failed to load system logs (${response.status})`);
@@ -772,6 +774,7 @@ async function loadServiceCatalog() {
   } finally {
     adminDashboardData.serviceCatalogLoaded = true;
     renderServiceCatalog();
+    updateOnlineBookingAlert();
     if (currentAdminView === 'appointments' && adminDashboardData.isLoaded) renderAppointmentsView();
   }
 }
@@ -883,10 +886,47 @@ function normalizeDashboardDateValue(value) {
   return Number.isNaN(parsedDate.getTime()) ? '' : parsedDate.toISOString().slice(0, 10);
 }
 
+// Appointment dates and times are clinic wall-clock values (Asia/Manila), whatever timezone the admin's browser uses;
+// the server applies the same clock (backend validators/appointmentsValidator.js)
+const CLINIC_TIME_ZONE = 'Asia/Manila';
+
+function clinicClockParts(date) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: CLINIC_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+  }).formatToParts(date);
+  return Object.fromEntries(parts.map(part => [part.type, Number(part.value)]));
+}
+
+// The instant (ms) of a clinic date + time, or null when either cannot be read
+function getClinicDateTimeMs(dateValue, timeValue) {
+  const dateMatch = normalizeDashboardDateValue(dateValue).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const timeMatch = String(timeValue || '').trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!dateMatch || !timeMatch) return null;
+  const wall = Date.UTC(Number(dateMatch[1]), Number(dateMatch[2]) - 1, Number(dateMatch[3]), Number(timeMatch[1]), Number(timeMatch[2]), Number(timeMatch[3] || 0));
+  let candidate = wall;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const p = clinicClockParts(new Date(candidate));
+    const shown = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+    if (shown === wall) break;
+    candidate += wall - shown;
+  }
+  return candidate;
+}
+
+function getAppointmentStartMs(appointment) {
+  return getClinicDateTimeMs(appointment?.appointment_date, appointment?.appointment_time);
+}
+
 function getTodayDateKey() {
-  const now = new Date();
-  const timezoneOffsetMs = now.getTimezoneOffset() * 60000;
-  return new Date(now.getTime() - timezoneOffsetMs).toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat('en-CA', { timeZone: CLINIC_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+}
+
+// A stored timestamp (such as cancelled_at) on the clinic clock: "Oct 24, 2026, 2:05 PM"
+function formatClinicTimestamp(value) {
+  const date = new Date(value || '');
+  if (!value || Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('en-US', { timeZone: CLINIC_TIME_ZONE, month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 // Sort key for date and time: "2026-10-21 10:00"
@@ -903,16 +943,13 @@ function compareAppointmentsNewestFirst(first, second) {
 }
 
 // When the appointment ends (start + saved duration; the start when no duration was saved; the end of the day when no
-// time was saved), in the browser's time like the times shown; null without a valid date
+// time was saved), on the clinic clock; null without a valid date
 function getAppointmentEndTime(appointment) {
-  const dateMatch = normalizeDashboardDateValue(appointment?.appointment_date).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!dateMatch) return null;
-  const timeMatch = String(appointment?.appointment_time || '').trim().match(/^(\d{1,2}):(\d{2})/);
-  const start = timeMatch
-    ? new Date(Number(dateMatch[1]), Number(dateMatch[2]) - 1, Number(dateMatch[3]), Number(timeMatch[1]), Number(timeMatch[2]))
-    : new Date(Number(dateMatch[1]), Number(dateMatch[2]) - 1, Number(dateMatch[3]), 23, 59);
-  const duration = timeMatch ? getAppointmentDurationMinutes(appointment) : null;
-  return new Date(start.getTime() + (duration || 0) * 60000);
+  const hasTime = /^\d{1,2}:\d{2}/.test(String(appointment?.appointment_time || '').trim());
+  const startMs = getClinicDateTimeMs(appointment?.appointment_date, hasTime ? appointment.appointment_time : '23:59');
+  if (!Number.isFinite(startMs)) return null;
+  const duration = hasTime ? getAppointmentDurationMinutes(appointment) : null;
+  return new Date(startMs + (duration || 0) * 60000);
 }
 
 // Pending or Approved, and its time has passed: the clinic has not recorded what happened. Shown so an administrator
@@ -1597,9 +1634,32 @@ function setupAdminDashboardInteractions() {
     if (select) handleUserRoleChange(select);
   });
   document.getElementById('contactMessagesTable')?.addEventListener('click', event => {
+    const openButton = event.target.closest('[data-message-open]');
+    if (openButton) {
+      openContactMessage(openButton, openButton.dataset.messageOpen);
+      return;
+    }
     const button = event.target.closest('[data-message-id]');
     if (button) toggleContactMessageStatus(button, button.dataset.messageId, CONTACT_MESSAGE_READ_STATUS);
   });
+  // "Resend email" on an appointment (any table) whose email could not be delivered
+  document.addEventListener('click', event => {
+    const retryButton = event.target.closest('[data-email-retry]');
+    if (retryButton) retryEmailDelivery(retryButton, retryButton.dataset.emailRetry);
+  });
+  document.getElementById('clinicSettingsForm')?.addEventListener('submit', saveClinicSettings);
+  // Services & booking rows are re-rendered after every change, so their buttons use delegation
+  document.getElementById('servicesCatalogContainer')?.addEventListener('click', event => {
+    const toggle = event.target.closest('[data-service-toggle]');
+    if (toggle) {
+      toggleServiceAvailability(toggle);
+      return;
+    }
+    const edit = event.target.closest('[data-service-edit]');
+    const service = edit ? findCatalogService(edit.dataset.serviceEdit) : null;
+    if (service) openServiceDialog(service, { mode: 'edit', returnFocus: edit });
+  });
+  document.getElementById('showSignInsToggle')?.addEventListener('change', () => loadSystemLogs());
 
   // System Management tabs: click, and arrow keys between tabs
   const tabs = Array.from(document.querySelectorAll('[data-system-tab]'));
@@ -1848,7 +1908,7 @@ function renderSystemLogs() {
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
   logsContainer.innerHTML = `
-    <p class="ph-dash-note">The ${latestLogs.length} most recent entries.</p>
+    <p class="ph-dash-note">The ${latestLogs.length} most recent entries${document.getElementById('showSignInsToggle')?.checked ? '' : ' (sign-ins and sign-outs hidden)'}.</p>
     <ul class="ph-dash-list">
       ${latestLogs.map(log => {
         const action = log.action || (log.text ? String(log.text).split(' - ')[0] : '');
@@ -2516,11 +2576,42 @@ function getAppointmentRecordCellHtml(appointment) {
   return '<span class="ph-dash-muted">No linked record</span>';
 }
 
+// Who cancelled (the owner through their dashboard, or the clinic) and when, from cancelled_by / cancelled_at
+function getCancellationNoteHtml(appointment) {
+  if (getAppointmentStatus(appointment?.status) !== 'Cancelled') return '';
+  const who = appointment.cancelled_by_owner === true
+    ? 'By the owner'
+    : appointment.cancelled_by_owner === false
+      ? `By the clinic${appointment.cancelled_by_name ? ` (${appointment.cancelled_by_name})` : ''}`
+      : '';
+  const when = formatClinicTimestamp(appointment.cancelled_at);
+  const text = [who, when].filter(Boolean).join(' · ');
+  return text ? `<p class="ph-dash-note mt-1">${escapeHtml(text)}</p>` : '';
+}
+
+const APPOINTMENT_EMAIL_LABELS = {
+  appointment_approved: 'Approval email',
+  appointment_cancelled_by_clinic: 'Cancellation email',
+  appointment_cancelled_by_owner: 'Cancellation confirmation'
+};
+
+// Appointment emails that could not be delivered (email_logs), each with a way to send it again
+function getEmailDeliveryNoteHtml(appointment) {
+  return asArray(appointment?.emails)
+    .filter(email => email.status === 'Failed' && email.log_id)
+    .map(email => `
+      <p class="mt-1"><span class="ph-badge ph-badge-warning" title="${escapeHtml(email.error || 'The email service did not accept it.')}">${escapeHtml(APPOINTMENT_EMAIL_LABELS[email.type] || 'Email')} not delivered</span></p>
+      <button type="button" class="ph-text-button mt-1" data-email-retry="${escapeHtml(String(email.log_id))}">Resend email</button>`)
+    .join('');
+}
+
 function getAppointmentStatusCellHtml(appointment) {
   const status = getAppointmentStatus(appointment.status);
   return `
     <span class="${getStatusBadgeClass(status)}">${escapeHtml(status)}</span>
     ${isAwaitingOutcome(appointment) ? '<p class="mt-1"><span class="ph-badge ph-badge-warning">Awaiting an outcome</span></p>' : ''}
+    ${getCancellationNoteHtml(appointment)}
+    ${getEmailDeliveryNoteHtml(appointment)}
   `;
 }
 
@@ -2990,22 +3081,28 @@ function renderAppointmentActions(status, appointment) {
 
   const id = escapeHtml(String(appointmentId));
   const action = (newStatus, label, type) => `<button type="button" data-appointment-action="${newStatus}" data-appointment-id="${id}" class="${getAdminActionButtonClass(type)}">${label}</button>`;
+  // The server approves only before the start time and completes only after it; the buttons follow the same clock
+  const startMs = getAppointmentStartMs(appointment);
+  const started = Number.isFinite(startMs) && startMs <= Date.now();
+  const notStarted = Number.isFinite(startMs) && startMs > Date.now();
 
   if (status === 'Pending') {
     return `
       <div class="flex flex-wrap gap-2">
-        ${action('Approved', 'Approve', 'success')}
+        ${started ? '' : action('Approved', 'Approve', 'success')}
         ${action('Cancelled', 'Cancel', 'danger')}
       </div>
+      ${started ? '<p class="ph-dash-note mt-1">Its start time has passed, so it can no longer be approved.</p>' : ''}
     `;
   }
 
   if (status === 'Approved') {
     return `
       <div class="flex flex-wrap gap-2">
-        ${action('Completed', 'Complete', 'success')}
+        ${notStarted ? '' : action('Completed', 'Complete', 'success')}
         ${action('Cancelled', 'Cancel', 'danger')}
       </div>
+      ${notStarted ? '<p class="ph-dash-note mt-1">Can be marked Completed after it starts.</p>' : ''}
     `;
   }
 
@@ -3423,7 +3520,7 @@ async function loadContactMessages(shouldRender = true) {
   adminDashboardData.messagesLoading = true;
   adminDashboardData.messagesError = '';
   if (shouldRender && messagesTable) {
-    messagesTable.innerHTML = getAdminTableLoadingRow(6, 'messages');
+    messagesTable.innerHTML = getAdminTableLoadingRow(5, 'messages');
   }
 
   try {
@@ -3449,7 +3546,7 @@ async function loadContactMessages(shouldRender = true) {
     adminDashboardData.messagesLoaded = true;
     adminDashboardData.messagesError = error.message || 'Unable to load contact messages.';
     if (shouldRender && messagesTable) {
-      messagesTable.innerHTML = getAdminTableErrorRow(6, 'Unable to load messages', 'messages');
+      messagesTable.innerHTML = getAdminTableErrorRow(5, 'Unable to load messages', 'messages');
     }
     return [];
   } finally {
@@ -3459,9 +3556,10 @@ async function loadContactMessages(shouldRender = true) {
 
 function renderMessages() {
   const messagesTable = document.getElementById('contactMessagesTable');
+  loadClinicSettings();
   if (adminDashboardData.messagesLoading || (!adminDashboardData.messagesLoaded && adminDashboardData.isLoading)) {
     if (messagesTable) {
-      messagesTable.innerHTML = getAdminTableLoadingRow(6, 'messages');
+      messagesTable.innerHTML = getAdminTableLoadingRow(5, 'messages');
     }
     return;
   }
@@ -3475,7 +3573,7 @@ function renderMessages() {
 
   if (adminDashboardData.messagesError) {
     if (messagesTable) {
-      messagesTable.innerHTML = getAdminTableErrorRow(6, 'Unable to load messages', 'messages');
+      messagesTable.innerHTML = getAdminTableErrorRow(5, 'Unable to load messages', 'messages');
     }
     return;
   }
@@ -3494,28 +3592,35 @@ function displayContactMessagesTable(messages) {
 
   messagesTable.innerHTML = messages.map(msg => {
     const status = getContactMessageStatus(msg.status);
-
+    const id = escapeHtml(String(msg.id || ''));
+    const preview = String(msg.message || '').replace(/\s+/g, ' ').trim();
     return `
     <tr>
-      <td>${escapeHtml(displayValue(msg.fullname, 'Name not provided'))}</td>
-      <td>${escapeHtml(displayValue(msg.email, 'Email not provided'))}</td>
-      <td class="ph-dash-wrap">${escapeHtml(displayValue(msg.message, 'No message text'))}</td>
       <td>
-        <span class="${getContactStatusBadgeClass(status)}">
-          ${escapeHtml(status)}
-        </span>
+        <strong>${escapeHtml(displayValue(msg.fullname, 'Name not provided'))}</strong>
+        <p class="ph-dash-muted">${escapeHtml(displayValue(msg.email, 'Email not provided'))}</p>
+        ${msg.has_account === false ? '<p class="mt-1"><span class="ph-badge ph-badge-warning">No linked account</span></p>' : ''}
       </td>
-      <td>${escapeHtml(formatTableDate(msg.created_at, 'Date not recorded'))}</td>
+      <td class="ph-dash-wrap">
+        <strong>${escapeHtml(msg.subject || 'No subject')}</strong>
+        <p class="ph-dash-muted">${escapeHtml(preview.length > 140 ? `${preview.slice(0, 140)}...` : preview)}</p>
+      </td>
       <td>
-        ${renderContactMessageActions(status, msg.id)}
+        <span class="${getContactStatusBadgeClass(status)}">${escapeHtml(status)}</span>
+        ${msg.reply_email?.status === 'Failed' ? '<p class="mt-1"><span class="ph-badge ph-badge-warning">Reply email not delivered</span></p>' : ''}
       </td>
+      <td>${escapeHtml(formatClinicTimestamp(msg.created_at) || 'Date not recorded')}</td>
+      <td>${renderContactMessageActions(status, msg.id)}</td>
     </tr>
   `;
   }).join('');
+  // Keep an open message's dialog in step with the list
+  const dialog = document.getElementById('contactMessageDialog');
+  if (dialog?.open && dialog.dataset.messageId) fillContactMessageDialog(findContactMessage(dialog.dataset.messageId));
 }
 
 function getContactMessagesEmptyState() {
-  return getAdminTableEmptyRow(6, 'No contact messages yet.', 'Public contact form submissions will appear here for admin review.');
+  return getAdminTableEmptyRow(5, 'No contact messages yet.', 'Messages that signed-in customers send from the Contact page appear here.');
 }
 
 function getContactMessageStatus(status) {
@@ -3523,35 +3628,27 @@ function getContactMessageStatus(status) {
   const normalizedStatus = String(status).toLowerCase();
   const statusMap = {
     unread: 'Unread',
-    read: 'Read'
+    read: 'Read',
+    replied: 'Replied'
   };
   return statusMap[normalizedStatus] || displayValue(status, 'Status not recorded');
 }
 
 function getContactStatusBadgeClass(status) {
-  if (status === 'Unread') {
-    return 'admin-status-badge admin-status-warning';
-  }
-  if (status === 'Read') {
-    return 'admin-status-badge admin-status-success';
-  }
+  if (status === 'Unread') return 'admin-status-badge admin-status-warning';
+  if (status === 'Replied') return 'admin-status-badge admin-status-success';
   return 'admin-status-badge admin-status-neutral';
 }
 
 function renderContactMessageActions(status, messageId) {
-  if (status !== CONTACT_MESSAGE_ACTIONABLE_STATUS) {
-    return '';
-  }
-
   if (!messageId) {
     return '<span class="ph-dash-muted">Action unavailable</span>';
   }
-
+  const id = escapeHtml(String(messageId));
   return `
     <div class="flex flex-wrap gap-2">
-      <button type="button" data-message-id="${escapeHtml(String(messageId))}" class="${getAdminActionButtonClass('neutral')}">
-        Mark as Read
-      </button>
+      <button type="button" data-message-open="${id}" class="${getAdminActionButtonClass(status === 'Replied' ? 'neutral' : 'success')}">${status === 'Replied' ? 'View' : 'Open and reply'}</button>
+      ${status === CONTACT_MESSAGE_ACTIONABLE_STATUS ? `<button type="button" data-message-id="${id}" class="${getAdminActionButtonClass('neutral')}">Mark as Read</button>` : ''}
     </div>
   `;
 }
@@ -3567,34 +3664,7 @@ async function toggleContactMessageStatus(button, messageId, newStatus) {
   const originalText = button?.textContent?.trim() || 'Update';
   try {
     setActionButtonGroupLoading(button, true, 'Updating...', originalText);
-
-    const adminQuery = getAdminUserIdQuery();
-    if (!adminQuery) {
-      throw new Error('Admin user ID not found. Please log in again.');
-    }
-
-    const response = await fetchWithRetry(() =>
-      fetch(`${window.API_BASE_URL}/admin/dashboard/contact-message-status${adminQuery}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: messageId, status: newStatus })
-      })
-    );
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: response.statusText }));
-      throw new Error(errorData.error || `Could not update message (${response.status})`);
-    }
-
-    const data = await response.json();
-    if (data.success === false) {
-      throw new Error(data.error || 'Could not update message.');
-    }
-
-    if (!data.message) {
-      throw new Error('Message status update succeeded but no message was returned');
-    }
-
+    await markContactMessageRead(messageId);
     await loadDashboardOverview();
     showAdminStatus('success', getContactMessageStatusFeedback(newStatus));
   } catch (error) {
@@ -3605,7 +3675,296 @@ async function toggleContactMessageStatus(button, messageId, newStatus) {
   }
 }
 
+// PUT /admin/dashboard/contact-message-status { id, status: 'Read' }; the server leaves read or answered messages as they are
+async function markContactMessageRead(messageId) {
+  const adminQuery = getAdminUserIdQuery();
+  if (!adminQuery) throw new Error('Admin user ID not found. Please log in again.');
+  const response = await fetchWithRetry(() => fetch(`${window.API_BASE_URL}/admin/dashboard/contact-message-status${adminQuery}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: messageId, status: CONTACT_MESSAGE_READ_STATUS })
+  }));
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.success === false || !data.message) {
+    throw new Error(data.error || `Could not update message (${response.status})`);
+  }
+  adminDashboardData.messages = asArray(adminDashboardData.messages).map(message => (
+    String(message.id) === String(messageId) ? { ...message, ...data.message } : message
+  ));
+  return data.message;
+}
+
+function findContactMessage(messageId) {
+  return asArray(adminDashboardData.messages).find(message => String(message.id) === String(messageId)) || null;
+}
+
+// ---------- One message: read it, reply once, resend a failed reply email ----------
+
+function ensureContactMessageDialog() {
+  let dialog = document.getElementById('contactMessageDialog');
+  if (dialog) return dialog;
+  document.body.insertAdjacentHTML('beforeend', `
+    <dialog id="contactMessageDialog" class="ph-dialog ph-dialog-wide" aria-labelledby="contactMessageTitle">
+      <div class="ph-dialog-content">
+        <div class="ph-dialog-head">
+          <div>
+            <h2 id="contactMessageTitle" class="ph-dialog-title"></h2>
+            <p id="contactMessageFrom" class="ph-dash-note"></p>
+          </div>
+          <button type="button" class="ph-btn ph-btn-ghost ph-btn-sm" data-close-dialog aria-label="Close message"><i class="ri-close-line" aria-hidden="true"></i></button>
+        </div>
+        <div class="ph-message-item">
+          <p id="contactMessageReceived" class="ph-message-meta"></p>
+          <p id="contactMessageBody" class="ph-message-text"></p>
+        </div>
+        <div id="contactMessageReplyView" class="ph-message-reply" hidden></div>
+        <form id="contactReplyForm" class="ph-form" novalidate>
+          <div class="ph-field">
+            <label for="contactReplyText" class="ph-label">Your reply</label>
+            <textarea id="contactReplyText" class="ph-input" rows="6" maxlength="2000" required aria-describedby="contactReplyHelp contactReplyError"></textarea>
+            <p id="contactReplyHelp" class="ph-help"></p>
+            <p id="contactReplyError" class="ph-field-error" role="alert" hidden></p>
+          </div>
+          <div class="ph-dialog-actions">
+            <button type="button" class="ph-btn ph-btn-secondary" data-close-dialog>Close</button>
+            <button type="submit" class="ph-btn ph-btn-primary"><i class="ri-send-plane-line" aria-hidden="true"></i>Send reply</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+  `);
+  dialog = document.getElementById('contactMessageDialog');
+  dialog.addEventListener('click', event => {
+    if (event.target.closest('[data-close-dialog]')) dialog.close();
+  });
+  dialog.addEventListener('close', () => {
+    // A close event can arrive after the dialog was opened again; it then belongs to the earlier opening
+    if (dialog.open) return;
+    const returnTo = dialog.returnFocusTo;
+    dialog.returnFocusTo = null;
+    if (returnTo && returnTo.isConnected) returnTo.focus();
+  });
+  document.getElementById('contactReplyForm').addEventListener('submit', submitContactReply);
+  return dialog;
+}
+
+function fillContactMessageDialog(message) {
+  if (!message) return;
+  const status = getContactMessageStatus(message.status);
+  document.getElementById('contactMessageTitle').textContent = message.subject || 'Message';
+  document.getElementById('contactMessageFrom').textContent = `From ${displayValue(message.fullname, 'Name not provided')} (${displayValue(message.email, 'no email')})${message.has_account === false ? ', no linked PetHub account' : ''}`;
+  document.getElementById('contactMessageReceived').textContent = `Received ${formatClinicTimestamp(message.created_at) || 'at an unrecorded time'} · ${status}`;
+  document.getElementById('contactMessageBody').textContent = message.message || '';
+
+  const replyView = document.getElementById('contactMessageReplyView');
+  const form = document.getElementById('contactReplyForm');
+  if (status === 'Replied' && message.reply_message) {
+    const delivery = message.reply_email;
+    const deliveryText = !delivery
+      ? 'Email delivery was not recorded.'
+      : delivery.status === 'Sent'
+        ? `Emailed to ${message.email}.`
+        : delivery.status === 'Failed'
+          ? 'The reply email could not be delivered. The customer can still read the reply on the Contact page.'
+          : 'The reply email is being sent.';
+    replyView.innerHTML = `
+      <p class="ph-message-meta"><strong>Your reply</strong>${message.handled_by_name ? ` by ${escapeHtml(message.handled_by_name)}` : ''} · ${escapeHtml(formatClinicTimestamp(message.replied_at))}</p>
+      <p class="ph-message-text">${escapeHtml(message.reply_message).replace(/\n/g, '<br>')}</p>
+      <p class="ph-message-meta mt-2">${escapeHtml(deliveryText)}</p>
+      ${delivery?.status === 'Failed' && delivery.log_id ? `<button type="button" class="ph-btn ph-btn-secondary ph-btn-sm mt-2" data-email-retry="${escapeHtml(String(delivery.log_id))}">Resend email</button>` : ''}`;
+    replyView.hidden = false;
+    form.hidden = true;
+  } else {
+    replyView.hidden = true;
+    replyView.innerHTML = '';
+    form.hidden = false;
+    document.getElementById('contactReplyHelp').textContent = message.email
+      ? `Your reply is saved in PetHub (the customer sees it on the Contact page) and emailed to ${message.email}. You can reply once.`
+      : 'Your reply is saved in PetHub; the customer sees it on the Contact page. You can reply once.';
+  }
+}
+
+async function openContactMessage(button, messageId) {
+  const message = findContactMessage(messageId);
+  if (!message) {
+    showAdminStatus('error', 'This message is no longer in the list. Refresh and try again.');
+    return;
+  }
+  const dialog = ensureContactMessageDialog();
+  dialog.dataset.messageId = String(messageId);
+  dialog.returnFocusTo = button;
+  document.getElementById('contactReplyText').value = '';
+  setContactReplyError('');
+  fillContactMessageDialog(message);
+  dialog.showModal();
+  (document.getElementById('contactReplyForm').hidden ? dialog.querySelector('[data-close-dialog]') : document.getElementById('contactReplyText'))?.focus();
+
+  // Opening an unread message marks it read
+  if (getContactMessageStatus(message.status) === CONTACT_MESSAGE_ACTIONABLE_STATUS) {
+    try {
+      await markContactMessageRead(messageId);
+      displayContactMessagesTable(adminDashboardData.messages);
+      displayDashboardAlerts(adminDashboardData.summary || {});
+    } catch (error) {
+      console.warn('Could not mark the message as read:', error.message);
+    }
+  }
+}
+
+function setContactReplyError(message) {
+  const error = document.getElementById('contactReplyError');
+  const input = document.getElementById('contactReplyText');
+  if (error) {
+    error.textContent = message || '';
+    error.hidden = !message;
+  }
+  if (input) {
+    if (message) input.setAttribute('aria-invalid', 'true');
+    else input.removeAttribute('aria-invalid');
+  }
+}
+
+async function submitContactReply(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const dialog = document.getElementById('contactMessageDialog');
+  const messageId = dialog?.dataset.messageId;
+  const reply = document.getElementById('contactReplyText').value.trim();
+  if (!messageId || isFormSubmitting(form)) return;
+  if (!reply) {
+    setContactReplyError('Write a reply before sending it.');
+    document.getElementById('contactReplyText').focus();
+    return;
+  }
+
+  setContactReplyError('');
+  setFormSubmitting(form, true, 'Sending...', 'Send reply');
+  try {
+    const response = await fetchWithRetry(() => fetch(`${window.API_BASE_URL}/admin/dashboard/contact-messages/${encodeURIComponent(messageId)}/reply${getAdminUserIdQuery()}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reply })
+    }));
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.success !== true) {
+      const error = new Error(data.error || `Could not send the reply (${response.status}).`);
+      error.status = response.status;
+      throw error;
+    }
+    await loadContactMessages(true);
+    fillContactMessageDialog(findContactMessage(messageId) || { ...findContactMessage(messageId), ...data.message });
+    const email = findContactMessage(messageId)?.email || 'the customer';
+    showAdminStatus(data.email_status === 'failed' ? 'error' : 'success', data.email_status === 'sent'
+      ? `Reply sent and emailed to ${email}.`
+      : data.email_status === 'failed'
+        ? 'Reply saved, but the email could not be delivered. The customer can read it on the Contact page; use Resend email to try again.'
+        : 'Reply saved. The customer can read it on the Contact page.');
+  } catch (error) {
+    setContactReplyError(error.message || 'Could not send the reply.');
+    if (error.status === 409) await loadContactMessages(true);
+  } finally {
+    setFormSubmitting(form, false, 'Sending...', 'Send reply');
+  }
+}
+
+// POST /admin/email-logs/:id/retry: an appointment or reply email that could not be delivered
+async function retryEmailDelivery(button, logId) {
+  if (!logId || button?.getAttribute('aria-busy') === 'true') return;
+  const originalText = button?.textContent?.trim() || 'Resend email';
+  updateButtonState(button, true, 'Sending...', originalText);
+  let outcome;
+  try {
+    const response = await fetchWithRetry(() => fetch(`${window.API_BASE_URL}/admin/email-logs/${encodeURIComponent(logId)}/retry${getAdminUserIdQuery()}`, { method: 'POST' }));
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.success !== true) throw new Error(data.error || `Could not resend the email (${response.status}).`);
+    outcome = ['success', 'Email sent.'];
+  } catch (error) {
+    outcome = ['error', error.message || 'Could not resend the email.'];
+  } finally {
+    if (button?.isConnected) updateButtonState(button, false, 'Sending...', originalText);
+  }
+  // Reload first (reloading the overview clears the status line), then say what happened
+  await Promise.all([loadDashboardOverview(), loadContactMessages(currentAdminView === 'system' && currentSystemTab === 'messages')]);
+  showAdminStatus(...outcome);
+}
+
+// ---------- Clinic contact details (System Management > Contact messages) ----------
+
+const CLINIC_SETTING_FIELDS = { phone: 'clinicPhone', email: 'clinicEmail', address: 'clinicAddress', hours: 'clinicHours' };
+
+// Loaded once; a call while the first request is still out waits for it instead of asking again
+function loadClinicSettings() {
+  if (!adminDashboardData.clinicSettingsPromise) {
+    adminDashboardData.clinicSettingsPromise = fetchClinicSettings().then(loaded => {
+      if (!loaded) adminDashboardData.clinicSettingsPromise = null;
+    });
+  }
+  return adminDashboardData.clinicSettingsPromise;
+}
+
+async function fetchClinicSettings() {
+  const status = document.getElementById('clinicSettingsStatus');
+  try {
+    const response = await fetchWithRetry(() => fetch(`${window.API_BASE_URL}/admin/clinic-settings${getAdminUserIdQuery()}`));
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.success !== true) throw new Error(data.error || 'Could not load the clinic contact details.');
+    Object.entries(CLINIC_SETTING_FIELDS).forEach(([name, id]) => {
+      const input = document.getElementById(id);
+      if (input) input.value = data.clinic?.[name] || '';
+    });
+    const configured = Object.values(data.clinic || {}).some(Boolean);
+    const panel = document.getElementById('clinicSettingsPanel');
+    // Open the form while nothing has been entered, so the gap is visible
+    if (panel && !configured) panel.open = true;
+    if (status) status.textContent = configured ? '' : 'No contact details are published yet: the Contact page asks customers to send a message instead.';
+    return true;
+  } catch (error) {
+    if (status) status.textContent = error.message || 'Could not load the clinic contact details.';
+    return false;
+  }
+}
+
+async function saveClinicSettings(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const status = document.getElementById('clinicSettingsStatus');
+  if (isFormSubmitting(form)) return;
+  const payload = Object.fromEntries(Object.entries(CLINIC_SETTING_FIELDS).map(([name, id]) => [name, document.getElementById(id)?.value.trim() || '']));
+  form.querySelectorAll('[aria-invalid="true"]').forEach(input => input.removeAttribute('aria-invalid'));
+  setFormSubmitting(form, true, 'Saving...', 'Save clinic details');
+  try {
+    const response = await fetchWithRetry(() => fetch(`${window.API_BASE_URL}/admin/clinic-settings${getAdminUserIdQuery()}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }));
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.success !== true) {
+      if (data.field && CLINIC_SETTING_FIELDS[data.field]) {
+        const input = document.getElementById(CLINIC_SETTING_FIELDS[data.field]);
+        input?.setAttribute('aria-invalid', 'true');
+        input?.focus();
+      }
+      throw new Error(data.error || `Could not save the clinic details (${response.status}).`);
+    }
+    Object.entries(CLINIC_SETTING_FIELDS).forEach(([name, id]) => {
+      const input = document.getElementById(id);
+      if (input) input.value = data.clinic?.[name] || '';
+    });
+    if (status) status.textContent = 'Saved. The Contact page and new emails now show these details.';
+    showAdminStatus('success', 'Clinic contact details saved.');
+  } catch (error) {
+    if (status) status.textContent = error.message || 'Could not save the clinic details.';
+  } finally {
+    setFormSubmitting(form, false, 'Saving...', 'Save clinic details');
+  }
+}
+
 // ==================== SERVICES & BOOKING (System Management) ====================
+// One row per service: its details, whether it is set up, and the online booking switch. Switching on a service that
+// still lacks a confirmed duration or species opens the setup dialog with those fields marked; "Save and turn on"
+// stores the settings and opens the service for booking in one request (PUT /admin/services/:id, which the server and
+// the database check again). "Edit details" opens the same dialog without changing availability.
 
 function renderServiceCatalog() {
   const container = document.getElementById('servicesCatalogContainer');
@@ -3634,63 +3993,26 @@ function renderServiceCatalog() {
     return;
   }
 
-  container.innerHTML = `
-    <section aria-labelledby="serviceAvailabilityHeading">
-      <h3 id="serviceAvailabilityHeading" class="text-base font-semibold text-slate-900">Online booking availability</h3>
-      <p class="ph-dash-muted mb-3">Switch a service off to stop new online bookings for it. Its settings, existing appointments and history stay as they are.</p>
-      <ul class="service-availability-list" role="list">${services.map(getServiceAvailabilityRowHtml).join('')}</ul>
-    </section>
-    <section class="mt-6" aria-labelledby="serviceDetailsHeading">
-      <h3 id="serviceDetailsHeading" class="text-base font-semibold text-slate-900">Service details</h3>
-      <p class="ph-dash-muted mb-3">Clinic-confirmed duration, applicable species and how each service is described to customers. A service can be switched on once its duration and species are set.</p>
-      <div class="ph-dash-stack">${services.map(service => `
-    <details class="service-settings rounded-xl border border-slate-200 bg-white shadow-sm">
-      <summary class="cursor-pointer px-4 py-3 font-semibold text-slate-900">Edit ${escapeHtml(displayValue(service.name))}</summary>
-    <form class="service-config-form border-t border-slate-200 p-4" data-service-id="${escapeHtml(service.id)}" data-service-version="${Number(service.version) || 1}">
-      <div class="grid gap-4 md:grid-cols-2">
-        <label class="block text-sm font-medium">Service name<input class="ph-input mt-1 w-full" name="name" maxlength="100" required value="${escapeHtml(service.name)}"></label>
-        <label class="block text-sm font-medium">Category<select class="ph-input mt-1 w-full" name="category" required>
-          <option value="grooming" ${service.category === 'grooming' ? 'selected' : ''}>Grooming</option>
-          <option value="veterinary" ${service.category === 'veterinary' ? 'selected' : ''}>Veterinary</option>
-        </select></label>
-        <label class="block text-sm font-medium md:col-span-2">Description<textarea class="ph-input mt-1 w-full" name="description" rows="2" maxlength="500" required>${escapeHtml(service.description || '')}</textarea></label>
-        <fieldset class="rounded-lg border border-slate-200 p-3">
-          <legend class="px-1 text-sm font-medium">Applicable species (clinic confirmed)</legend>
-          <div class="flex gap-5 pt-1">
-            <label class="flex items-center gap-2"><input type="checkbox" name="species" value="Dog" ${asArray(service.species).includes('Dog') ? 'checked' : ''}>Dog</label>
-            <label class="flex items-center gap-2"><input type="checkbox" name="species" value="Cat" ${asArray(service.species).includes('Cat') ? 'checked' : ''}>Cat</label>
-          </div>
-        </fieldset>
-        <div class="grid grid-cols-2 gap-3">
-          <label class="block text-sm font-medium">Duration in minutes<input class="ph-input mt-1 w-full" name="duration_minutes" type="number" min="5" max="480" step="1" inputmode="numeric" value="${Number.isInteger(service.duration_minutes) ? service.duration_minutes : ''}" placeholder="Not confirmed"></label>
-          <label class="block text-sm font-medium">Display order<input class="ph-input mt-1 w-full" name="display_order" type="number" min="1" max="99" step="1" required value="${Number(service.display_order) || 1}"></label>
-        </div>
-      </div>
-      <div class="mt-4 flex flex-wrap items-center gap-3"><button class="ph-btn ph-btn-primary" type="submit">Save service settings</button><p id="serviceSaveStatus-${escapeHtml(service.id)}" class="text-sm" role="status" aria-live="polite"></p></div>
-    </form>
-    </details>
-  `).join('')}</div>
-    </section>`;
-
-  container.querySelectorAll('.service-config-form').forEach(form => {
-    form.addEventListener('submit', saveServiceConfiguration);
-  });
-  container.querySelectorAll('[data-service-toggle]').forEach(button => {
-    button.addEventListener('click', toggleServiceAvailability);
-  });
+  container.innerHTML = `<ul class="service-availability-list" role="list" aria-label="Services and online booking">${services.map(getServiceAvailabilityRowHtml).join('')}</ul>`;
 }
 
 function findCatalogService(serviceId) {
   return asArray(adminDashboardData.serviceCatalog).find(service => String(service.id) === String(serviceId)) || null;
 }
 
-// The two settings a service needs before it can be switched on (the server and the database check them too)
+// The settings a service needs before it can be switched on (the server and the database check them too)
 function getMissingBookingSettings(service) {
   const missing = [];
   const minutes = service?.duration_minutes;
-  if (!Number.isInteger(minutes) || minutes < 5 || minutes > 480) missing.push('a confirmed duration');
-  if (!asArray(service?.species).length) missing.push('applicable species');
+  if (!Number.isInteger(minutes) || minutes < 5 || minutes > 480) missing.push('duration_minutes');
+  if (!asArray(service?.species).length) missing.push('species');
   return missing;
+}
+
+const SERVICE_SETTING_LABELS = { duration_minutes: 'a confirmed duration', species: 'applicable species' };
+
+function describeMissingSettings(missing) {
+  return missing.map(field => SERVICE_SETTING_LABELS[field]).join(' and ');
 }
 
 function formatServiceSpecies(species) {
@@ -3714,7 +4036,7 @@ function getServiceAvailabilityState(service) {
     return { available: true, label: 'Available', detail: 'Customers can book this service online.' };
   }
   if (missing.length) {
-    return { available: false, label: 'Temporarily unavailable', detail: `Needs ${missing.join(' and ')} under Service details before it can be switched on.` };
+    return { available: false, label: 'Temporarily unavailable', detail: `Needs ${describeMissingSettings(missing)}. Turn it on to set ${missing.length > 1 ? 'them' : 'it'} up.` };
   }
   return { available: false, label: 'Temporarily unavailable', detail: 'Not offered for new online bookings. Existing appointments are not affected.' };
 }
@@ -3724,88 +4046,116 @@ function getServiceAvailabilityRowHtml(service) {
   const name = escapeHtml(displayValue(service.name));
   const state = getServiceAvailabilityState(service);
   const isOn = service.online_booking_enabled === true;
-  // Switching off is always allowed; switching on only once the service is fully set up
-  const canSwitch = isOn || getMissingBookingSettings(service).length === 0;
+  const ready = getMissingBookingSettings(service).length === 0;
   return `
     <li class="service-availability-row" data-service-row="${id}">
       <div class="service-availability-info">
-        <p class="service-availability-name">${name}</p>
+        <p class="service-availability-name">${name} <span class="ph-badge ${ready ? 'ph-badge-official' : 'ph-badge-warning'}">${ready ? 'Set up' : 'Needs setup'}</span></p>
         <p class="service-availability-meta">${escapeHtml(service.category_label || service.category || '')} · ${escapeHtml(formatServiceSpecies(service.species))} · ${escapeHtml(formatServiceDuration(service.duration_minutes))}</p>
+        ${service.description ? `<p class="service-availability-detail">${escapeHtml(service.description)}</p>` : ''}
         <p id="serviceAvailabilityDetail-${id}" class="service-availability-detail">${escapeHtml(state.detail)}</p>
       </div>
       <div class="service-availability-control">
         <span class="ph-status ${state.available ? 'ph-status-completed' : 'ph-status-other'} px-2.5 py-1 text-xs">${state.label}</span>
-        <button type="button" class="ph-switch" role="switch" aria-checked="${isOn}" aria-label="Online booking for ${name}" aria-describedby="serviceAvailabilityDetail-${id}" data-service-toggle="${id}" ${canSwitch ? '' : 'disabled'}>
+        <button type="button" class="ph-switch" role="switch" aria-checked="${isOn}" aria-label="Online booking for ${name}" aria-describedby="serviceAvailabilityDetail-${id}" data-service-toggle="${id}">
           <span class="ph-switch-track" aria-hidden="true"><span class="ph-switch-thumb"></span></span>
         </button>
+        <button type="button" class="ph-btn ph-btn-ghost ph-btn-sm" data-service-edit="${id}" aria-label="Edit details of ${name}"><i class="ri-edit-line" aria-hidden="true"></i>Edit details</button>
       </div>
     </li>`;
 }
 
 function updateServiceAvailabilitySummary() {
   const summary = document.getElementById('bookingStatusSummary');
-  if (!summary) return;
   const services = asArray(adminDashboardData.serviceCatalog);
   const bookableCount = services.filter(service => service.bookable === true).length;
-  summary.textContent = bookableCount === 0
-    ? `Online booking is closed for all ${services.length} services. Switch a service on below once its duration and species are confirmed.`
-    : `Online booking is open for ${bookableCount} of ${services.length} services.`;
+  const needsSetup = services.filter(service => getMissingBookingSettings(service).length > 0).length;
+  if (summary) {
+    summary.textContent = bookableCount === 0
+      ? `Online booking is closed for all ${services.length} services.${needsSetup ? ` ${needsSetup} still need${needsSetup === 1 ? 's' : ''} setup.` : ''}`
+      : `Online booking is open for ${bookableCount} of ${services.length} services.`;
+  }
+  updateOnlineBookingAlert();
 }
 
-// Replaces one row in place (and the version its settings form will send), so other rows and unsaved edits stay
+// Overview shortcut: how many services customers can book online right now
+function updateOnlineBookingAlert() {
+  const alert = document.getElementById('alertOnlineBooking');
+  if (!alert) return;
+  if (!adminDashboardData.serviceCatalogLoaded) {
+    alert.textContent = 'Loading';
+    return;
+  }
+  if (adminDashboardData.serviceCatalogError) {
+    alert.textContent = 'Unavailable';
+    return;
+  }
+  const services = asArray(adminDashboardData.serviceCatalog);
+  alert.textContent = `${services.filter(service => service.bookable === true).length} of ${services.length}`;
+}
+
+// Replaces one row in place, so the other rows keep their state
 function refreshServiceAvailabilityRow(service) {
   const row = document.querySelector(`[data-service-row="${CSS.escape(String(service.id))}"]`);
-  if (row) {
-    row.outerHTML = getServiceAvailabilityRowHtml(service);
-    document.querySelector(`[data-service-toggle="${CSS.escape(String(service.id))}"]`)?.addEventListener('click', toggleServiceAvailability);
-  }
-  const form = document.querySelector(`.service-config-form[data-service-id="${CSS.escape(String(service.id))}"]`);
-  if (form) form.dataset.serviceVersion = String(Number(service.version) || 1);
+  if (row) row.outerHTML = getServiceAvailabilityRowHtml(service);
   updateServiceAvailabilitySummary();
 }
 
-// The availability switch: PUT /admin/services/:id with the service's saved settings and only online_booking_enabled
-// changed. The server re-checks the admin role, the settings and expected_version.
-async function toggleServiceAvailability(event) {
-  const button = event.currentTarget;
+function storeUpdatedService(service, data) {
+  const updated = { ...service, ...data.service, version: data.version, updated_at: data.updated_at };
+  adminDashboardData.serviceCatalog = asArray(adminDashboardData.serviceCatalog).map(entry => (String(entry.id) === String(service.id) ? updated : entry));
+  refreshServiceAvailabilityRow(updated);
+  return updated;
+}
+
+// PUT /admin/services/:id with every setting (the server needs the full set) and expected_version
+async function putServiceSettings(service, settings) {
+  const response = await fetchWithRetry(() => fetch(`${window.API_BASE_URL}/admin/services/${encodeURIComponent(service.id)}${getAdminUserIdQuery()}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...settings, expected_version: Number(service.version) })
+  }));
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.success !== true) {
+    const error = new Error(data.error || `Could not save ${service.name} (${response.status}).`);
+    error.status = response.status;
+    error.field = data.field;
+    throw error;
+  }
+  return data;
+}
+
+function getSavedServiceSettings(service) {
+  return {
+    name: service.name,
+    description: String(service.description || ''),
+    category: service.category,
+    species: asArray(service.species).map(String),
+    duration_minutes: Number.isInteger(service.duration_minutes) ? service.duration_minutes : null,
+    online_booking_enabled: service.online_booking_enabled === true,
+    display_order: Number(service.display_order)
+  };
+}
+
+// The switch: off -> on opens the setup dialog when settings are missing; otherwise only availability changes
+async function toggleServiceAvailability(button) {
   const service = findCatalogService(button.dataset.serviceToggle);
   if (!service || button.getAttribute('aria-busy') === 'true') return;
   const enable = button.getAttribute('aria-checked') !== 'true';
   const name = displayValue(service.name);
-  const missing = getMissingBookingSettings(service);
-  if (enable && missing.length) {
-    showAdminStatus('error', `${name} needs ${missing.join(' and ')} before it can be switched on.`);
+  if (enable && getMissingBookingSettings(service).length) {
+    openServiceDialog(service, { mode: 'activate', returnFocus: button });
     return;
   }
 
   const detail = document.getElementById(`serviceAvailabilityDetail-${service.id}`);
   button.setAttribute('aria-busy', 'true');
   button.disabled = true;
-  if (detail) detail.textContent = 'Saving…';
+  if (detail) detail.textContent = 'Saving...';
   try {
-    const response = await fetchWithRetry(() => fetch(`${window.API_BASE_URL}/admin/services/${encodeURIComponent(service.id)}${getAdminUserIdQuery()}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: service.name,
-        description: String(service.description || ''),
-        category: service.category,
-        species: asArray(service.species).map(String),
-        duration_minutes: Number.isInteger(service.duration_minutes) ? service.duration_minutes : null,
-        online_booking_enabled: enable,
-        display_order: Number(service.display_order),
-        expected_version: Number(service.version)
-      })
-    }));
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || data.success !== true) {
-      const error = new Error(data.error || `Could not change the availability of ${name} (${response.status}).`);
-      error.status = response.status;
-      throw error;
-    }
-    const updated = { ...service, ...data.service, version: data.version, updated_at: data.updated_at };
-    adminDashboardData.serviceCatalog = asArray(adminDashboardData.serviceCatalog).map(entry => (String(entry.id) === String(service.id) ? updated : entry));
-    refreshServiceAvailabilityRow(updated);
+    const data = await putServiceSettings(service, { ...getSavedServiceSettings(service), online_booking_enabled: enable });
+    const updated = storeUpdatedService(service, data);
+    document.querySelector(`[data-service-toggle="${CSS.escape(String(service.id))}"]`)?.focus();
     showAdminStatus('success', updated.online_booking_enabled === true
       ? `${name} is available for online booking.`
       : `${name} is temporarily unavailable for new online bookings. Existing appointments are unchanged.`);
@@ -3815,61 +4165,206 @@ async function toggleServiceAvailability(event) {
       await loadServiceCatalog();
       return;
     }
+    // The switch goes back to the saved state and the reason is shown
     refreshServiceAvailabilityRow(service);
     showAdminStatus('error', error.message || `Could not change the availability of ${name}.`);
   }
 }
 
-async function saveServiceConfiguration(event) {
+function ensureServiceDialog() {
+  let dialog = document.getElementById('serviceSetupDialog');
+  if (dialog) return dialog;
+  document.body.insertAdjacentHTML('beforeend', `
+    <dialog id="serviceSetupDialog" class="ph-dialog ph-dialog-wide" aria-labelledby="serviceSetupTitle" aria-describedby="serviceSetupIntro">
+      <form id="serviceSetupForm" class="ph-dialog-content" novalidate>
+        <div class="ph-dialog-head">
+          <div>
+            <h2 id="serviceSetupTitle" class="ph-dialog-title"></h2>
+            <p id="serviceSetupIntro" class="ph-dash-note"></p>
+          </div>
+          <button type="button" class="ph-btn ph-btn-ghost ph-btn-sm" data-close-dialog aria-label="Close without saving"><i class="ri-close-line" aria-hidden="true"></i></button>
+        </div>
+        <p id="serviceSetupError" class="ph-field-error" role="alert" hidden></p>
+        <div class="grid gap-4 md:grid-cols-2">
+          <div class="ph-field" data-setting="name">
+            <label for="serviceSetupName" class="ph-label">Service name</label>
+            <input id="serviceSetupName" name="name" class="ph-input" maxlength="100" required aria-describedby="serviceSetupNameNote">
+            <p id="serviceSetupNameNote" class="ph-help"></p>
+          </div>
+          <div class="ph-field" data-setting="category">
+            <label for="serviceSetupCategory" class="ph-label">Category</label>
+            <select id="serviceSetupCategory" name="category" class="ph-input" required>
+              <option value="grooming">Grooming</option>
+              <option value="veterinary">Veterinary check-up</option>
+            </select>
+          </div>
+          <div class="ph-field md:col-span-2" data-setting="description">
+            <label for="serviceSetupDescription" class="ph-label">Description shown to customers</label>
+            <textarea id="serviceSetupDescription" name="description" class="ph-input" rows="2" maxlength="500"></textarea>
+          </div>
+          <div class="ph-field" data-setting="duration_minutes">
+            <label for="serviceSetupDuration" class="ph-label">Duration in minutes (clinic confirmed)</label>
+            <input id="serviceSetupDuration" name="duration_minutes" class="ph-input" type="number" min="5" max="480" step="1" inputmode="numeric" aria-describedby="serviceSetupDurationNote">
+            <p id="serviceSetupDurationNote" class="ph-help">A whole number from 5 to 480. Used to block the time slot.</p>
+          </div>
+          <fieldset class="ph-field ph-species-set" data-setting="species" aria-describedby="serviceSetupSpeciesNote">
+            <legend class="ph-label px-1">Applicable species (clinic confirmed)</legend>
+            <div class="flex gap-5 pt-1">
+              <label class="flex items-center gap-2"><input type="checkbox" name="species" value="Dog">Dog</label>
+              <label class="flex items-center gap-2"><input type="checkbox" name="species" value="Cat">Cat</label>
+            </div>
+            <p id="serviceSetupSpeciesNote" class="ph-help">Only pets of these species can be booked for it.</p>
+          </fieldset>
+          <div class="ph-field" data-setting="display_order">
+            <label for="serviceSetupOrder" class="ph-label">Display order</label>
+            <input id="serviceSetupOrder" name="display_order" class="ph-input" type="number" min="1" max="99" step="1" required>
+          </div>
+        </div>
+        <div class="ph-dialog-actions">
+          <button type="button" class="ph-btn ph-btn-secondary" data-close-dialog>Cancel</button>
+          <button type="submit" id="serviceSetupSubmit" class="ph-btn ph-btn-primary"></button>
+        </div>
+      </form>
+    </dialog>
+  `);
+  dialog = document.getElementById('serviceSetupDialog');
+  dialog.addEventListener('click', event => {
+    if (event.target.closest('[data-close-dialog]')) dialog.close();
+  });
+  dialog.addEventListener('close', () => {
+    // A close event can arrive after the dialog was opened again; it then belongs to the earlier opening
+    if (dialog.open) return;
+    const returnTo = dialog.returnFocusTo;
+    dialog.returnFocusTo = null;
+    if (returnTo && returnTo.isConnected) returnTo.focus();
+  });
+  document.getElementById('serviceSetupForm').addEventListener('submit', saveServiceDialog);
+  return dialog;
+}
+
+function setServiceDialogError(message, field = '') {
+  const error = document.getElementById('serviceSetupError');
+  if (error) {
+    error.textContent = message || '';
+    error.hidden = !message;
+  }
+  document.querySelectorAll('#serviceSetupForm [aria-invalid="true"]').forEach(input => input.removeAttribute('aria-invalid'));
+  if (field) {
+    const target = document.querySelector(`#serviceSetupForm [data-setting="${CSS.escape(field)}"]`);
+    const input = target?.querySelector('input, select, textarea');
+    if (input) {
+      input.setAttribute('aria-invalid', 'true');
+      input.focus();
+    }
+  }
+}
+
+// mode 'activate': the switch was turned on and settings are missing; 'edit': change details, availability unchanged
+function openServiceDialog(service, { mode = 'edit', returnFocus = null } = {}) {
+  const dialog = ensureServiceDialog();
+  const form = document.getElementById('serviceSetupForm');
+  const missing = getMissingBookingSettings(service);
+  dialog.dataset.serviceId = String(service.id);
+  dialog.dataset.mode = mode;
+  dialog.returnFocusTo = returnFocus;
+
+  document.getElementById('serviceSetupTitle').textContent = mode === 'activate' ? `Set up ${service.name} for online booking` : `Edit ${service.name}`;
+  document.getElementById('serviceSetupIntro').textContent = mode === 'activate'
+    ? `Before customers can book ${service.name}, enter ${describeMissingSettings(missing)}. Use the clinic's confirmed values only.`
+    : service.online_booking_enabled
+      ? 'Changes apply to new bookings. Online booking stays on.'
+      : 'Changes are saved; online booking stays off until you turn it on.';
+  document.getElementById('serviceSetupSubmit').textContent = mode === 'activate' ? 'Save and turn on' : 'Save changes';
+
+  form.elements.name.value = service.name || '';
+  // A booked service keeps its name: its appointments store it (the server refuses a rename too)
+  form.elements.name.readOnly = service.has_appointments === true;
+  document.getElementById('serviceSetupNameNote').textContent = service.has_appointments === true
+    ? 'This service has appointments, so its name stays the same.'
+    : '';
+  form.elements.category.value = service.category || 'grooming';
+  form.elements.description.value = service.description || '';
+  form.elements.duration_minutes.value = Number.isInteger(service.duration_minutes) ? String(service.duration_minutes) : '';
+  form.elements.display_order.value = String(Number(service.display_order) || 1);
+  form.querySelectorAll('input[name="species"]').forEach(box => { box.checked = asArray(service.species).includes(box.value); });
+
+  form.querySelectorAll('[data-setting]').forEach(field => {
+    const isMissing = mode === 'activate' && missing.includes(field.dataset.setting);
+    field.classList.toggle('ph-field-missing', isMissing);
+    field.querySelector('.ph-missing-note')?.remove();
+    if (isMissing) field.insertAdjacentHTML('beforeend', '<p class="ph-missing-note">Required to turn on online booking</p>');
+  });
+  setServiceDialogError('');
+  dialog.showModal();
+  const firstMissing = mode === 'activate' ? form.querySelector('.ph-field-missing input') : form.elements.description;
+  (firstMissing || form.elements.name).focus();
+}
+
+function readServiceDialog(form) {
+  const durationText = String(form.elements.duration_minutes.value || '').trim();
+  return {
+    name: String(form.elements.name.value || '').trim(),
+    description: String(form.elements.description.value || '').trim(),
+    category: String(form.elements.category.value || ''),
+    species: Array.from(form.querySelectorAll('input[name="species"]:checked')).map(box => box.value),
+    duration_minutes: durationText ? Number(durationText) : null,
+    display_order: Number(form.elements.display_order.value)
+  };
+}
+
+// The same rules the server applies (validators/serviceCatalogValidator.js), so mistakes are caught before saving
+function validateServiceDialog(settings, turningOn) {
+  if (!settings.name || settings.name.length > 100) return { field: 'name', message: 'Enter a service name of 1 to 100 characters.' };
+  if (settings.description.length > 500) return { field: 'description', message: 'Keep the description to 500 characters or fewer.' };
+  if (settings.duration_minutes !== null && (!Number.isInteger(settings.duration_minutes) || settings.duration_minutes < 5 || settings.duration_minutes > 480)) {
+    return { field: 'duration_minutes', message: 'Enter a whole-number duration from 5 to 480 minutes.' };
+  }
+  if (!Number.isInteger(settings.display_order) || settings.display_order < 1 || settings.display_order > 99) {
+    return { field: 'display_order', message: 'Display order must be a whole number from 1 to 99.' };
+  }
+  if (turningOn && settings.duration_minutes === null) return { field: 'duration_minutes', message: 'Enter the clinic-confirmed duration to turn on online booking.' };
+  if (turningOn && settings.species.length === 0) return { field: 'species', message: 'Choose at least one species to turn on online booking.' };
+  return null;
+}
+
+async function saveServiceDialog(event) {
   event.preventDefault();
   const form = event.currentTarget;
-  const serviceId = String(form.dataset.serviceId || '');
-  const status = document.getElementById(`serviceSaveStatus-${serviceId}`);
-  const button = form.querySelector('button[type="submit"]');
-  const formData = new FormData(form);
-  const durationText = String(formData.get('duration_minutes') || '').trim();
-  const expectedVersion = Number(form.dataset.serviceVersion);
-  const payload = {
-    name: String(formData.get('name') || '').trim(),
-    description: String(formData.get('description') || '').trim(),
-    category: String(formData.get('category') || ''),
-    species: formData.getAll('species').map(String),
-    duration_minutes: durationText ? Number(durationText) : null,
-    // Availability has its own switch; saving the details keeps it as it is
-    online_booking_enabled: findCatalogService(serviceId)?.online_booking_enabled === true,
-    display_order: Number(formData.get('display_order')),
-    expected_version: expectedVersion
-  };
-
-  if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
-    if (status) status.textContent = 'Reload the service list before saving.';
+  const dialog = document.getElementById('serviceSetupDialog');
+  const service = findCatalogService(dialog?.dataset.serviceId);
+  if (!service || isFormSubmitting(form)) return;
+  const activating = dialog.dataset.mode === 'activate';
+  const settings = readServiceDialog(form);
+  const turningOn = activating || service.online_booking_enabled === true;
+  const problem = validateServiceDialog(settings, turningOn);
+  if (problem) {
+    setServiceDialogError(problem.message, problem.field);
     return;
   }
-  adminDashboardData.serviceCatalogFeedback = '';
-  if (button) button.disabled = true;
-  if (status) status.textContent = 'Saving…';
+
+  const submitText = activating ? 'Save and turn on' : 'Save changes';
+  setServiceDialogError('');
+  setFormSubmitting(form, true, 'Saving...', submitText);
   try {
-    const response = await fetchWithRetry(() => fetch(`${window.API_BASE_URL}/admin/services/${encodeURIComponent(serviceId)}${getAdminUserIdQuery()}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    }));
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || data.success !== true) {
-      const error = new Error(data.error || `Could not save service settings (${response.status}).`);
-      error.status = response.status;
-      throw error;
-    }
-    adminDashboardData.serviceCatalogFeedback = `${data.service?.name || payload.name} settings saved.`;
-    await loadServiceCatalog();
+    const data = await putServiceSettings(service, { ...settings, online_booking_enabled: turningOn });
+    const updated = storeUpdatedService(service, data);
+    dialog.returnFocusTo = document.querySelector(`[data-service-toggle="${CSS.escape(String(service.id))}"]`);
+    dialog.close();
+    showAdminStatus('success', activating
+      ? `${updated.name} is set up and available for online booking.`
+      : `${updated.name} settings saved.`);
   } catch (error) {
-    if (status) status.textContent = error.message || 'Could not save this service configuration.';
-    if (error.status === 409) {
-      adminDashboardData.serviceCatalogFeedback = 'This service changed in another session. The latest version has been loaded; review it and save again.';
+    if (error.status === 409 && !error.field) {
+      setServiceDialogError('This service was changed in another session. The latest settings have been loaded; review them and save again.');
       await loadServiceCatalog();
+      const latest = findCatalogService(service.id);
+      if (latest) dialog.dataset.serviceId = String(latest.id);
+      return;
     }
+    // Nothing was saved, so the switch stays off
+    setServiceDialogError(error.message || 'Could not save this service.', error.field || '');
   } finally {
-    if (button && button.isConnected) button.disabled = false;
+    setFormSubmitting(form, false, 'Saving...', submitText);
   }
 }
 

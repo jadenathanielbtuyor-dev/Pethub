@@ -69,9 +69,43 @@ const PATHS = {
   verifyEmail: getPath('pages/auth/verify-email.html'),
   userDashboard: getPath('pages/user/dashboard.html'),
   userAppointments: getPath('pages/user/appointments.html'),
+  contact: getPath('pages/public/contact.html'),
   adminDashboard: getPath('pages/admin/dashboard.html'),
   index: getPath('index.html')
 };
+
+// Where a customer continues after signing in, named by ?next= on the login and registration pages (for example
+// login.html?next=contact from the Contact page). Only these names are accepted, so the parameter cannot send anyone to
+// another site. It is remembered for this tab while the visitor registers and verifies their email first.
+const POST_LOGIN_DESTINATIONS = ['appointments', 'contact'];
+const POST_LOGIN_NEXT_KEY = 'pethubPostLoginNext';
+
+function readPostLoginNext() {
+  const fromUrl = new URLSearchParams(window.location.search).get('next') || '';
+  if (POST_LOGIN_DESTINATIONS.includes(fromUrl)) return fromUrl;
+  try {
+    const remembered = sessionStorage.getItem(POST_LOGIN_NEXT_KEY) || '';
+    return POST_LOGIN_DESTINATIONS.includes(remembered) ? remembered : '';
+  } catch (error) {
+    return '';
+  }
+}
+
+function rememberPostLoginNext(next) {
+  try {
+    if (POST_LOGIN_DESTINATIONS.includes(next)) sessionStorage.setItem(POST_LOGIN_NEXT_KEY, next);
+  } catch (error) {
+    // Storage unavailable: the visitor reaches their dashboard instead
+  }
+}
+
+function forgetPostLoginNext() {
+  try {
+    sessionStorage.removeItem(POST_LOGIN_NEXT_KEY);
+  } catch (error) {
+    // Nothing to forget
+  }
+}
 
 // Redirect helpers
 function redirectToLogin() {

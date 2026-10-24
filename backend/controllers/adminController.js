@@ -1,4 +1,7 @@
 const adminService = require('../services/adminService');
+const contactService = require('../services/contactService');
+const clinicSettingsService = require('../services/clinicSettingsService');
+const emailRetryService = require('../services/emailRetryService');
 const { createControllerHandler } = require('../utils/controllerFactory');
 
 const getDashboardStats = createControllerHandler(adminService.getDashboardStats, 'getDashboardStats', 'admin');
@@ -8,8 +11,12 @@ const getAnalyticsPetTypes = createControllerHandler(adminService.getAnalyticsPe
 const getAnalyticsServices = createControllerHandler(adminService.getAnalyticsServices, 'getAnalyticsServices', 'admin');
 const getAnalyticsAppointmentsTrend = createControllerHandler(adminService.getAnalyticsAppointmentsTrend, 'getAnalyticsAppointmentsTrend', 'admin');
 const getSystemLogs = createControllerHandler(adminService.getSystemLogs, 'getSystemLogs', 'admin');
-const getContactMessages = createControllerHandler(adminService.getContactMessages, 'getContactMessages', 'admin');
-const updateContactMessageStatus = createControllerHandler(adminService.updateContactMessageStatus, 'updateContactMessageStatus', 'admin');
+const getContactMessages = createControllerHandler(contactService.getContactMessages, 'getContactMessages', 'admin');
+const updateContactMessageStatus = createControllerHandler(contactService.updateContactMessageStatus, 'updateContactMessageStatus', 'admin');
+const replyToContactMessage = createControllerHandler(contactService.replyToContactMessage, 'replyToContactMessage', 'admin');
+const getClinicSettings = createControllerHandler(clinicSettingsService.getAdminClinicSettings, 'getClinicSettings', 'admin');
+const updateClinicSettings = createControllerHandler(clinicSettingsService.updateClinicSettings, 'updateClinicSettings', 'admin');
+const retryEmail = createControllerHandler(emailRetryService.retryEmail, 'retryEmail', 'admin');
 const getAllUsers = createControllerHandler(adminService.getAllUsers, 'getAllUsers', 'admin');
 const getAllPets = createControllerHandler(adminService.getAllPets, 'getAllPets', 'admin');
 const getAllAppointments = createControllerHandler(adminService.getAllAppointments, 'getAllAppointments', 'admin');
@@ -27,6 +34,10 @@ module.exports = {
   getSystemLogs,
   getContactMessages,
   updateContactMessageStatus,
+  replyToContactMessage,
+  getClinicSettings,
+  updateClinicSettings,
+  retryEmail,
   getAllUsers,
   getAllPets,
   getAllAppointments,

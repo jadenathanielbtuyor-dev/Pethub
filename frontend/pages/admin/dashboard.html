@@ -156,6 +156,15 @@
                     </button>
                   </li>
                   <li>
+                    <button id="queueOnlineBooking" type="button" class="ph-dash-stat" data-admin-go="system:services">
+                      <span class="ph-dash-stat-icon"><i class="ri-calendar-check-line" aria-hidden="true"></i></span>
+                      <span class="ph-dash-stat-body">
+                        <span class="ph-dash-list-title">Online booking</span>
+                        <span class="ph-dash-list-meta"><span id="alertOnlineBooking">Loading</span> services open for booking</span>
+                      </span>
+                    </button>
+                  </li>
+                  <li>
                     <button id="queueNewUsers" type="button" class="ph-dash-stat" data-admin-go="system:users">
                       <span class="ph-dash-stat-icon"><i class="ri-user-add-line" aria-hidden="true"></i></span>
                       <span class="ph-dash-stat-body">
@@ -470,14 +479,25 @@
               </div>
             </div>
 
-            <!-- Contact messages: Unread messages can be marked as read -->
+            <!-- Contact messages from signed-in customers: open one to read it (it is marked read) and reply once; the
+                 reply is stored (the customer sees it on the Contact page) and emailed to the account's address -->
             <div id="systemPanelMessages" role="tabpanel" aria-labelledby="systemTabMessages" hidden>
+              <details id="clinicSettingsPanel" class="ph-dash-card mb-4">
+                <summary class="cursor-pointer font-semibold"><i class="ri-store-2-line" aria-hidden="true"></i> Clinic contact details <span class="ph-dash-note">(shown on the public Contact page and in appointment emails)</span></summary>
+                <form id="clinicSettingsForm" class="mt-4 grid gap-4 md:grid-cols-2" novalidate>
+                  <p class="ph-dash-note md:col-span-2">Enter only the clinic's real details. Leave a field blank to hide it.</p>
+                  <div class="ph-field"><label for="clinicPhone" class="ph-label">Phone number</label><input id="clinicPhone" name="phone" class="ph-input" maxlength="25" inputmode="tel" autocomplete="off" placeholder="e.g. 0917 123 4567"></div>
+                  <div class="ph-field"><label for="clinicEmail" class="ph-label">Email address</label><input id="clinicEmail" name="email" type="email" class="ph-input" maxlength="254" autocomplete="off"></div>
+                  <div class="ph-field md:col-span-2"><label for="clinicAddress" class="ph-label">Address</label><input id="clinicAddress" name="address" class="ph-input" maxlength="200" autocomplete="off"></div>
+                  <div class="ph-field md:col-span-2"><label for="clinicHours" class="ph-label">Opening hours</label><textarea id="clinicHours" name="hours" class="ph-input" rows="2" maxlength="200" placeholder="e.g. Monday to Saturday, 9:00 AM to 5:00 PM"></textarea></div>
+                  <div class="md:col-span-2 flex flex-wrap items-center gap-3"><button type="submit" class="ph-btn ph-btn-primary ph-btn-sm">Save clinic details</button><p id="clinicSettingsStatus" class="ph-dash-note" role="status" aria-live="polite"></p></div>
+                </form>
+              </details>
               <div class="ph-dash-table-wrap">
                 <table class="ph-dash-table">
                   <thead>
                     <tr>
-                      <th scope="col">Name</th>
-                      <th scope="col">Email</th>
+                      <th scope="col">From</th>
                       <th scope="col">Message</th>
                       <th scope="col">Status</th>
                       <th scope="col">Received</th>
@@ -485,7 +505,7 @@
                     </tr>
                   </thead>
                   <tbody id="contactMessagesTable">
-                    <tr><td colspan="6" class="dashboard-table-loading"><div class="dashboard-loading-state" role="status" aria-live="polite"><div class="dashboard-loading-spinner" aria-hidden="true"></div><div><p class="dashboard-loading-title">Loading messages...</p><p class="dashboard-loading-copy">Fetching the latest PetHub records.</p></div></div></td></tr>
+                    <tr><td colspan="5" class="dashboard-table-loading"><div class="dashboard-loading-state" role="status" aria-live="polite"><div class="dashboard-loading-spinner" aria-hidden="true"></div><div><p class="dashboard-loading-title">Loading messages...</p><p class="dashboard-loading-copy">Fetching the latest PetHub records.</p></div></div></td></tr>
                   </tbody>
                 </table>
               </div>
@@ -493,6 +513,7 @@
 
             <!-- Activity logs: the most recent entries of the activity log -->
             <div id="systemPanelActivity" role="tabpanel" aria-labelledby="systemTabActivity" hidden>
+              <label class="mb-3 inline-flex items-center gap-2 text-sm font-medium"><input id="showSignInsToggle" type="checkbox"> Show sign-ins and sign-outs</label>
               <div id="systemLogsContainer" class="ph-dash-stack">
                 <div class="dashboard-loading-state" role="status" aria-live="polite">
                   <div class="dashboard-loading-spinner" aria-hidden="true"></div>
@@ -507,7 +528,7 @@
             <!-- Services & booking: the catalog as the server lists it, with each service's online booking status -->
             <div id="systemPanelServices" role="tabpanel" aria-labelledby="systemTabServices" hidden>
               <p id="bookingStatusSummary" class="ph-dash-panel-text mb-2"></p>
-              <p class="ph-dash-note mb-4">Enter only clinic-confirmed details. Customers can book a service online when it has a confirmed duration and applicable species and its switch is on.</p>
+              <p class="ph-dash-note mb-4">Turn a service on to open it for online booking. If its duration or species hasn't been set yet, PetHub asks for them first. Enter only clinic-confirmed details.</p>
               <p id="serviceCatalogFeedback" class="mb-4" role="status" aria-live="polite"></p>
               <div id="servicesCatalogContainer">
                 <div class="dashboard-loading-state" role="status" aria-live="polite">

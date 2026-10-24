@@ -87,6 +87,26 @@ router.get('/dashboard/contact-messages', adminController.getContactMessages);
 router.put('/dashboard/contact-message-status', adminController.updateContactMessageStatus);
 
 /**
+ * POST /admin/dashboard/contact-messages/:id/reply
+ * Save the clinic's one reply to a message and email it to the sender's account address
+ * Body: { reply }
+ */
+router.post('/dashboard/contact-messages/:id/reply', adminController.replyToContactMessage);
+
+/**
+ * GET / PUT /admin/clinic-settings
+ * The clinic's public contact details (Contact page and emails). Body: { phone, email, address, hours }
+ */
+router.get('/clinic-settings', adminController.getClinicSettings);
+router.put('/clinic-settings', adminController.updateClinicSettings);
+
+/**
+ * POST /admin/email-logs/:id/retry
+ * Send a Failed appointment or reply email again
+ */
+router.post('/email-logs/:id/retry', adminController.retryEmail);
+
+/**
  * PUT /admin/dashboard/appointment-status
  * Update appointment status
  * Body: { id, status }

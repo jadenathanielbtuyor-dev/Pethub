@@ -1,7 +1,7 @@
 // Request limits for the endpoints that can be abused without an account (password guessing, code guessing, email and
 // chatbot flooding), counted per client IP address in a fixed window (middleware/rateLimit.js). They are generous for a
-// real customer and only stop scripted repetition. Signed-in profile updates and booking requests are counted per
-// account instead.
+// real customer and only stop scripted repetition. Signed-in profile updates, booking requests and contact messages
+// (which require an account) are counted per account instead.
 // The counts live in the server's memory: they restart with the server and are not shared between server instances.
 
 const RATE_LIMITS = Object.freeze({

@@ -46,13 +46,12 @@ describe('Request limits on public endpoints', () => {
     assert.ok(retryAfter > 0 && retryAfter <= RATE_LIMITS.forgotPassword.windowMinutes * 60, `Retry-After ${retryAfter}`);
   });
 
-  it('limits registration, verification codes, the contact form and the chatbot', async () => {
+  it('limits registration, verification codes and the chatbot', async () => {
     const cases = [
       ['register', '/auth/register', () => ({ fullname: 'Limit Test', email: 'not-an-email' })],
       ['verifyEmail', '/auth/verify-email', () => ({ email: newEmail(), code: '000000' })],
       ['resendCode', '/auth/resend-code', () => ({ email: newEmail() })],
       ['resetPassword', '/auth/reset-password', () => ({ email: newEmail(), code: '000000', password: 'New#Pass123' })],
-      ['contact', '/contact', () => ({ name: '', email: '', message: '' })],
       ['aiChat', '/ai/chat', () => ({ message: 'how do i add a pet' })]
     ];
     for (const [name, route, makeBody] of cases) {
@@ -63,6 +62,18 @@ describe('Request limits on public endpoints', () => {
       assert.equal((await t.api('POST', route, { body: makeBody(), headers })).status, 429, `${name} over the limit`);
     }
     assert.deepEqual(t.blockedRequests, []);
+  });
+
+  it('limits contact messages per account (sending one requires signing in)', async () => {
+    const sender = t.createUser();
+    const other = t.createUser();
+    const send = (user, headers = {}) => t.api('POST', '/contact', { token: user.token, body: { subject: '', message: '' }, headers });
+    for (let i = 0; i < RATE_LIMITS.contact.max; i += 1) {
+      assert.notEqual((await send(sender, { 'X-Forwarded-For': `198.51.100.${i + 1}` })).status, 429, `contact request ${i + 1}`);
+    }
+    assert.equal((await send(sender, { 'X-Forwarded-For': '198.51.100.200' })).status, 429, 'a new address does not reset the account limit');
+    assert.equal((await send(other)).status, 400, 'another account is not limited');
+    assert.equal((await t.api('POST', '/contact', { body: { subject: 'Hi', message: 'Hi' } })).status, 401, 'signed-out visitors are refused before the limit');
   });
 
   it('limits booking requests per account, not per address, and creates nothing while refusing', async () => {

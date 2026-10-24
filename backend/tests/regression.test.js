@@ -224,10 +224,12 @@ describe('Medical records', () => {
 });
 
 describe('Contact messages', () => {
-  it('visitors send a message; admins list it and mark it Read', async () => {
-    const email = `${crypto.randomUUID()}@example.test`;
-    assert.equal((await t.api('POST', '/contact', { body: { name: 'Visitor', email, message: 'Do you open on Sundays?' } })).status, 200);
-    assert.equal((await t.api('POST', '/contact', { body: { name: 'Visitor', email: 'not-an-email', message: 'Hi' } })).status, 400);
+  it('signed-in customers send a message; signed-out visitors cannot; admins list it and mark it Read', async () => {
+    const customer = t.createUser({ name: 'Visitor Account' });
+    const email = customer.email;
+    assert.equal((await t.api('POST', '/contact', { body: { subject: 'Hours', message: 'Do you open on Sundays?' } })).status, 401);
+    assert.equal((await t.api('POST', '/contact', { token: customer.token, body: { subject: 'Hours', message: 'Do you open on Sundays?' } })).status, 201);
+    assert.equal((await t.api('POST', '/contact', { token: customer.token, body: { subject: 'Hours', message: '' } })).status, 400);
 
     const list = await t.api('GET', `/admin/dashboard/contact-messages?user_id=${admin.id}`, { token: admin.token });
     assert.equal(list.status, 200);
@@ -293,16 +295,19 @@ describe('AI chatbot', () => {
 });
 
 describe('Route inventory', () => {
-  // Every API route the app had before online payments were removed, except the three /payments routes, plus the pet
-  // profile routes added later (PUT /pets/update/:id, GET /pets/history/:id)
+  // Every API route the app had before online payments were removed, except the three /payments routes and the unused
+  // PUT /appointments/updateStatus duplicate (removed 2026-10-24), plus the pet profile routes (PUT /pets/update/:id,
+  // GET /pets/history/:id), owner cancellation, and the contact / clinic details / email retry routes added later
   const ROUTES = [
     ['POST', '/auth/login'], ['POST', '/auth/register'], ['POST', '/auth/verify-email'], ['POST', '/auth/resend-code'],
     ['POST', '/auth/forgot-password'], ['POST', '/auth/reset-password'], ['POST', '/auth/logout'], ['GET', '/auth/user-status'],
     ['GET', '/auth/activity-logs'],
     ['POST', '/pets/create'], ['GET', '/pets/userPets'], ['GET', '/pets/medical-records'], ['POST', '/pets/medical-records/create'],
     ['DELETE', '/pets/delete/some-id'], ['PUT', '/pets/update/some-id'], ['GET', '/pets/history/some-id'],
-    ['POST', '/appointments/create'], ['GET', '/appointments/userAppointments'], ['GET', '/appointments/all'], ['PUT', '/appointments/updateStatus'],
-    ['POST', '/ai/chat'], ['POST', '/contact'],
+    ['POST', '/appointments/create'], ['GET', '/appointments/userAppointments'], ['GET', '/appointments/all'], ['POST', '/appointments/cancel/some-id'],
+    ['POST', '/ai/chat'], ['POST', '/contact'], ['GET', '/contact/mine'], ['GET', '/contact/clinic-info'],
+    ['POST', '/admin/dashboard/contact-messages/some-id/reply'], ['GET', '/admin/clinic-settings'], ['PUT', '/admin/clinic-settings'],
+    ['POST', '/admin/email-logs/some-id/retry'],
     ['GET', '/admin/dashboard/stats'], ['GET', '/admin/dashboard/users'], ['GET', '/admin/dashboard/pets'], ['GET', '/admin/dashboard/appointments'],
     ['GET', '/admin/dashboard/contact-messages'], ['PUT', '/admin/dashboard/contact-message-status'], ['PUT', '/admin/dashboard/appointment-status'],
     ['POST', '/admin/dashboard/medical-records/create'], ['PUT', '/admin/dashboard/user-role'], ['GET', '/admin/dashboard/overview'],

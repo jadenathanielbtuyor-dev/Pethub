@@ -34,10 +34,26 @@ function formatAppointmentTime(timeValue, durationMinutes) {
     : formatClockTime(start);
 }
 
+// The short reference the customer sees in PetHub and quotes to the clinic: PH- and the first 8 characters of the id
+function getAppointmentReference(appointment) {
+  const compactId = String(appointment?.id || '').replace(/[^A-Za-z0-9]/g, '');
+  return compactId ? `PH-${compactId.slice(0, 8).toUpperCase()}` : 'Not recorded';
+}
+
+// A stored timestamp (such as cancelled_at) on the clinic's wall clock
+function formatClinicTimestamp(value) {
+  const date = new Date(value || '');
+  if (!value || Number.isNaN(date.getTime())) return 'Not recorded';
+  const text = date.toLocaleString('en-US', {
+    timeZone: 'Asia/Manila', weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit'
+  });
+  return `${text} (Philippine time)`;
+}
+
 // The details every appointment email shows, as [label, value] pairs
 function getAppointmentDetails(appointment) {
   return [
-    ['Appointment ID', String(appointment?.id || 'Not recorded')],
+    ['Reference', getAppointmentReference(appointment)],
     ['Pet', String(appointment?.pet_name || 'Not recorded')],
     ['Service', String(appointment?.service_type || 'Not recorded')],
     ['Date', formatAppointmentDate(appointment?.appointment_date)],
@@ -71,8 +87,33 @@ function statusCheckHtml(appointmentsUrl) {
     : 'To check your appointment status, sign in to PetHub and open My Appointments.';
 }
 
-// Builds { subject, text, html } in the same style as the verification and password reset emails
-function buildAppointmentEmail({ subject, heading, name, intro, details, paragraphs, appointmentsUrl }) {
+// "Need help?" block: the contact details the clinic has entered (services/clinicSettingsService.js), or, when it has
+// entered none, the signed-in Contact page. Nothing here is a placeholder.
+function getClinicHelp(clinic = {}, contactPageUrl = '') {
+  const lines = [
+    ['Phone', clinic.phone],
+    ['Email', clinic.email],
+    ['Address', clinic.address],
+    ['Opening hours', clinic.hours]
+  ].filter(([, value]) => typeof value === 'string' && value.trim());
+  if (lines.length) return { intro: 'Need help? Contact the clinic:', lines, contactPageUrl: '' };
+  return { intro: 'Need help? Sign in to PetHub and send the clinic a message from the Contact page.', lines: [], contactPageUrl };
+}
+
+function helpText(help) {
+  if (!help) return [];
+  return [help.intro, ...help.lines.map(([label, value]) => `${label}: ${value}`), ...(help.contactPageUrl ? [help.contactPageUrl] : []), ''];
+}
+
+function helpHtml(help) {
+  if (!help) return '';
+  const link = help.contactPageUrl ? ` <a href="${escapeHtml(help.contactPageUrl)}" style="color: #f97316;">Open the Contact page</a>.` : '';
+  return `<p>${escapeHtml(help.intro)}${link}</p>${help.lines.length ? detailsHtml(help.lines) : ''}`;
+}
+
+// Builds { subject, text, html } in the same style as the verification and password reset emails.
+// help: optional getClinicHelp() result, shown after the paragraphs.
+function buildAppointmentEmail({ subject, heading, name, intro, details, paragraphs, appointmentsUrl, help = null }) {
   const displayName = String(name || 'PetHub user').trim() || 'PetHub user';
   return {
     subject,
@@ -84,6 +125,7 @@ function buildAppointmentEmail({ subject, heading, name, intro, details, paragra
       ...detailsText(details),
       '',
       ...paragraphs.flatMap(paragraph => [paragraph, '']),
+      ...helpText(help),
       statusCheckText(appointmentsUrl),
       '',
       'Thank you,',
@@ -96,6 +138,7 @@ function buildAppointmentEmail({ subject, heading, name, intro, details, paragra
         <p>${escapeHtml(intro)}</p>
         ${detailsHtml(details)}
         ${paragraphs.map(paragraph => `<p>${escapeHtml(paragraph)}</p>`).join('\n        ')}
+        ${helpHtml(help)}
         <p>${statusCheckHtml(appointmentsUrl)}</p>
         <p>Thank you,<br/>The PetHub Team</p>
       </div>
@@ -104,6 +147,14 @@ function buildAppointmentEmail({ subject, heading, name, intro, details, paragra
 }
 
 module.exports = {
+  escapeHtml,
+  detailsHtml,
+  getAppointmentReference,
+  formatClinicTimestamp,
+  formatAppointmentDate,
   getAppointmentDetails,
+  getClinicHelp,
+  helpText,
+  helpHtml,
   buildAppointmentEmail
 };

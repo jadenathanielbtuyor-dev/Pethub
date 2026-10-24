@@ -93,8 +93,10 @@ function setupVerifyForm() {
 
       clearPendingVerificationEmail();
       displayMessage(messageContainer, 'Email verified successfully. Redirecting to login...', 'success');
+      // A visitor who started from the Contact page or a booking link continues there after logging in
+      const next = typeof readPostLoginNext === 'function' ? readPostLoginNext() : '';
       setTimeout(() => {
-        window.location.replace(PATHS.login);
+        window.location.replace(next ? `${PATHS.login}?next=${encodeURIComponent(next)}` : PATHS.login);
       }, 1200);
     } catch (error) {
       console.error('Verification failed:', error);

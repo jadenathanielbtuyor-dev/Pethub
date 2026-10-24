@@ -1,4 +1,5 @@
 const serviceCatalogRepository = require('../repositories/serviceCatalogRepository');
+const appointmentsRepository = require('../repositories/appointmentsRepository');
 const { validateServiceUpdateRequest } = require('../validators/serviceCatalogValidator');
 const { mapServiceForClient, listServicesForClient } = require('../utils/serviceCatalog');
 const { logAdminActivity } = require('../utils/activityLogger');
@@ -33,10 +34,14 @@ async function listAdminServices() {
     if (error) return failedCatalogLoad(error);
     // listServicesForClient re-sorts the rows, so each service's version is looked up by id, not by position
     const rowsById = new Map((data || []).map(row => [String(row.id), row]));
+    // Booked services keep their name (see updateService); the settings form shows the name as locked for them
+    const { data: bookedTypes, error: bookedError } = await appointmentsRepository.listServiceTypes();
+    const bookedNames = new Set(bookedError ? [] : (bookedTypes || []).map(row => String(row.service_type || '')));
     const services = listServicesForClient(data || []).map(service => ({
       ...service,
       version: rowsById.get(service.id)?.version,
-      updated_at: rowsById.get(service.id)?.updated_at || null
+      updated_at: rowsById.get(service.id)?.updated_at || null,
+      has_appointments: bookedError ? null : bookedNames.has(service.name)
     }));
     return { statusCode: 200, body: { success: true, services } };
   } catch (error) {
@@ -52,6 +57,20 @@ async function updateService(req) {
     const existing = await serviceCatalogRepository.findById(validation.serviceId);
     if (existing.error) return failedCatalogLoad(existing.error);
     if (!existing.data) return { statusCode: 404, body: { success: false, error: 'Service not found.' } };
+
+    // Appointments keep the service name as text, so renaming a service that has been booked would detach its
+    // appointments from it (analytics, duplicate checks and the admin service filter match by name)
+    if (validation.changes.name !== existing.data.name) {
+      const booked = await appointmentsRepository.countByServiceType(existing.data.name);
+      if (booked.error) throw booked.error;
+      if ((booked.count || 0) > 0) {
+        return { statusCode: 409, body: {
+          success: false,
+          field: 'name',
+          error: `${existing.data.name} already has appointments, so its name cannot be changed. Edit its description instead.`
+        } };
+      }
+    }
 
     const result = await serviceCatalogRepository.updateById(
       validation.serviceId,

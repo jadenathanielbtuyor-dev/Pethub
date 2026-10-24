@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { createAppointment, getUserAppointments, getAllAppointments, updateStatus, cancelOwnAppointment } = require('../controllers/appointmentsController');
+const { createAppointment, getUserAppointments, getAllAppointments, cancelOwnAppointment } = require('../controllers/appointmentsController');
 const { listServices } = require('../controllers/serviceCatalogController');
 const { requireAuth } = require('../middleware/requireAuth');
 const { rateLimit, byAuthUser } = require('../middleware/rateLimit');
@@ -15,6 +15,7 @@ router.post('/create', rateLimit('booking', { keyFor: byAuthUser }), createAppoi
 router.get('/userAppointments', getUserAppointments);
 router.post('/cancel/:id', cancelOwnAppointment);
 router.get('/all', getAllAppointments);
-router.put('/updateStatus', updateStatus);
+// Appointment status changes are admin-only and live at PUT /admin/dashboard/appointment-status (routes/admin.js);
+// the former PUT /appointments/updateStatus duplicate, which the frontend never called, was removed.
 
 module.exports = router;

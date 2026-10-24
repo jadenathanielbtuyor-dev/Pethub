@@ -1,20 +1,24 @@
 // ==================== APPOINTMENT NOTIFICATIONS ====================
-// Emails the customer when the clinic approves or cancels an appointment (called by both status endpoints after the
-// change is stored). Emails go out in the background, so a slow or failing Brevo request never delays the response
-// and never changes or undoes the appointment status. Status changes are conditional updates, so each change is
-// stored, and therefore emailed, only once.
+// Emails the customer when the clinic approves or cancels an appointment, and confirms an owner's own cancellation.
+// Every email is recorded in email_logs (services/emailDeliveryService.js), which allows one email of each type per
+// appointment, so a retried request never sends a second copy. A failed email never changes or undoes the status.
+// - Clinic decisions (approve / cancel) are sent in the background, so the admin's response is not delayed.
+// - The owner's cancellation confirmation is awaited (Brevo requests time out after 15 s), so the owner is told whether
+//   it was sent; if it failed, the clinic sees it in Appointment Management and can send it again.
 
 const env = require('../config/env');
 const logger = require('../utils/logger');
-const { sendEmail } = require('../utils/email');
 const usersRepository = require('../repositories/usersRepository');
+const appointmentsRepository = require('../repositories/appointmentsRepository');
 const { buildAppointmentDecisionEmail, buildOwnerCancellationEmail } = require('../templates/email/appointmentDecisionEmail');
-const { APPOINTMENTS_PAGE_PATH } = require('../constants/email');
+const { APPOINTMENTS_PAGE_PATH, CONTACT_PAGE_PATH } = require('../constants/email');
+const { EMAIL_TYPES, sendLoggedEmail } = require('./emailDeliveryService');
+const { getClinicContactDetails } = require('./clinicSettingsService');
 
-// New appointment status -> email sent ('Completed' sends nothing)
-const DECISIONS = Object.freeze({
-  Approved: 'approved',
-  Cancelled: 'cancelled'
+// New appointment status -> email type ('Completed' sends nothing)
+const DECISION_EMAIL_TYPES = Object.freeze({
+  Approved: EMAIL_TYPES.appointmentApproved,
+  Cancelled: EMAIL_TYPES.appointmentCancelledByClinic
 });
 
 const backgroundTasks = new Set();
@@ -41,8 +45,8 @@ async function waitForBackgroundTasks() {
   }
 }
 
-// Link to My Appointments from FRONTEND_URL (https, or http on localhost); left out of the email when unset or invalid
-function getAppointmentsPageUrl() {
+// A frontend page from FRONTEND_URL (https, or http on localhost); left out of the email when unset or invalid
+function getFrontendPageUrl(pagePath) {
   let url;
   try {
     url = new URL(String(env.frontendUrl || '').trim());
@@ -52,7 +56,7 @@ function getAppointmentsPageUrl() {
 
   const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLocalhost)) return '';
-  return new URL(APPOINTMENTS_PAGE_PATH, url.origin).toString();
+  return new URL(pagePath, url.origin).toString();
 }
 
 async function loadCustomer(userId) {
@@ -62,66 +66,101 @@ async function loadCustomer(userId) {
   return user && user.email ? user : null;
 }
 
-// decision: 'approved' | 'cancelled'
-async function sendAppointmentDecision(appointment, { decision, previousStatus }) {
-  const context = { appointment_id: appointment.id, decision };
-  const customer = await loadCustomer(appointment.user_id);
-  if (!customer) {
-    logger.warn('appointments.decision_email_skipped', { ...context, reason: 'no_customer_email' });
-    return 'skipped';
-  }
-
-  const email = buildAppointmentDecisionEmail({
-    name: customer.fullname,
-    appointment,
-    decision,
-    previousStatus,
-    appointmentsUrl: getAppointmentsPageUrl()
-  });
-  await sendEmail({ to: customer.email, ...email });
-  logger.info('appointments.decision_email_sent', context);
-  return 'sent';
+async function getEmailLinks() {
+  return {
+    appointmentsUrl: getFrontendPageUrl(APPOINTMENTS_PAGE_PATH),
+    contactPageUrl: getFrontendPageUrl(CONTACT_PAGE_PATH),
+    clinic: await getClinicContactDetails()
+  };
 }
 
-async function sendOwnerCancellationConfirmation(appointment) {
-  const context = { appointment_id: appointment.id, decision: 'owner_cancelled' };
+async function buildDecisionEmail(appointment, customer, { decision, previousStatus }) {
+  return buildAppointmentDecisionEmail({ name: customer.fullname, appointment, decision, previousStatus, ...(await getEmailLinks()) });
+}
+
+async function buildOwnerEmail(appointment, customer) {
+  return buildOwnerCancellationEmail({ name: customer.fullname, appointment, ...(await getEmailLinks()) });
+}
+
+async function sendAppointmentDecision(appointment, { newStatus, previousStatus }) {
+  const type = DECISION_EMAIL_TYPES[newStatus];
   const customer = await loadCustomer(appointment.user_id);
   if (!customer) {
-    logger.warn('appointments.owner_cancellation_email_skipped', { ...context, reason: 'no_customer_email' });
+    logger.warn('appointments.decision_email_skipped', { appointment_id: appointment.id, email_type: type, reason: 'no_customer_email' });
     return 'skipped';
   }
-  const email = buildOwnerCancellationEmail({
-    name: customer.fullname,
-    appointment,
-    appointmentsUrl: getAppointmentsPageUrl()
-  });
-  await sendEmail({ to: customer.email, ...email });
-  logger.info('appointments.owner_cancellation_email_sent', context);
-  return 'sent';
+  const email = await buildDecisionEmail(appointment, customer, { decision: newStatus === 'Approved' ? 'approved' : 'cancelled', previousStatus });
+  const result = await sendLoggedEmail({ type, to: customer.email, email, userId: customer.id, appointmentId: appointment.id });
+  return result.status;
 }
 
 /**
- * Called by PUT /admin/dashboard/appointment-status and PUT /appointments/updateStatus after a status change was
- * stored. Approving or cancelling emails the customer; other changes send nothing. Never throws.
+ * Called by PUT /admin/dashboard/appointment-status after a status change was stored. Approving or cancelling emails
+ * the customer in the background; other changes send nothing. Never throws.
  */
 function notifyAppointmentStatusChanged(appointment, { previousStatus, newStatus } = {}) {
-  const decision = DECISIONS[newStatus];
-  if (!decision || !appointment) return;
-
-  runInBackground('appointments.decision_email_failed', { appointment_id: appointment.id, decision }, () => (
-    sendAppointmentDecision(appointment, { decision, previousStatus })
+  if (!DECISION_EMAIL_TYPES[newStatus] || !appointment) return;
+  runInBackground('appointments.decision_email_failed', { appointment_id: appointment.id, new_status: newStatus }, () => (
+    sendAppointmentDecision(appointment, { newStatus, previousStatus })
   ));
 }
 
-function notifyOwnerCancelledAppointment(appointment) {
-  if (!appointment) return;
-  runInBackground('appointments.owner_cancellation_email_failed', { appointment_id: appointment.id }, () => (
-    sendOwnerCancellationConfirmation(appointment)
-  ));
+/**
+ * Called by POST /appointments/cancel/:id once the cancellation is stored (only by the request that changed the row).
+ * Returns 'sent' | 'failed' | 'skipped' (no email address on the account) | 'duplicate' (already sent). Never throws.
+ */
+async function confirmOwnerCancellation(appointment) {
+  try {
+    const customer = await loadCustomer(appointment.user_id);
+    if (!customer) {
+      logger.warn('appointments.owner_cancellation_email_skipped', { appointment_id: appointment.id, reason: 'no_customer_email' });
+      return 'skipped';
+    }
+    const email = await buildOwnerEmail(appointment, customer);
+    const result = await sendLoggedEmail({
+      type: EMAIL_TYPES.appointmentCancelledByOwner,
+      to: customer.email,
+      email,
+      userId: customer.id,
+      appointmentId: appointment.id
+    });
+    return result.status;
+  } catch (error) {
+    logger.error('appointments.owner_cancellation_email_failed', { appointment_id: appointment?.id, ...describeError(error) });
+    return 'failed';
+  }
+}
+
+// For an admin retry of a Failed appointment email (services/emailRetryService.js): the same email, rebuilt from the
+// appointment as it is now, or null when it no longer applies (e.g. an approval email for an appointment since cancelled)
+async function buildAppointmentEmailForRetry(log) {
+  if (!log?.appointment_id) return null;
+  const { data: appointment, error } = await appointmentsRepository.findById(log.appointment_id);
+  if (error) throw error;
+  if (!appointment) return null;
+
+  const customer = await loadCustomer(appointment.user_id);
+  if (!customer) return null;
+
+  if (log.email_type === EMAIL_TYPES.appointmentApproved) {
+    if (!['Approved', 'Completed'].includes(appointment.status)) return null;
+    return { to: customer.email, email: await buildDecisionEmail(appointment, customer, { decision: 'approved' }) };
+  }
+  if (log.email_type === EMAIL_TYPES.appointmentCancelledByClinic) {
+    if (appointment.status !== 'Cancelled') return null;
+    return { to: customer.email, email: await buildDecisionEmail(appointment, customer, { decision: 'cancelled' }) };
+  }
+  if (log.email_type === EMAIL_TYPES.appointmentCancelledByOwner) {
+    if (appointment.status !== 'Cancelled') return null;
+    return { to: customer.email, email: await buildOwnerEmail(appointment, customer) };
+  }
+  return null;
 }
 
 module.exports = {
   notifyAppointmentStatusChanged,
-  notifyOwnerCancelledAppointment,
+  confirmOwnerCancellation,
+  buildAppointmentEmailForRetry,
+  getFrontendPageUrl,
   waitForBackgroundTasks
 };

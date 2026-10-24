@@ -664,7 +664,8 @@ async function loadUserActivityLogs() {
   }
 
   try {
-    const response = await fetchWithRetry(() => fetch(`${window.API_BASE_URL}/auth/activity-logs?user_id=${userData.id}`));
+    // Sign-ins and sign-outs are left out: they would fill the list and hide bookings, cancellations and messages
+    const response = await fetchWithRetry(() => fetch(`${window.API_BASE_URL}/auth/activity-logs?user_id=${userData.id}&exclude=sign_ins`));
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       throw new Error(data.error || `Failed to load recent activity (${response.status})`);
@@ -842,7 +843,7 @@ function displayRecentActivity(logs) {
   if (activityLogs.length === 0) {
     activityContainer.innerHTML = getEmptyStateHtml(
       'No recent activity yet',
-      'Activity appears here after account actions like signing in or verifying your email.'
+      'Appointment requests, cancellations, profile changes and messages to the clinic appear here.'
     );
     return;
   }
@@ -852,7 +853,7 @@ function displayRecentActivity(logs) {
       ${activityLogs.slice(0, 5).map(log => {
         const action = formatActivityAction(log.action);
         const details = log.details ? String(log.details) : '';
-        const date = log.created_at ? formatDate(log.created_at) : 'Date not recorded';
+        const date = log.created_at ? formatDateTime(log.created_at) : 'Date not recorded';
 
         return `
           <li class="ph-dash-list-item">
@@ -886,13 +887,25 @@ function getUserActivityIconClass(action) {
     password_reset_failed: 'ri-lock-password-line',
     password_reset_email_failed: 'ri-mail-close-line',
     profile_updated: 'ri-user-settings-line',
-    contact_message: 'ri-chat-3-line'
+    contact_message: 'ri-chat-3-line',
+    appointment_booked: 'ri-calendar-check-line',
+    appointment_cancelled: 'ri-calendar-close-line',
+    owner_weight_reported: 'ri-scales-3-line'
   };
   return Object.prototype.hasOwnProperty.call(iconMap, action) ? iconMap[action] : 'ri-history-line';
 }
 
+const USER_ACTIVITY_LABELS = {
+  appointment_booked: 'Appointment requested',
+  appointment_cancelled: 'Appointment cancelled',
+  contact_message: 'Message sent to the clinic',
+  owner_weight_reported: 'Pet weight reported',
+  user_registered: 'Account created'
+};
+
 function formatActivityAction(action) {
   if (!action) return 'Action not recorded';
+  if (USER_ACTIVITY_LABELS[action]) return USER_ACTIVITY_LABELS[action];
   return String(action)
     .replace(/_/g, ' ')
     .replace(/\b\w/g, letter => letter.toUpperCase());

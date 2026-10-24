@@ -51,19 +51,20 @@ describe('Contact form limits', () => {
   const { CONTACT_LIMITS } = require('../validators/contactValidator');
 
   it('stores messages within the limits and refuses longer ones without storing anything', async () => {
-    const send = body => t.api('POST', '/contact', { body });
-    const ok = await send({ name: 'N'.repeat(CONTACT_LIMITS.name), email: 'visitor@example.test', message: 'M'.repeat(CONTACT_LIMITS.message) });
-    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    const sender = t.createUser();
+    const send = body => t.api('POST', '/contact', { token: sender.token, body });
+    const ok = await send({ subject: 'S'.repeat(CONTACT_LIMITS.subject), message: 'M'.repeat(CONTACT_LIMITS.message) });
+    assert.equal(ok.status, 201, JSON.stringify(ok.body));
     const before = t.db.table('contact_messages').length;
 
-    const longName = await send({ name: 'N'.repeat(CONTACT_LIMITS.name + 1), email: 'visitor@example.test', message: 'Hello' });
-    assert.equal(longName.status, 400);
-    assert.match(longName.body.error, /Name must be 100 characters or fewer/);
-    const longMessage = await send({ name: 'Visitor', email: 'visitor@example.test', message: 'M'.repeat(CONTACT_LIMITS.message + 1) });
+    const longSubject = await send({ subject: 'S'.repeat(CONTACT_LIMITS.subject + 1), message: 'Hello' });
+    assert.equal(longSubject.status, 400);
+    assert.match(longSubject.body.error, /Subject must be 120 characters or fewer/);
+    const longMessage = await send({ subject: 'Visit', message: 'M'.repeat(CONTACT_LIMITS.message + 1) });
     assert.equal(longMessage.status, 400);
     assert.match(longMessage.body.error, /Message must be 2,000 characters or fewer/);
-    const longEmail = await send({ name: 'Visitor', email: `${'a'.repeat(250)}@x.ph`, message: 'Hello' });
-    assert.equal(longEmail.status, 400);
+    const noSubject = await send({ subject: '   ', message: 'Hello' });
+    assert.equal(noSubject.status, 400);
     assert.equal(t.db.table('contact_messages').length, before);
   });
 });

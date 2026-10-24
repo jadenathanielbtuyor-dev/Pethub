@@ -1,6 +1,6 @@
 const supabase = require('../config/supabase');
 
-const APPOINTMENT_SELECT = 'id, user_id, pet_id, pet_name, service_type, estimated_duration_minutes, appointment_date, appointment_time, status, handled_by, created_at';
+const APPOINTMENT_SELECT = 'id, user_id, pet_id, pet_name, service_type, estimated_duration_minutes, appointment_date, appointment_time, status, handled_by, created_at, cancelled_at, cancelled_by';
 
 // Newest first: latest appointment date, then latest time that day, then the most recently booked. Rows missing a
 // value go last (PostgreSQL would otherwise put NULLs first when sorting descending).
@@ -176,10 +176,10 @@ function findForMedicalRecord(appointmentId) {
 
 // With expectedCurrentStatus, the row only changes if its status is still the one the caller checked,
 // so two admins acting at once cannot overwrite each other (0 rows returned = it changed meanwhile).
-// A cancellation keeps the row and records when it happened in the existing cancelled_at column.
+// A cancellation keeps the row and records when it happened (cancelled_at) and who cancelled it (cancelled_by).
 function updateStatus(appointmentId, status, handledBy, expectedCurrentStatus) {
   const changes = status === 'Cancelled'
-    ? { status, handled_by: handledBy, cancelled_at: new Date().toISOString() }
+    ? { status, handled_by: handledBy, cancelled_at: new Date().toISOString(), cancelled_by: handledBy }
     : { status, handled_by: handledBy };
   let query = supabase
     .from('appointments')
@@ -199,6 +199,14 @@ function cancelByUser(appointmentId, userId, expectedCurrentStatus) {
     p_owner_id: userId,
     p_expected_status: expectedCurrentStatus
   });
+}
+
+// Appointments saved under a service name (they keep the name as text, so a renamed service would lose them)
+function countByServiceType(serviceType) {
+  return supabase
+    .from('appointments')
+    .select('id', { count: 'exact', head: true })
+    .eq('service_type', serviceType);
 }
 
 function listServiceTypes() {
@@ -245,6 +253,7 @@ module.exports = {
   findForMedicalRecord,
   updateStatus,
   cancelByUser,
+  countByServiceType,
   listServiceTypes,
   listAppointmentDatesBetween,
   listUsersByAppointmentIds

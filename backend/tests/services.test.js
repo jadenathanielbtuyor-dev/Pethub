@@ -91,6 +91,8 @@ describe('Service catalog as shipped', () => {
     assert.equal(approve.status, 200, JSON.stringify(approve.body));
     assert.equal(t.appointmentRow(legacy.id).status, 'Approved');
     assert.equal(t.appointmentRow(legacy.id).estimated_duration_minutes, 45, 'the saved duration is kept');
+    // The visit takes place (completion is allowed only after the start time)
+    t.appointmentRow(legacy.id).appointment_date = t.manilaDate(-1);
     const complete = await t.api('PUT', '/admin/dashboard/appointment-status', { token: admin.token, body: { id: legacy.id, status: 'Completed' } });
     assert.equal(complete.status, 200);
     await t.settleEmails();

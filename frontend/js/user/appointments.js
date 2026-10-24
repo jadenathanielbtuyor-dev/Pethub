@@ -1164,7 +1164,15 @@ function renderAppointmentList() {
   setAppointmentListSummary(`Showing ${shown.length} of ${loadedAppointments.length} appointment${loadedAppointments.length === 1 ? "" : "s"} (${upcoming.length} upcoming, ${history.length} in history).`);
 
   if (shown.length === 0) {
-    container.innerHTML = `
+    // The default view is Upcoming: when nothing is upcoming, offer the history in one click instead of a dead end
+    const onlyHistory = appointmentListFilter.when === "upcoming" && appointmentListFilter.status === "all" && history.length > 0;
+    container.innerHTML = onlyHistory ? `
+      <div class="ph-dash-empty">
+        <p class="ph-dash-empty-title">No upcoming appointments</p>
+        <p class="ph-dash-empty-text">You have ${history.length} past or cancelled appointment${history.length === 1 ? "" : "s"} in your history.</p>
+        <button type="button" class="ph-btn ph-btn-secondary ph-btn-sm mt-3" data-show-history><i class="ri-history-line" aria-hidden="true"></i>Show history</button>
+      </div>
+    ` : `
       <div class="ph-dash-empty">
         <p class="ph-dash-empty-title">No appointments match these filters</p>
         <p class="ph-dash-empty-text">Choose History or All, or another status, to see your other appointments.</p>
@@ -1194,12 +1202,20 @@ function getAppointmentCardHtml(apt, isUpcoming) {
         ${fact("Date", formatAppointmentDateDisplay(apt.appointment_date))}
         ${fact("Time range", getAppointmentTimeRangeDisplay(apt))}
         ${fact("Duration", getAppointmentDisplayDuration(apt))}
-        ${handledBy ? fact("Handled by", handledBy) : ""}
+        ${handledBy && status !== "Cancelled" ? fact("Handled by", handledBy) : ""}
+        ${status === "Cancelled" ? fact("Cancelled", getCancellationLabel(apt)) : ""}
       </dl>
       <p class="ph-dash-next"><i class="ri-arrow-right-circle-line" aria-hidden="true"></i><span>${escapeHtml(getAppointmentNextStep(status, isUpcoming))}</span></p>
       ${cancellation.canCancel ? `<div class="ph-dash-card-actions"><button type="button" class="ph-btn ph-btn-secondary ph-btn-sm" data-appointment-cancel="${escapeHtml(apt.id)}"><i class="ri-close-circle-line" aria-hidden="true"></i>Cancel appointment</button><span class="ph-dash-note">Cancel by ${escapeHtml(formatClinicDateTime(cancellation.deadlineMs))} (${CLINIC_TIME_ZONE})</span></div>` : `<p class="ph-dash-note" role="status">${escapeHtml(cancellation.reason)}</p>`}
     </article>
   `;
+}
+
+// Who cancelled and when (cancelled_by_owner and cancelled_at come from the server; older rows may have neither)
+function getCancellationLabel(appointment) {
+  const who = appointment?.cancelled_by_owner === true ? "By you" : appointment?.cancelled_by_owner === false ? "By the clinic" : "";
+  const when = appointment?.cancelled_at ? formatClinicDateTime(Date.parse(appointment.cancelled_at)) : "";
+  return [who, when].filter(Boolean).join(" · ") || "Yes";
 }
 
 // What the owner can expect or do next, from the appointment's status as the server reports it
@@ -1226,26 +1242,88 @@ function setupAppointmentFilters() {
     appointmentListFilter.status = event.target.value;
     renderAppointmentList();
   });
-  document.getElementById("appointmentsList")?.addEventListener("click", handleAppointmentCancellationClick);
+  document.getElementById("appointmentsList")?.addEventListener("click", event => {
+    if (event.target.closest("[data-show-history]")) {
+      document.querySelector('[data-appointment-when="history"]')?.click();
+      return;
+    }
+    handleAppointmentCancellationClick(event);
+  });
+  setupCancellationDialog();
 }
 
-async function handleAppointmentCancellationClick(event) {
+// "Cancel appointment" opens a confirmation dialog naming the pet, service, date and time; the server makes the change
+// (and re-checks the 2-hour cutoff) only after "Cancel appointment" in the dialog. Escape or "Keep appointment" changes nothing.
+let pendingCancellationId = "";
+let cancellationReturnFocus = null;
+
+function handleAppointmentCancellationClick(event) {
   const button = event.target.closest("[data-appointment-cancel]");
   if (!button) return;
   const appointmentId = String(button.dataset.appointmentCancel || "");
   if (!appointmentId || appointmentCancellationInProgress.has(appointmentId)) return;
   const appointment = loadedAppointments.find(item => String(item.id) === appointmentId);
-  if (!isOwnerCancellationAllowed(appointment)) {
-    showAppointmentActionFeedback("The cancellation window has closed. Contact the clinic for help.", "error");
+  const state = getOwnerCancellationState(appointment);
+  if (!state.canCancel) {
+    showAppointmentActionFeedback(state.reason || "The cancellation window has closed. Contact the clinic for help.", "error");
     renderAppointmentList();
     return;
   }
-  const confirmed = window.confirm("Cancel this appointment? This will change its status to Cancelled.");
-  if (!confirmed) return;
 
+  const dialog = document.getElementById("cancelAppointmentDialog");
+  if (!dialog || typeof dialog.showModal !== "function") {
+    // Browsers without <dialog>: a plain confirmation that still names the appointment
+    const summary = `${appointment.pet_name || "Your pet"} · ${appointment.service_type || "appointment"} on ${formatAppointmentDateDisplay(appointment.appointment_date)} at ${getAppointmentTimeRangeDisplay(appointment)}`;
+    if (window.confirm(`Are you sure you want to cancel this appointment?\n\n${summary}`)) cancelOwnAppointment(appointmentId);
+    return;
+  }
+
+  const fact = (label, value) => `<div><dt>${escapeHtml(label)}</dt> <dd>${escapeHtml(value)}</dd></div>`;
+  document.getElementById("cancelAppointmentFacts").innerHTML = [
+    fact("Pet", appointment.pet_name || "N/A"),
+    fact("Service", appointment.service_type || "N/A"),
+    fact("Date", formatAppointmentDateDisplay(appointment.appointment_date)),
+    fact("Time", getAppointmentTimeRangeDisplay(appointment)),
+    fact("Reference", getAppointmentReference(appointment))
+  ].join("");
+  document.getElementById("cancelAppointmentDeadline").textContent = `You can cancel online until ${formatClinicDateTime(state.deadlineMs)} (${CLINIC_TIME_ZONE}), 2 hours before it starts.`;
+  setCancellationDialogError("");
+  const confirmButton = document.getElementById("confirmCancelAppointment");
+  if (confirmButton) confirmButton.disabled = false;
+  pendingCancellationId = appointmentId;
+  cancellationReturnFocus = button;
+  dialog.showModal();
+  dialog.querySelector('button[value="keep"].ph-btn-secondary')?.focus();
+}
+
+function setCancellationDialogError(message) {
+  const error = document.getElementById("cancelAppointmentError");
+  if (!error) return;
+  error.textContent = message || "";
+  error.hidden = !message;
+}
+
+function setupCancellationDialog() {
+  const dialog = document.getElementById("cancelAppointmentDialog");
+  const confirmButton = document.getElementById("confirmCancelAppointment");
+  if (!dialog || !confirmButton) return;
+  confirmButton.addEventListener("click", () => {
+    if (pendingCancellationId) cancelOwnAppointment(pendingCancellationId, { dialog, confirmButton });
+  });
+  dialog.addEventListener("close", () => {
+    // The close event is delivered later than the close itself; if the dialog was already opened again for another
+    // click, this event belongs to the previous opening and must not clear the new one
+    if (dialog.open) return;
+    pendingCancellationId = "";
+    if (cancellationReturnFocus && cancellationReturnFocus.isConnected) cancellationReturnFocus.focus();
+    cancellationReturnFocus = null;
+  });
+}
+
+async function cancelOwnAppointment(appointmentId, { dialog = null, confirmButton = null } = {}) {
+  if (appointmentCancellationInProgress.has(appointmentId)) return;
   appointmentCancellationInProgress.add(appointmentId);
-  button.disabled = true;
-  button.setAttribute("aria-busy", "true");
+  if (confirmButton) updateButtonState(confirmButton, true, "Cancelling...", "Cancel appointment");
   try {
     const response = await fetch(`${window.API_BASE_URL}/appointments/cancel/${encodeURIComponent(appointmentId)}`, { method: "POST" });
     const data = await response.json().catch(() => ({}));
@@ -1254,15 +1332,30 @@ async function handleAppointmentCancellationClick(event) {
       error.status = response.status;
       throw error;
     }
-    showAppointmentActionFeedback(data.already_cancelled ? "This appointment was already cancelled." : "Appointment cancelled.", "success");
+    dialog?.close();
+    // The server's message says whether the confirmation email was sent (core: services/appointmentsService.js)
+    showAppointmentActionFeedback(data.already_cancelled
+      ? "This appointment was already cancelled."
+      : (data.message || "Appointment cancelled."), data.email_status === "failed" ? "warning" : "success");
     await loadAppointments(currentUser.id);
   } catch (error) {
-    showAppointmentActionFeedback(error.message || "Could not cancel this appointment.", "error");
-    if (error.status === 409) await loadAppointments(currentUser.id);
-    else button.disabled = false;
+    if (error.status === 409) {
+      // Too late, or changed meanwhile: explain in the dialog and refresh the list behind it
+      setCancellationDialogError(error.message || "This appointment can no longer be cancelled online.");
+      confirmButton?.setAttribute("disabled", "true");
+      await loadAppointments(currentUser.id);
+    } else if (dialog?.open) {
+      setCancellationDialogError(error.message || "Could not cancel this appointment. Please try again.");
+    } else {
+      showAppointmentActionFeedback(error.message || "Could not cancel this appointment.", "error");
+    }
   } finally {
     appointmentCancellationInProgress.delete(appointmentId);
-    button.removeAttribute("aria-busy");
+    if (confirmButton) {
+      const keepDisabled = confirmButton.hasAttribute("disabled") && dialog?.open;
+      updateButtonState(confirmButton, false, "Cancelling...", "Cancel appointment");
+      if (keepDisabled) confirmButton.disabled = true;
+    }
   }
 }
 
@@ -1270,9 +1363,9 @@ function showAppointmentActionFeedback(message, type) {
   const container = document.getElementById("appointmentActionFeedback");
   if (!container) return;
   container.textContent = message || "";
-  container.className = message
-    ? `mb-3 rounded-lg p-3 text-sm ${type === "error" ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`
-    : "mb-3";
+  const tone = { error: "bg-red-50 text-red-700", warning: "bg-amber-50 text-amber-800" }[type] || "bg-green-50 text-green-700";
+  container.className = message ? `mb-3 rounded-lg p-3 text-sm ${tone}` : "mb-3";
+  container.setAttribute("role", type === "error" ? "alert" : "status");
 }
 
 function getHandledByLabel(appointment) {

@@ -75,13 +75,14 @@ describe('Personal data in replies and logs', () => {
   });
 
   it('a contact message is stored once; the activity log does not copy its name, email or text', async () => {
-    const message = { name: 'Maria Santos', email: 'maria.contact@example.test', message: 'Please call me about grooming.' };
-    const response = await t.api('POST', '/contact', { body: message });
-    assert.equal(response.status, 200);
-    assert.equal(t.db.table('contact_messages').filter(row => row.email === message.email).length, 1);
+    const sender = t.createUser({ name: 'Maria Santos' });
+    const message = { subject: 'Grooming question', message: 'Please call me about grooming.' };
+    const response = await t.api('POST', '/contact', { token: sender.token, body: message });
+    assert.equal(response.status, 201);
+    assert.equal(t.db.table('contact_messages').filter(row => row.email === sender.email).length, 1);
     const logs = t.db.table('activity_logs').filter(row => row.action === 'contact_message');
     assert.ok(logs.length >= 1);
-    for (const value of Object.values(message)) {
+    for (const value of [...Object.values(message), sender.fullname, sender.email]) {
       assert.equal(logs.some(row => String(row.details).includes(value)), false, value);
     }
   });

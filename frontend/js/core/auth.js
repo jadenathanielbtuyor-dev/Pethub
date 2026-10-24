@@ -3,6 +3,7 @@
 
 document.addEventListener('DOMContentLoaded', () => {
   setupPasswordToggles();
+  carryPostLoginNext();
   setupRegisterForm();
   setupLoginForm();
 });
@@ -368,16 +369,30 @@ function setupRegisterForm() {
   });
 }
 
-// "Book an Appointment" links send signed-out visitors here with ?next=appointments (and optionally &service=...).
-// After logging in, customers continue to the booking page. That is the only destination accepted, so the parameter
-// can't send anyone elsewhere; the service name is only used to preselect a matching option on the booking page.
+// "Book an Appointment" links send signed-out visitors here with ?next=appointments (and optionally &service=...), and the
+// Contact page with ?next=contact. After logging in, customers continue there (core/storage.js readPostLoginNext accepts
+// only these names, so the parameter can't send anyone elsewhere); admins always go to their dashboard. The service name
+// is only used to preselect a matching option on the booking page.
 function getPostLoginDestination(role) {
-  if (role === 'admin') return '';
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('next') !== 'appointments') return '';
-  const service = (params.get('service') || '').trim();
+  const next = readPostLoginNext();
+  forgetPostLoginNext();
+  if (role === 'admin' || !next) return '';
+  if (next === 'contact') return PATHS.contact;
+  const service = (new URLSearchParams(window.location.search).get('service') || '').trim();
   const query = service && service.length <= 60 ? `?service=${encodeURIComponent(service)}` : '';
   return `${PATHS.userAppointments}${query}`;
+}
+
+// Keeps ?next= when the visitor switches between the login and registration pages, and remembers it while they register
+// and verify their email (core/verify.js returns them to login.html?next=...)
+function carryPostLoginNext() {
+  const next = readPostLoginNext();
+  if (!next || !new URLSearchParams(window.location.search).get('next')) return;
+  // Remembered only while registering: login is then reached through the verification page
+  if (document.getElementById('registerForm')) rememberPostLoginNext(next);
+  document.querySelectorAll('.ph-auth-switch a[href="register.html"], .register-login-link a[href="login.html"]').forEach(link => {
+    link.href = `${link.getAttribute('href')}?next=${encodeURIComponent(next)}`;
+  });
 }
 
 // pages/auth/login.html: problems with what was typed are shown beside the field; the server's answer (which never

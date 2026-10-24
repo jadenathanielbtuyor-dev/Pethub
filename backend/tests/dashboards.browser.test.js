@@ -523,22 +523,87 @@ describe('Admin Dashboard in a browser (mocked API)', { skip }, () => {
     } finally { await tab.close(); }
   });
 
-  it('System Management lists editable catalog cards and says online booking is closed', async () => {
+  it('System Management lists each service once, with its setup state, and says online booking is closed', async () => {
     const tab = await open('pages/admin/dashboard.html', '#services', ADMIN, adminRoutes());
     try {
-      assert.ok(await tab.waitFor(`document.querySelectorAll('#servicesCatalogContainer .service-config-form').length === 9`));
-      assert.match(await tab.evaluate(textOf('#bookingStatusSummary')), /Online booking is closed/);
+      assert.ok(await tab.waitFor(`document.querySelectorAll('#servicesCatalogContainer [data-service-row]').length === 9`));
+      assert.match(await tab.evaluate(textOf('#bookingStatusSummary')), /Online booking is closed for all 9 services\. 9 still need setup\./);
       assert.equal(await tab.evaluate(`document.querySelectorAll('#servicesCatalogContainer .ph-status-other').length`), 9, 'all services shown as closed');
-      // One availability switch per service; none can be switched on before a duration (and species) is confirmed
+      // One row per service: no second list of settings forms
+      assert.equal(await tab.evaluate(`document.querySelectorAll('#servicesCatalogContainer .service-config-form, #servicesCatalogContainer details').length`), 0);
+      assert.equal(await tab.evaluate(`document.querySelectorAll('#servicesCatalogContainer [data-service-edit]').length`), 9, 'an Edit details button per service');
+      // Every switch can be used: turning on an incomplete service opens its setup instead of being blocked
       const switches = await tab.evaluate(`[...document.querySelectorAll('#servicesCatalogContainer [role="switch"]')].map(s => ({ label: s.getAttribute('aria-label'), checked: s.getAttribute('aria-checked'), disabled: s.disabled }))`);
       assert.equal(switches.length, 9);
-      assert.ok(switches.every(s => s.checked === 'false' && s.disabled), JSON.stringify(switches));
+      assert.ok(switches.every(s => s.checked === 'false' && !s.disabled), JSON.stringify(switches));
       assert.equal(switches[0].label, 'Online booking for Bath');
-      assert.match(await tab.evaluate(textOf('[data-service-row="b0000000-0000-4000-8000-000000000001"]')), /Needs a confirmed duration under Service details[\s\S]*Temporarily unavailable/);
+      assert.match(await tab.evaluate(textOf('[data-service-row="b0000000-0000-4000-8000-000000000001"]')), /Needs setup[\s\S]*Needs a confirmed duration\. Turn it on to set it up\.[\s\S]*Temporarily unavailable/);
       assert.match(await tab.evaluate(textOf('[data-service-row="b0000000-0000-4000-8000-000000000003"]')), /Needs a confirmed duration and applicable species/, 'Puppy Cut');
-      // The detailed settings are folded away and no longer carry their own availability checkbox
-      assert.equal(await tab.evaluate(`document.querySelectorAll('#servicesCatalogContainer details.service-settings[open]').length`), 0);
-      assert.equal(await tab.evaluate(`document.querySelectorAll('#servicesCatalogContainer input[name="online_booking_enabled"]').length`), 0);
+      assert.match(await tab.evaluate(textOf('#alertOnlineBooking')), /^0 of 9$/, 'the Overview shortcut shows the same count');
+      assert.deepEqual(tab.errors, []);
+    } finally { await tab.close(); }
+  });
+
+  it('on a phone, each service row keeps its status, switch and Edit details inside the card', async () => {
+    // 320 px: the narrowest supported screen (web fonts and icons are blocked here, so text is narrower than on a real phone)
+    const tab = await open('pages/admin/dashboard.html', '#services', ADMIN, adminRoutes(), { width: 320, height: 700 });
+    try {
+      assert.ok(await tab.waitFor(`document.querySelectorAll('#servicesCatalogContainer [data-service-row]').length === 9`));
+      const overflowing = await tab.evaluate(`[...document.querySelectorAll('[data-service-row]')]
+        .filter(row => [...row.querySelectorAll('*')].some(el => el.getBoundingClientRect().right > row.getBoundingClientRect().right + 1))
+        .map(row => row.querySelector('.service-availability-name').textContent.trim())`);
+      assert.deepEqual(overflowing, []);
+      assert.equal(await tab.evaluate(`document.documentElement.scrollWidth <= window.innerWidth`), true, 'no sideways scrolling');
+    } finally { await tab.close(); }
+  });
+
+  it('turning on a service that is not set up opens its setup, checks the values, then saves and opens it in one step', async () => {
+    const puppyCut = ADMIN_SERVICES.find(service => service.name === 'Puppy Cut');
+    const activated = ok({ service: { ...puppyCut, species: ['Dog'], duration_minutes: 90, online_booking_enabled: true, bookable: true, unavailable_reason: '' }, version: 2, updated_at: new Date().toISOString() });
+    const routes = adminRoutes({
+      [`/admin/services/${puppyCut.id}`]: [
+        { status: 500, body: { success: false, error: 'Could not save this service configuration.' } },
+        activated
+      ]
+    });
+    const tab = await open('pages/admin/dashboard.html', '#services', ADMIN, routes);
+    const toggle = `[data-service-toggle="${puppyCut.id}"]`;
+    const puts = `window.__requests.filter(r => r.method === 'PUT' && r.route === '/admin/services/${puppyCut.id}').map(r => JSON.parse(r.body))`;
+    try {
+      assert.ok(await tab.waitFor(`document.querySelector('${toggle}') !== null`));
+      await tab.click(toggle);
+      assert.ok(await tab.waitFor(`document.getElementById('serviceSetupDialog')?.open === true`), 'the setup dialog opens');
+      assert.match(await tab.evaluate(textOf('#serviceSetupTitle')), /Set up Puppy Cut for online booking/);
+      assert.match(await tab.evaluate(textOf('#serviceSetupIntro')), /enter a confirmed duration and applicable species/);
+      assert.equal(await tab.evaluate(`document.querySelectorAll('#serviceSetupForm .ph-field-missing').length`), 2, 'the two missing settings are marked');
+      assert.equal(await tab.evaluate(`document.activeElement.id`), 'serviceSetupDuration', 'focus starts on the first missing setting');
+      assert.deepEqual(await tab.evaluate(puts), [], 'nothing is saved by opening it');
+
+      // Invalid values are refused before anything is sent
+      await tab.type('#serviceSetupDuration', '3');
+      await tab.click('#serviceSetupSubmit');
+      assert.match(await tab.evaluate(textOf('#serviceSetupError')), /whole-number duration from 5 to 480/);
+      await tab.type('#serviceSetupDuration', '90');
+      await tab.click('#serviceSetupSubmit');
+      assert.match(await tab.evaluate(textOf('#serviceSetupError')), /Choose at least one species/);
+      assert.deepEqual(await tab.evaluate(puts), []);
+
+      // A failed save keeps the dialog open with the reason, and the switch stays off
+      await tab.click('#serviceSetupForm input[name="species"][value="Dog"]');
+      await tab.click('#serviceSetupSubmit');
+      assert.ok(await tab.waitFor(`/Could not save this service configuration/.test(document.getElementById('serviceSetupError').textContent)`));
+      assert.equal(await tab.evaluate(`document.getElementById('serviceSetupDialog').open`), true);
+      assert.equal(await tab.evaluate(`document.querySelector('${toggle}').getAttribute('aria-checked')`), 'false');
+
+      await tab.click('#serviceSetupSubmit');
+      assert.ok(await tab.waitFor(`document.getElementById('serviceSetupDialog').open === false`));
+      const [, saved] = await tab.evaluate(puts);
+      assert.deepEqual({ species: saved.species, duration_minutes: saved.duration_minutes, online_booking_enabled: saved.online_booking_enabled, expected_version: saved.expected_version },
+        { species: ['Dog'], duration_minutes: 90, online_booking_enabled: true, expected_version: 1 }, 'settings and availability are saved in one request');
+      assert.equal(await tab.evaluate(`document.querySelector('${toggle}').getAttribute('aria-checked')`), 'true');
+      assert.match(await tab.evaluate(textOf('#adminDashboardStatus')), /Puppy Cut is set up and available for online booking/);
+      assert.match(await tab.evaluate(textOf(`[data-service-row="${puppyCut.id}"]`)), /Set up[\s\S]*Dogs only · 1 hr 30 min/);
+      assert.equal(await tab.evaluate(`document.activeElement.getAttribute('data-service-toggle')`), puppyCut.id, 'focus returns to the switch');
       assert.deepEqual(tab.errors, []);
     } finally { await tab.close(); }
   });
@@ -573,7 +638,6 @@ describe('Admin Dashboard in a browser (mocked API)', { skip }, () => {
       assert.match(await tab.evaluate(textOf(`[data-service-row="${bath.id}"]`)), /Existing appointments are not affected[\s\S]*Temporarily unavailable/);
       assert.match(await tab.evaluate(textOf('#adminDashboardStatus')), /Bath is temporarily unavailable for new online bookings/);
       assert.match(await tab.evaluate(textOf('#bookingStatusSummary')), /open for 1 of 9 services/);
-      assert.equal(await tab.evaluate(`document.querySelector('.service-config-form[data-service-id="${bath.id}"]').dataset.serviceVersion`), '2', 'the settings form saves against the new version');
       assert.equal(await tab.evaluate(serviceListLoads), loadsBefore, 'no full reload');
 
       await tab.click(bathSwitch);
@@ -604,7 +668,8 @@ describe('Admin Dashboard in a browser (mocked API)', { skip }, () => {
       assert.ok(await tab.waitFor(`document.querySelector('[data-service-toggle="${configured[0].id}"]')?.getAttribute('aria-checked') === 'true'`));
       await tab.click(`[data-service-toggle="${configured[0].id}"]`);
       assert.ok(await tab.waitFor(`/changed in another session/.test(document.getElementById('adminDashboardStatus').textContent)`));
-      assert.ok(await tab.waitFor(`document.querySelector('.service-config-form[data-service-id="${configured[0].id}"]')?.dataset.serviceVersion === '4'`), 'the latest version is loaded');
+      assert.ok(await tab.waitFor(`window.__requests.filter(r => r.method === 'GET' && r.route === '/admin/services').length === 2`), 'the latest settings are loaded');
+      assert.ok(await tab.waitFor(`/Not offered for new online bookings/.test(document.querySelector('[data-service-row="${configured[0].id}"]')?.innerText || '')`));
       assert.equal(await tab.evaluate(`document.querySelector('[data-service-toggle="${configured[0].id}"]').getAttribute('aria-checked')`), 'false');
     } finally { await tab.close(); }
   });

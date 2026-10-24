@@ -7,6 +7,7 @@
 //   (including earlier "Checkup" appointments with their saved duration); the owner sees the server's result.
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
+const crypto = require('crypto');
 const { startTestApp } = require('./helpers/harness');
 
 let t;
@@ -90,7 +91,10 @@ describe('Admin Dashboard operations are for administrators only', () => {
       ['POST', '/admin/dashboard/medical-records/create', { pet_id: visit.pet_id, record_date: t.manilaDate(0) }],
       ['PUT', '/admin/dashboard/user-role', { id: owner.id, role: 'admin' }],
       ['PUT', '/admin/dashboard/contact-message-status', { id: 'any', status: 'Read' }],
-      ['PUT', '/appointments/updateStatus', { id: visit.id, status: 'Approved' }]
+      ['POST', `/admin/dashboard/contact-messages/${crypto.randomUUID()}/reply`, { reply: 'Hello' }],
+      ['PUT', '/admin/clinic-settings', { phone: '0917 123 4567' }],
+      ['POST', `/admin/email-logs/${crypto.randomUUID()}/retry`, {}],
+      ['PUT', `/admin/services/${t.db.table('pethub_service_catalog')[0].id}`, { online_booking_enabled: true }]
     ];
     for (const [method, route, body] of writes) {
       assert.equal((await t.api(method, `${route}?user_id=${owner.id}`, { token: owner.token, body })).status, 403, `${route} as an owner`);
@@ -101,6 +105,7 @@ describe('Admin Dashboard operations are for administrators only', () => {
     }
     assert.equal(t.appointmentRow(visit.id).status, 'Pending');
     assert.equal(t.db.find('users', row => row.id === owner.id).role, 'user');
+    assert.equal(t.db.table('system_settings').length, 0, 'clinic details unchanged');
   });
 
   it('Appointment Management: the server applies the schedule and status rules, and the owner sees its result', async () => {

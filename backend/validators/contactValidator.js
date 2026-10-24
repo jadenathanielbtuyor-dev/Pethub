@@ -1,52 +1,57 @@
-const {
-  hasValue,
-  trimValue,
-  normalizeEmail,
-  isEmailLike
-} = require('./commonValidator');
+const { hasValue, trimValue, isUuid } = require('./commonValidator');
 
-const CONTACT_LIMITS = Object.freeze({ name: 100, email: 254, message: 2000 });
+// Same limits as the Contact form's maxlength (pages/public/contact.html) and the database checks
+// (contact_messages_subject_length, contact_messages_message_length, contact_messages_reply_length)
+const CONTACT_LIMITS = Object.freeze({ subject: 120, message: 2000, reply: 2000 });
+// Characters that cannot be shown in a message (tabs and new lines are allowed in the message text)
+const CONTROL_CHARACTERS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 
+function contactError(message, field) {
+  return { error: { statusCode: 400, body: { success: false, error: message, ...(field ? { field } : {}) } } };
+}
+
+function readText(value) {
+  return typeof value === 'string' ? value.replace(/\r\n?/g, '\n').trim() : '';
+}
+
+// POST /contact { subject, message }. The sender is the signed-in account (routes/contact.js runs requireAuth), so any
+// name, email or user id in the body is ignored: the service takes them from the account record.
 function validateContactRequest(body = {}) {
-  const cleanName = trimValue(body.name);
-  const cleanEmail = normalizeEmail(body.email);
-  const cleanMessage = trimValue(body.message);
-  const normalizedUserId = hasValue(body.user_id) ? trimValue(body.user_id) : '';
+  const input = body && typeof body === 'object' ? body : {};
+  const cleanSubject = readText(input.subject).replace(/\s+/g, ' ');
+  const cleanMessage = readText(input.message);
 
-  if (!cleanName || !cleanEmail || !cleanMessage) {
-    return {
-      error: { statusCode: 400, body: { success: false, error: 'Name, email, and message are required' } }
-    };
+  if (!cleanSubject) return contactError('Enter a subject for your message.', 'subject');
+  if (cleanSubject.length > CONTACT_LIMITS.subject) {
+    return contactError(`Subject must be ${CONTACT_LIMITS.subject} characters or fewer.`, 'subject');
   }
-
-  if (!isEmailLike(cleanEmail) || cleanEmail.length > CONTACT_LIMITS.email) {
-    return {
-      error: { statusCode: 400, body: { success: false, error: 'Enter a valid email address' } }
-    };
-  }
-
-  // Same limits as the form's maxlength (pages/public/contact.html); nothing longer is stored
-  if (cleanName.length > CONTACT_LIMITS.name) {
-    return {
-      error: { statusCode: 400, body: { success: false, error: `Name must be ${CONTACT_LIMITS.name} characters or fewer` } }
-    };
-  }
-
+  if (!cleanMessage) return contactError('Enter your message.', 'message');
   if (cleanMessage.length > CONTACT_LIMITS.message) {
-    return {
-      error: { statusCode: 400, body: { success: false, error: `Message must be ${CONTACT_LIMITS.message.toLocaleString('en-US')} characters or fewer` } }
-    };
+    return contactError(`Message must be ${CONTACT_LIMITS.message.toLocaleString('en-US')} characters or fewer.`, 'message');
+  }
+  if (CONTROL_CHARACTERS.test(cleanSubject) || CONTROL_CHARACTERS.test(cleanMessage)) {
+    return contactError('Your message contains characters that cannot be shown. Remove them and try again.', 'message');
   }
 
-  return {
-    cleanName,
-    cleanEmail,
-    cleanMessage,
-    normalizedUserId
-  };
+  return { cleanSubject, cleanMessage };
+}
+
+// POST /admin/dashboard/contact-messages/:id/reply { reply }
+function validateContactReply(params = {}, body = {}) {
+  const messageId = trimValue(params.id);
+  if (!isUuid(messageId)) return { error: { statusCode: 404, body: { success: false, error: 'Contact message not found.' } } };
+  const reply = readText(body && typeof body === 'object' ? body.reply : '');
+  if (!reply) return contactError('Write a reply before sending it.', 'reply');
+  if (reply.length > CONTACT_LIMITS.reply) {
+    return contactError(`Reply must be ${CONTACT_LIMITS.reply.toLocaleString('en-US')} characters or fewer.`, 'reply');
+  }
+  if (CONTROL_CHARACTERS.test(reply)) return contactError('The reply contains characters that cannot be shown.', 'reply');
+  return { messageId, reply };
 }
 
 module.exports = {
   CONTACT_LIMITS,
-  validateContactRequest
+  hasValue,
+  validateContactRequest,
+  validateContactReply
 };

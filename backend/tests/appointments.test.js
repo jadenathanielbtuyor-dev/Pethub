@@ -49,11 +49,9 @@ function book(user, body) {
   return t.api('POST', '/appointments/create', { token: user.token, body });
 }
 
+// The admin status endpoint is the only one (the unused PUT /appointments/updateStatus duplicate was removed)
 function setStatusVia(endpoint, admin, appointmentId, status) {
-  if (endpoint === 'admin') {
-    return t.api('PUT', `/admin/dashboard/appointment-status?user_id=${admin.id}`, { token: admin.token, body: { id: appointmentId, status } });
-  }
-  return t.api('PUT', '/appointments/updateStatus', { token: admin.token, body: { id: appointmentId, status, user_id: admin.id } });
+  return t.api('PUT', `/admin/dashboard/appointment-status?user_id=${admin.id}`, { token: admin.token, body: { id: appointmentId, status } });
 }
 
 function appointmentsOf(user) {
@@ -228,7 +226,7 @@ describe('Booking without payments', () => {
 });
 
 describe('Appointment management without payment checks', () => {
-  it('admins approve, complete and cancel on both status endpoints, including appointments with the legacy deposit flag', async () => {
+  it('admins approve, complete and cancel, including appointments with the legacy deposit flag', async () => {
     const admin = t.createUser({ role: 'admin' });
     const user = t.createUser();
     const pet = t.createPet(user);
@@ -247,12 +245,14 @@ describe('Appointment management without payment checks', () => {
     assert.equal(approved.body.appointment.handled_by, admin.id);
     assertNoPaymentFields(approved.body, 'the approval response');
 
-    const completed = await setStatusVia('legacy', admin, legacy.id, 'Completed');
+    // The visit takes place: an appointment can be completed only after its start time
+    t.appointmentRow(legacy.id).appointment_date = t.manilaDate(-1);
+    const completed = await setStatusVia('admin', admin, legacy.id, 'Completed');
     assert.equal(completed.status, 200);
     assert.equal(t.appointmentRow(legacy.id).status, 'Completed');
 
-    const approvedLegacyRoute = await setStatusVia('legacy', admin, ordinary.id, 'Approved');
-    assert.equal(approvedLegacyRoute.status, 200);
+    const approvedOrdinary = await setStatusVia('admin', admin, ordinary.id, 'Approved');
+    assert.equal(approvedOrdinary.status, 200);
     const cancelled = await setStatusVia('admin', admin, ordinary.id, 'Cancelled');
     assert.equal(cancelled.status, 200);
     assertNoPaymentFields(cancelled.body, 'the cancellation response');
@@ -275,13 +275,15 @@ describe('Appointment management without payment checks', () => {
     const user = t.createUser();
     const appointment = t.createAppointment(user, { daysAhead: nextDay() });
     assert.equal((await setStatusVia('admin', admin, appointment.id, 'Approved')).status, 200);
-    assert.equal((await setStatusVia('legacy', admin, appointment.id, 'Cancelled')).status, 200);
+    assert.equal((await setStatusVia('admin', admin, appointment.id, 'Cancelled')).status, 200);
 
     const logs = t.db.table('activity_logs').filter(row => String(row.target_id) === appointment.id);
     assert.deepEqual(logs.map(row => row.action), [
       'Updated appointment status from Pending to Approved',
-      'Updated appointment status to Cancelled'
+      'Updated appointment status from Approved to Cancelled'
     ]);
+    // The clinic cancelled it: recorded as cancelled by the admin, not the owner
+    assert.equal(t.appointmentRow(appointment.id).cancelled_by, admin.id);
   });
 
   it('keeps rejecting invalid status changes', async () => {
@@ -292,7 +294,7 @@ describe('Appointment management without payment checks', () => {
     const cancelled = t.createAppointment(user, { daysAhead: nextDay(), status: 'Cancelled' });
 
     assert.equal((await setStatusVia('admin', admin, pending.id, 'Completed')).status, 400, 'Pending cannot jump to Completed');
-    assert.equal((await setStatusVia('legacy', admin, completed.id, 'Approved')).status, 400);
+    assert.equal((await setStatusVia('admin', admin, completed.id, 'Approved')).status, 400);
     assert.equal((await setStatusVia('admin', admin, cancelled.id, 'Approved')).status, 400);
     assert.equal((await setStatusVia('admin', admin, pending.id, 'Paid')).status, 400, 'not a status');
     assert.equal(t.appointmentRow(pending.id).status, 'Pending');
@@ -300,11 +302,15 @@ describe('Appointment management without payment checks', () => {
     assert.equal(t.appointmentRow(cancelled.id).status, 'Cancelled');
   });
 
-  it('refuses non-admins on both status endpoints', async () => {
+  it('refuses non-admins, and the removed duplicate status endpoint changes nothing for anyone', async () => {
     const user = t.createUser();
+    const admin = t.createUser({ role: 'admin' });
     const appointment = t.createAppointment(user, { daysAhead: nextDay() });
     assert.equal((await setStatusVia('admin', user, appointment.id, 'Approved')).status, 403);
-    assert.equal((await setStatusVia('legacy', user, appointment.id, 'Approved')).status, 403);
+    for (const actor of [user, admin]) {
+      const removed = await t.api('PUT', '/appointments/updateStatus', { token: actor.token, body: { id: appointment.id, status: 'Approved', user_id: actor.id } });
+      assert.equal(removed.status, 404, 'PUT /appointments/updateStatus no longer exists');
+    }
     assert.equal((await t.api('PUT', '/admin/dashboard/appointment-status', { body: { id: appointment.id, status: 'Approved' } })).status, 401);
     assert.equal(t.appointmentRow(appointment.id).status, 'Pending');
   });
@@ -317,7 +323,7 @@ describe('Appointment management without payment checks', () => {
     const overlapping = t.createAppointment(user, { daysAhead, time: '09:30:00' });
 
     assert.equal((await setStatusVia('admin', admin, first.id, 'Approved')).status, 200);
-    for (const endpoint of ['admin', 'legacy']) {
+    for (const endpoint of ['admin']) {
       const conflict = await setStatusVia(endpoint, admin, overlapping.id, 'Approved');
       assert.equal(conflict.status, 409);
       assert.equal(conflict.body.error, 'Selected time is unavailable.');
@@ -330,7 +336,7 @@ describe('Appointment management without payment checks', () => {
   it('reports a concurrent status change instead of overwriting it', async () => {
     const admin = t.createUser({ role: 'admin' });
     const user = t.createUser();
-    for (const endpoint of ['admin', 'legacy']) {
+    for (const endpoint of ['admin']) {
       const appointment = t.createAppointment(user, { daysAhead: nextDay() });
       t.db.interceptNext({ table: 'appointments', action: 'rpc' }, (query, database) => {
         database.find('appointments', row => row.id === appointment.id).status = 'Cancelled';

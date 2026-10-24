@@ -72,6 +72,14 @@ class FakeQuery {
     return this;
   }
 
+  // onConflict: the unique column that decides between updating an existing row and inserting a new one
+  upsert(rows, { onConflict } = {}) {
+    this.action = 'upsert';
+    this.onConflict = onConflict;
+    this.payload = (Array.isArray(rows) ? rows : [rows]).map(row => ({ ...row }));
+    return this;
+  }
+
   update(values) {
     this.action = 'update';
     this.payload = { ...values };
@@ -266,7 +274,10 @@ class FakeDatabase {
       }
       appointment.status = args.p_status;
       appointment.handled_by = args.p_handled_by;
-      if (args.p_status === 'Cancelled') appointment.cancelled_at = new Date().toISOString();
+      if (args.p_status === 'Cancelled') {
+        appointment.cancelled_at = new Date().toISOString();
+        appointment.cancelled_by = args.p_handled_by;
+      }
       return { data: { outcome: 'updated', appointment_id: appointment.id }, error: null, status: 200 };
     }
     if (functionName !== 'cancel_appointment_for_owner') {
@@ -285,6 +296,7 @@ class FakeDatabase {
     if (!Number.isFinite(start) || start - Date.now() < 2 * 60 * 60 * 1000) return { data: false, error: null, status: 200 };
     appointment.status = 'Cancelled';
     appointment.cancelled_at = new Date().toISOString();
+    appointment.cancelled_by = args.p_owner_id;
     return { data: true, error: null, status: 200 };
   }
 
@@ -320,6 +332,17 @@ class FakeDatabase {
       }
     }
     return null;
+  }
+
+  // Rows a write returns: like PostgREST, .single()/.maybeSingle() turn the list into one object (or null)
+  returned(query, definition, rows) {
+    if (!query.returning) return { data: null, error: null };
+    const projected = this.project(definition, rows, query.columns);
+    if (!query.singleMode) return { data: projected, error: null };
+    if (projected.length > 1 || (projected.length === 0 && query.singleMode === 'single')) {
+      return this.error('PGRST116', 'JSON object requested, multiple (or no) rows returned');
+    }
+    return { data: projected[0] || null, error: null };
   }
 
   project(definition, rows, columnsText) {
@@ -360,7 +383,23 @@ class FakeDatabase {
       if (uniqueError) return uniqueError;
 
       table.push(...newRows);
-      return { data: query.returning ? this.project(definition, newRows, query.columns) : null, error: null, status: 201 };
+      return { ...this.returned(query, definition, newRows), status: 201 };
+    }
+
+    if (query.action === 'upsert') {
+      const payloadColumns = [...new Set(query.payload.flatMap(row => Object.keys(row)))];
+      const payloadError = this.checkColumns(definition, payloadColumns, 'PGRST204') ||
+        this.checkUuids(definition, query.payload.flatMap(row => Object.entries(row)));
+      if (payloadError) return payloadError;
+
+      const written = query.payload.map(row => {
+        const existing = table.find(stored => sameValue(stored[query.onConflict], row[query.onConflict]));
+        if (existing) return Object.assign(existing, row);
+        const created = this.applyDefaults(definition, { ...row });
+        table.push(created);
+        return created;
+      });
+      return { ...this.returned(query, definition, written), status: 201 };
     }
 
     if (query.action === 'update') {
@@ -374,7 +413,7 @@ class FakeDatabase {
       if (uniqueError) return uniqueError;
 
       targets.forEach((row, index) => Object.assign(row, updatedRows[index]));
-      return { data: query.returning ? this.project(definition, targets, query.columns) : null, error: null, status: 200 };
+      return { ...this.returned(query, definition, targets), status: 200 };
     }
 
     if (query.action === 'delete') {
@@ -459,9 +498,9 @@ function createPetHubDatabase({ usersProfileColumns = true } = {}) {
       columns: [
         'id', 'user_id', 'pet_id', 'pet_name', 'service_type', 'estimated_duration_minutes', 'appointment_date',
         'appointment_time', 'status', 'handled_by', 'created_at', 'appointment_reference', 'payment_status',
-        'confirmed_at', 'cancelled_at', 'deposit_required'
+        'confirmed_at', 'cancelled_at', 'deposit_required', 'cancelled_by'
       ],
-      uuidColumns: ['id', 'user_id', 'pet_id', 'handled_by'],
+      uuidColumns: ['id', 'user_id', 'pet_id', 'handled_by', 'cancelled_by'],
       // Database defaults (payment_status and deposit_required are legacy columns the application no longer sets)
       defaults: {
         id: uuid,
@@ -506,9 +545,26 @@ function createPetHubDatabase({ usersProfileColumns = true } = {}) {
       defaults: { id: uuid, created_at: now, appointment_id: () => null },
       uniqueIndexes: [{ name: 'medical_records_one_per_appointment_key', columns: ['appointment_id'], where: row => row.appointment_id !== null && row.appointment_id !== undefined }]
     },
+    // database/migrations/2026-10-24_contact_cancellation_email_log.sql added user_id, subject and reply_message
     contact_messages: {
-      columns: ['id', 'fullname', 'email', 'message', 'status', 'created_at'],
-      defaults: { id: uuid, created_at: now }
+      columns: ['id', 'user_id', 'fullname', 'email', 'subject', 'message', 'status', 'created_at', 'reply_message', 'replied_at', 'handled_by'],
+      uuidColumns: ['id', 'user_id', 'handled_by'],
+      defaults: { id: uuid, created_at: now, status: () => 'Unread', user_id: () => null, subject: () => null, reply_message: () => null, replied_at: () => null, handled_by: () => null }
+    },
+    email_logs: {
+      columns: ['id', 'user_id', 'email_type', 'recipient_email', 'subject', 'status', 'error_message', 'sent_at', 'created_at', 'appointment_id', 'contact_message_id'],
+      uuidColumns: ['id', 'user_id', 'appointment_id', 'contact_message_id'],
+      defaults: { id: uuid, created_at: now, status: () => 'Pending', error_message: () => null, sent_at: () => null, appointment_id: () => null, contact_message_id: () => null },
+      uniqueIndexes: [
+        { name: 'email_logs_one_per_appointment_type', columns: ['appointment_id', 'email_type'] },
+        { name: 'email_logs_one_per_contact_message_type', columns: ['contact_message_id', 'email_type'] }
+      ]
+    },
+    system_settings: {
+      columns: ['id', 'setting_key', 'setting_value', 'updated_at'],
+      uuidColumns: ['id'],
+      defaults: { id: uuid, updated_at: now },
+      uniqueIndexes: [{ name: 'system_settings_setting_key_key', columns: ['setting_key'] }]
     }
   };
 

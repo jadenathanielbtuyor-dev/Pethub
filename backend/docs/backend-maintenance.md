@@ -36,7 +36,7 @@ Roles: `PUT /admin/dashboard/user-role` accepts only `user` and `admin`, and ref
 
 ## Request Limits
 
-`middleware/rateLimit.js` limits login, registration, email verification, verification-code resends, password reset, the contact form, the chatbot (per client IP) and profile updates (per account); the numbers are in `constants/rateLimits.js`. `GET /admin/system-logs?limit=` returns 20 entries by default and never more than 200. Over the limit the API answers 429 with `Retry-After`. `server.js` trusts one proxy hop (Railway) so the client IP is the visitor's. The counts live in memory: they reset when the server restarts and are not shared between instances.
+`middleware/rateLimit.js` limits login, registration, email verification, verification-code resends, password reset, the chatbot (per client IP), and profile updates, booking requests and contact messages (per account); the numbers are in `constants/rateLimits.js`. `GET /admin/system-logs?limit=` returns 20 entries by default and never more than 200. Over the limit the API answers 429 with `Retry-After`. `server.js` trusts one proxy hop (Railway) so the client IP is the visitor's. The counts live in memory: they reset when the server restarts and are not shared between instances.
 
 ## Services and Scheduling
 
@@ -44,7 +44,17 @@ The clinic's services (Bath, Trim, Puppy Cut, Full Grooming, Nail Cutting, Face 
 
 Durations are NOT confirmed yet: every service is seeded with no duration and online booking off, so it cannot be booked until an administrator saves a clinic-confirmed duration, at least one species and turns online booking on (the database refuses "on" without the other two). Puppy Cut is seeded with no species because its species rule awaits the clinic. Bookings and approvals go through the `create_appointment_if_available` / `update_appointment_status_if_available` database functions, which lock the date so separate backend instances cannot double-book. Earlier service names saved on existing appointments (e.g. "Checkup") cannot be booked any more but those appointments keep their saved duration and can still be approved, completed or cancelled; one saved without a duration can be approved but blocks no time. New pet profiles must be a Dog or a Cat.
 
-Cancelling (owner, at least 2 hours before the Asia/Manila start, or administrator) keeps the appointment row and records the time in `appointments.cancelled_at`.
+In the Admin Dashboard, switching on a service that has no confirmed duration or species opens a setup dialog; "Save and turn on" stores the settings and opens the service in one `PUT /admin/services/:id`. A service that already has appointments keeps its name (appointments store the name as text), so a rename is refused with 409. An administrator can approve a request only before its start time and mark an appointment Completed only after its start time (Asia/Manila).
+
+Cancelling (owner, at least 2 hours before the Asia/Manila start, or administrator) keeps the appointment row and records when (`appointments.cancelled_at`) and by whom (`appointments.cancelled_by`). Every status change is also written to `appointment_status_history` by a database trigger. The owner's confirmation email ("Your PetHub Appointment Has Been Cancelled") is sent before the response, so the owner is told whether it went out; a failed email never undoes the cancellation.
+
+## Contact Messages, Emails and Clinic Details
+
+`POST /contact` requires a signed-in account: the sender's name and email are copied from the account, never taken from the request. A repeat of the same subject and text within 10 minutes is stored once. Customers see their messages and the clinic's reply with `GET /contact/mine`. Administrators list messages, mark them read and reply once (`POST /admin/dashboard/contact-messages/:id/reply`); the reply is stored first and then emailed to the account's address.
+
+Appointment and reply emails are recorded in `email_logs` (Pending, then Sent or Failed); a unique index allows one email of each type per appointment or message, so a retried request cannot send a second copy. A Failed email can be sent again from the Admin Dashboard (`POST /admin/email-logs/:id/retry`), once at a time. Verification and password-reset emails are not logged there.
+
+The clinic's public phone, email, address and opening hours are stored in `system_settings` (keys `clinic.phone`, `clinic.email`, `clinic.address`, `clinic.hours`), edited in System Management > Contact messages (`GET`/`PUT /admin/clinic-settings`) and published at `GET /contact/clinic-info`. None are shipped: until the clinic enters them, the Contact page and emails point customers to the signed-in Contact form. These features need `database/migrations/2026-10-24_contact_cancellation_email_log.sql` (applied to the live project on 2026-10-24, see `database/migrations/APPLIED.md`).
 
 ## Pet Profiles
 

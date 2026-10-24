@@ -1,6 +1,6 @@
 // Appointment approved / cancelled emails (services/appointmentNotificationsService.js), sent for every appointment
-// from both status endpoints. They go out in the background through Brevo (faked here), use no payment wording,
-// and a failed email never undoes the status change.
+// from the admin status endpoint. They go out in the background through Brevo (faked here), use no payment wording,
+// are recorded in email_logs, and a failed email never undoes the status change.
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('path');
@@ -27,10 +27,7 @@ after(async () => {
 });
 
 function setStatusVia(endpoint, appointmentId, status, actor = admin) {
-  if (endpoint === 'admin') {
-    return t.api('PUT', `/admin/dashboard/appointment-status?user_id=${actor.id}`, { token: actor.token, body: { id: appointmentId, status } });
-  }
-  return t.api('PUT', '/appointments/updateStatus', { token: actor.token, body: { id: appointmentId, status, user_id: actor.id } });
+  return t.api('PUT', `/admin/dashboard/appointment-status?user_id=${actor.id}`, { token: actor.token, body: { id: appointmentId, status } });
 }
 
 function assertNoPaymentWording(email) {
@@ -40,7 +37,7 @@ function assertNoPaymentWording(email) {
 }
 
 describe('Approval email', () => {
-  for (const endpoint of ['admin', 'legacy']) {
+  for (const endpoint of ['admin']) {
     it(`${endpoint} endpoint: approving emails the customer once, with the appointment details and no payment wording`, async () => {
       const user = t.createUser({ name: 'Ana Reyes' });
       const pet = t.createPet(user, 'Bantay');
@@ -79,7 +76,7 @@ describe('Cancellation email', () => {
     const booking = t.createAppointment(user, { pet, daysAhead: nextDay(), status: 'Approved' });
 
     assert.equal((await setStatusVia('admin', request.id, 'Cancelled')).status, 200);
-    assert.equal((await setStatusVia('legacy', booking.id, 'Cancelled')).status, 200);
+    assert.equal((await setStatusVia('admin', booking.id, 'Cancelled')).status, 200);
     await t.settleEmails();
 
     const [requestEmail, bookingEmail] = t.emailsTo(user.email);
@@ -98,8 +95,9 @@ describe('Cancellation email', () => {
 describe('When no email is sent', () => {
   it('completing an appointment sends nothing', async () => {
     const user = t.createUser();
-    const appointment = t.createAppointment(user, { daysAhead: nextDay(), status: 'Approved' });
-    assert.equal((await setStatusVia('legacy', appointment.id, 'Completed')).status, 200);
+    // A visit that has taken place (an appointment is completed only after its start time)
+    const appointment = t.createAppointment(user, { daysAhead: -1, status: 'Approved' });
+    assert.equal((await setStatusVia('admin', appointment.id, 'Completed')).status, 200);
     await t.settleEmails();
     assert.equal(t.emailsTo(user.email).length, 0);
   });
@@ -132,7 +130,7 @@ describe('Email failures and content safety', () => {
     t.failNextEmail({ status: 500 });
     const approveResponse = await setStatusVia('admin', approved.id, 'Approved');
     t.failNextEmail({ network: true });
-    const cancelResponse = await setStatusVia('legacy', cancelled.id, 'Cancelled');
+    const cancelResponse = await setStatusVia('admin', cancelled.id, 'Cancelled');
     await t.settleEmails();
 
     assert.equal(approveResponse.status, 200);
@@ -140,8 +138,12 @@ describe('Email failures and content safety', () => {
     assert.equal(t.appointmentRow(approved.id).status, 'Approved');
     assert.equal(t.appointmentRow(cancelled.id).status, 'Cancelled');
     assert.equal(t.emailsTo(user.email).length, 0);
-    const failures = t.logs.filter(line => line.includes('appointments.decision_email_failed'));
+    const failures = t.logs.filter(line => line.includes('email.delivery_failed'));
     assert.equal(failures.length, 2);
+    // Each failure is recorded for the clinic, which can resend it from Appointment Management
+    const logged = t.db.table('email_logs').filter(row => [approved.id, cancelled.id].includes(row.appointment_id));
+    assert.deepEqual(logged.map(row => row.status).sort(), ['Failed', 'Failed']);
+    assert.ok(logged.every(row => row.error_message && !row.error_message.includes(t.secrets.brevoApiKey)));
   });
 
   it('a customer without an email address is skipped and logged', async () => {
@@ -192,7 +194,7 @@ describe('Email failures and content safety', () => {
     await t.settleEmails();
 
     const logText = t.logs.join('\n');
-    assert.ok(logText.includes('appointments.decision_email_sent'));
+    assert.ok(logText.includes('email.delivered'));
     assert.ok(!logText.includes(t.secrets.brevoApiKey));
     assert.ok(!logText.includes(user.email));
     assert.ok(!logText.includes('Private Person'));

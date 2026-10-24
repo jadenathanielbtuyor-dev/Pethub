@@ -96,11 +96,16 @@ describe('Public imagery', () => {
   });
 });
 describe('Forms match the backend', () => {
-  it('the contact form uses the backend\'s length limits', () => {
+  it('the contact form uses the backend\'s length limits and asks signed-out visitors to log in first', () => {
     const html = read('pages/public/contact.html');
-    assert.match(html, new RegExp(`id="name"[^>]*maxlength="${CONTACT_LIMITS.name}"`));
-    assert.match(html, new RegExp(`id="email"[^>]*maxlength="${CONTACT_LIMITS.email}"`));
+    assert.match(html, new RegExp(`id="subject"[^>]*maxlength="${CONTACT_LIMITS.subject}"`));
     assert.match(html, new RegExp(`id="message"[^>]*maxlength="${CONTACT_LIMITS.message}"`));
+    assert.doesNotMatch(html, /id="(name|email)"/, 'the sender comes from the account, not typed fields');
+    // Without JavaScript the login prompt is what shows; the form starts hidden
+    assert.match(html, /<div id="contactSignedOut"[^>]*role="note">/);
+    assert.match(html, /<form id="contactForm"[^>]*hidden>/);
+    assert.match(html, /href="\.\.\/auth\/login\.html\?next=contact"/);
+    assert.match(html, /href="\.\.\/auth\/register\.html\?next=contact"/);
   });
 
   it('the login form shows its errors beside each field and has a labelled password toggle', () => {

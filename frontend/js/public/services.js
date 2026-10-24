@@ -26,7 +26,6 @@
           <div class="ph-card-grid ph-card-grid-3 mt-6">
             ${entries.map(service => {
               const species = Array.isArray(service.species) ? service.species : [];
-              const unavailableReason = String(service.unavailable_reason || 'Online booking is not available for this service.');
               const serviceQuery = `service=${encodeURIComponent(String(service.id || service.name || ''))}`;
               const user = typeof root.getUser === 'function' ? root.getUser() : null;
               const signedInCustomer = typeof root.isLoggedIn === 'function' && root.isLoggedIn()
@@ -36,7 +35,8 @@
                 : `../../pages/auth/login.html?next=appointments&${serviceQuery}`;
               const action = service.bookable === true
                 ? `<a href="${escapeHtml(bookingUrl)}" class="ph-link-arrow" data-book-link>Book this service <i class="ri-arrow-right-line" aria-hidden="true"></i></a>`
-                : `<span class="ph-dash-muted" title="${escapeHtml(unavailableReason)}">${escapeHtml(unavailableReason)}</span>`;
+                // The server's unavailable_reason is written for the clinic (missing settings); customers get the plain fact and a next step
+                : '<span class="ph-dash-muted">Not available for online booking right now.</span> <a href="../../pages/public/contact.html" class="ph-link-arrow">Contact the clinic</a>';
               const duration = Number.isInteger(service.duration_minutes) && service.duration_minutes > 0
                 ? `<p class="mt-2 text-sm text-slate-600">Confirmed duration: ${escapeHtml(service.duration_minutes)} minutes</p>`
                 : '';
@@ -44,7 +44,7 @@
                 <span class="ph-icon"><i class="${service.category === 'veterinary' ? 'ri-stethoscope-line' : 'ri-scissors-cut-line'}" aria-hidden="true"></i></span>
                 <h3 class="ph-card-title">${escapeHtml(service.name)}</h3>
                 <p class="ph-card-text">${escapeHtml(service.description || '')}</p>
-                <p class="mt-3 text-sm text-slate-600">${species.length ? `For ${escapeHtml(species.join(' and '))}` : 'Applicable species have not been confirmed.'}</p>
+                <p class="mt-3 text-sm text-slate-600">${species.length ? `For ${escapeHtml(species.map(name => `${name.toLowerCase()}s`).join(' and '))}` : 'Ask the clinic which pets this service is for.'}</p>
                 ${duration}
                 <div class="mt-5">${action}</div>
               </article>`;

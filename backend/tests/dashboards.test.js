@@ -110,7 +110,7 @@ describe('Dashboard navigation: four sections each', () => {
 });
 
 describe('Dashboard data: real API routes and no invented figures', () => {
-  const DASHBOARD_SCRIPTS = ['js/user/dashboard.js', 'js/user/pets.js', 'js/user/appointments.js', 'js/user/health.js', 'js/admin/dashboard.js', 'js/admin/breeds.js', 'js/shared/ai-widget.js'];
+  const DASHBOARD_SCRIPTS = ['js/user/dashboard.js', 'js/user/pets.js', 'js/user/appointments.js', 'js/user/health.js', 'js/admin/dashboard.js', 'js/admin/breeds.js', 'js/shared/ai-widget.js', 'js/public/contact.js'];
 
   // "/pets/userPets" from `${window.API_BASE_URL}/pets/userPets?user_id=...`, getOwnerJson(`/pets/...`) and
   // requestPetsApi('/pets/...') (My Pets)
@@ -145,6 +145,7 @@ describe('Dashboard data: real API routes and no invented figures', () => {
         // Routes ending in /:id (DELETE /pets/delete/:id, PUT /pets/update/:id, GET /pets/history/:id) are built as
         // `.../pets/delete/${id}`
         const candidate = ['/pets/delete', '/pets/update', '/pets/history', '/appointments/cancel'].includes(route) ? `${route}/some-id`
+          : route === '/admin/email-logs' ? '/admin/email-logs/some-id/retry'
           : route === '/pets/' || route === '/pets' ? '/pets/some-id/weight-reports'
             : route === '/admin/breeds' ? '/admin/breeds'
               : route === '/admin/breeds/' ? '/admin/breeds/some-id' : route;
