@@ -4491,6 +4491,27 @@ body.ph-dash-page {
   list-style: none;
 }
 
+/* The admin dashboard has five sections: one row of five below the desktop sidebar, not four plus one on a second row */
+@media (max-width: 1023.98px) {
+  [data-dashboard="admin"] .ph-dash-nav ul {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 479.98px) {
+  /* Each tab at least as wide as its label ("Appointments" is the longest); the space left is still shared evenly */
+  [data-dashboard="admin"] .ph-dash-nav ul {
+    grid-template-columns: repeat(5, minmax(min-content, 1fr));
+    gap: 0.125rem;
+    padding-inline: 0.25rem;
+  }
+
+  [data-dashboard="admin"] .ph-dash-nav-link {
+    padding-inline: 0.125rem;
+    font-size: 0.6875rem;
+  }
+}
+
 .ph-dash-nav-link {
   display: flex;
   min-height: 3.25rem;

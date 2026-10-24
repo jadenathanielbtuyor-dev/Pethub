@@ -278,9 +278,10 @@ async function getJsonFromResponse(response) {
  */
 function escapeHtml(text) {
   if (!text) return '';
-  const div = document.createElement('div');
-  div.textContent = String(text);
-  return div.innerHTML;
+  // Quotes as well: pages also place the result inside attribute values (value="...", data-*="...")
+  return String(text).replace(/[&<>"']/g, character => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[character]);
 }
 
 /**

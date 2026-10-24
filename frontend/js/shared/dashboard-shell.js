@@ -52,9 +52,13 @@
   function renderNavigation(root) {
     const dashboard = getDashboard();
     const active = document.body.dataset.dashboardSection || dashboard.sections[0].id;
+    // "#..." sections are views of pages/admin/dashboard.html; from another admin page (breeds.html) they link there
+    const activeSection = dashboard.sections.find(section => section.id === active);
+    const viewsOnThisPage = !activeSection || activeSection.href.startsWith('#');
+    const hrefFor = section => (section.href.startsWith('#') && !viewsOnThisPage ? `dashboard.html${section.href}` : section.href);
     const links = dashboard.sections.map(section => `
       <li>
-        <a href="${section.href}" class="ph-dash-nav-link" data-dashboard-section="${section.id}"${section.id === active ? ' aria-current="page"' : ''}>
+        <a href="${hrefFor(section)}" class="ph-dash-nav-link" data-dashboard-section="${section.id}"${section.id === active ? ' aria-current="page"' : ''}>
           <i class="${section.icon}" aria-hidden="true"></i>
           <span class="ph-dash-nav-label">${escape(section.label)}</span>
           <span class="ph-dash-nav-short" aria-hidden="true">${escape(section.short)}</span>

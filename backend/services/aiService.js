@@ -22,6 +22,7 @@ const EMERGENCY_KEYWORDS = [
   'broken bone', 'fracture', 'trauma', 'accident', 'hit by', 'ingested',
   'extreme lethargy', 'unresponsive', 'passing out', 'fainting'
 ];
+const ROUTINE_PHRASES_WITH_EMERGENCY_WORDS = /\bblood ?(tests?|work|panels?|chemistry|count)\b|\b(potty|house|toilet|litter)[- ]?(training )?accidents?\b/g;
 // The same emergencies described in Tagalog / Taglish; these are answered in Tagalog
 const TAGALOG_EMERGENCY_KEYWORDS = [
   'nalason', 'lason', 'nagdudugo', 'dumudugo', 'kombulsyon', 'nangingisay', 'hindi makahinga', 'hindi humihinga',
@@ -673,8 +674,11 @@ const chat = async (req) => {
 
     // ==================== EMERGENCY DETECTION ====================
     // Check for critical emergency keywords
+    // Routine phrases that contain an emergency word ("blood test", "potty accident") are not emergencies by themselves;
+    // any other emergency word in the same message still counts
+    const emergencyText = lowerMessage.replace(ROUTINE_PHRASES_WITH_EMERGENCY_WORDS, ' ');
     const isEmergency = EMERGENCY_KEYWORDS.some(keyword =>
-      lowerMessage.includes(keyword)
+      emergencyText.includes(keyword)
     );
     const isTagalogEmergency = TAGALOG_EMERGENCY_KEYWORDS.some(keyword => lowerMessage.includes(keyword));
 
@@ -690,13 +694,17 @@ const chat = async (req) => {
 
     // ==================== MINI FAQ ENGINE ====================
     // Check for instant FAQ matches (faster response, better UX)
+    // A message that is only part of a known question ("add a pet", "grooming") still finds it, but only as whole words
+    // and only when it says enough: otherwise "a", "is", "how" or "hi" picked an unrelated canned reply
+    const fragment = lowerMessage.trim().replace(/[?!.]+$/, '');
+    const fragmentIsSpecific = fragment.includes(' ') || fragment.length >= 5;
     const faqMatch = Object.keys(MINI_FAQ).find(question => {
       // Short and single-word keys (hi, help, hello, thanks) must match the whole message,
       // otherwise any question containing them gets the canned reply
       if (question.length <= 3 || !question.includes(' ')) {
         return lowerMessage.trim() === question;
       }
-      return lowerMessage.includes(question) || question.includes(lowerMessage);
+      return lowerMessage.includes(question) || (fragmentIsSpecific && ` ${question} `.includes(` ${fragment} `));
     });
 
     if (faqMatch) {

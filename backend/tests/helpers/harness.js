@@ -185,7 +185,7 @@ async function startTestApp({
     } catch (error) {
       json = null;
     }
-    return { status: response.status, body: json, text, contentType: response.headers.get('content-type') || '' };
+    return { status: response.status, body: json, text, contentType: response.headers.get('content-type') || '', headers: response.headers };
   }
 
   // Appointment emails go out in the background; this waits for every one started so far

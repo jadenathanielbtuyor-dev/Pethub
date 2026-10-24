@@ -51,7 +51,8 @@ function isLoggedIn() {
 
 function getSiteRoot() {
   const pathname = window.location.pathname;
-  const baseMatch = pathname.match(/^(.*?)(?:\/pages\/.*|\/index\.html)?$/);
+  // A page at the site root (index.html, or the dashboard.html / admin-dashboard.html redirect pages) is not a folder
+  const baseMatch = pathname.match(/^(.*?)(?:\/pages\/.*|\/[^/]*\.html)?$/);
   const basePath = baseMatch ? baseMatch[1] : '/';
   return `${window.location.origin}${basePath}`.replace(/\/+$|\/$/, '');
 }

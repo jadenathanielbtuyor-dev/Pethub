@@ -65,6 +65,19 @@ describe('Request limits on public endpoints', () => {
     assert.deepEqual(t.blockedRequests, []);
   });
 
+  it('limits booking requests per account, not per address, and creates nothing while refusing', async () => {
+    const owner = t.createUser();
+    const other = t.createUser();
+    const before = t.db.table('appointments').length;
+    const book = user => t.api('POST', '/appointments/create', { token: user.token, body: {} });
+    for (let i = 0; i < RATE_LIMITS.booking.max; i += 1) {
+      assert.notEqual((await book(owner)).status, 429, `booking request ${i + 1}`);
+    }
+    assert.equal((await book(owner)).status, 429, 'over the limit');
+    assert.notEqual((await book(other)).status, 429, 'another account on the same address is still served');
+    assert.equal(t.db.table('appointments').length, before);
+  });
+
   it('does not log client addresses or request bodies when it blocks', async () => {
     const blockedLines = t.logs.filter(line => line.includes('rate_limit.blocked'));
     assert.ok(blockedLines.length > 0);

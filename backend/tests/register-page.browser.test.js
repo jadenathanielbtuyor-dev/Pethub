@@ -352,8 +352,10 @@ describe('Registration page in a browser (mocked API)', { skip }, () => {
       await tab.evaluate(fill({ phoneNumber: '+1 415 555 0100' }));
       await tab.click(SUBMIT);
       await tab.waitFor(`window.__requests.some(r => r.route === '/auth/register')`, 4000);
-      assert.deepEqual(await tab.evaluate(fieldErrors), {});
-      assert.equal((await tab.evaluate(registerRequests))[0].phone_number, '+1 415 555 0100');
+      // One read for both, so a move to the verify-email page cannot fall between them
+      const afterSubmit = await tab.evaluate(`({ errors: ${fieldErrors}, sent: ${registerRequests} })`);
+      assert.deepEqual(afterSubmit.errors, {});
+      assert.equal(afterSubmit.sent[0].phone_number, '+1 415 555 0100');
     } finally {
       await tab.close();
     }

@@ -656,10 +656,6 @@ video {
   z-index: 50;
 }
 
-.mb-1 {
-  margin-bottom: 0.25rem;
-}
-
 .mb-2 {
   margin-bottom: 0.5rem;
 }
@@ -718,10 +714,6 @@ video {
 
 .inline-flex {
   display: inline-flex;
-}
-
-.\!table {
-  display: table !important;
 }
 
 .table {
@@ -788,14 +780,6 @@ video {
   max-width: 32rem;
 }
 
-.max-w-xs {
-  max-width: 20rem;
-}
-
-.flex-1 {
-  flex: 1 1 0%;
-}
-
 .flex-shrink {
   flex-shrink: 1;
 }
@@ -816,10 +800,6 @@ video {
   cursor: pointer;
 }
 
-.resize-y {
-  resize: vertical;
-}
-
 .grid-cols-1 {
   grid-template-columns: repeat(1, minmax(0, 1fr));
 }
@@ -830,10 +810,6 @@ video {
 
 .flex-col {
   flex-direction: column;
-}
-
-.flex-col-reverse {
-  flex-direction: column-reverse;
 }
 
 .flex-wrap {
@@ -892,18 +868,8 @@ video {
   overflow-y: auto;
 }
 
-.truncate {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .break-words {
   overflow-wrap: break-word;
-}
-
-.rounded {
-  border-radius: 0.25rem;
 }
 
 .rounded-2xl {
@@ -964,11 +930,6 @@ video {
   border-color: rgb(226 232 240 / var(--tw-border-opacity, 1));
 }
 
-.bg-blue-100 {
-  --tw-bg-opacity: 1;
-  background-color: rgb(219 234 254 / var(--tw-bg-opacity, 1));
-}
-
 .bg-blue-50 {
   --tw-bg-opacity: 1;
   background-color: rgb(239 246 255 / var(--tw-bg-opacity, 1));
@@ -999,11 +960,6 @@ video {
   background-color: rgb(249 115 22 / var(--tw-bg-opacity, 1));
 }
 
-.bg-purple-100 {
-  --tw-bg-opacity: 1;
-  background-color: rgb(243 232 255 / var(--tw-bg-opacity, 1));
-}
-
 .bg-red-100 {
   --tw-bg-opacity: 1;
   background-color: rgb(254 226 226 / var(--tw-bg-opacity, 1));
@@ -1031,11 +987,6 @@ video {
 .bg-white {
   --tw-bg-opacity: 1;
   background-color: rgb(255 255 255 / var(--tw-bg-opacity, 1));
-}
-
-.bg-yellow-50 {
-  --tw-bg-opacity: 1;
-  background-color: rgb(254 252 232 / var(--tw-bg-opacity, 1));
 }
 
 .bg-gradient-to-br {
@@ -1189,23 +1140,9 @@ video {
   letter-spacing: 0.025em;
 }
 
-.tracking-widest {
-  letter-spacing: 0.1em;
-}
-
-.text-amber-700 {
-  --tw-text-opacity: 1;
-  color: rgb(180 83 9 / var(--tw-text-opacity, 1));
-}
-
 .text-blue-500 {
   --tw-text-opacity: 1;
   color: rgb(59 130 246 / var(--tw-text-opacity, 1));
-}
-
-.text-blue-600 {
-  --tw-text-opacity: 1;
-  color: rgb(37 99 235 / var(--tw-text-opacity, 1));
 }
 
 .text-blue-700 {
@@ -1268,11 +1205,6 @@ video {
   color: rgb(168 85 247 / var(--tw-text-opacity, 1));
 }
 
-.text-purple-700 {
-  --tw-text-opacity: 1;
-  color: rgb(126 34 206 / var(--tw-text-opacity, 1));
-}
-
 .text-red-500 {
   --tw-text-opacity: 1;
   color: rgb(239 68 68 / var(--tw-text-opacity, 1));
@@ -1321,11 +1253,6 @@ video {
 .text-white {
   --tw-text-opacity: 1;
   color: rgb(255 255 255 / var(--tw-text-opacity, 1));
-}
-
-.text-yellow-600 {
-  --tw-text-opacity: 1;
-  color: rgb(202 138 4 / var(--tw-text-opacity, 1));
 }
 
 .underline {
@@ -6787,6 +6714,29 @@ body.ph-dash-page {
   list-style: none;
 }
 
+/* The admin dashboard has five sections: one row of five below the desktop sidebar, not four plus one on a second row */
+
+@media (max-width: 1023.98px) {
+  [data-dashboard="admin"] .ph-dash-nav ul {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 479.98px) {
+  /* Each tab at least as wide as its label ("Appointments" is the longest); the space left is still shared evenly */
+
+  [data-dashboard="admin"] .ph-dash-nav ul {
+    grid-template-columns: repeat(5, minmax(min-content, 1fr));
+    gap: 0.125rem;
+    padding-inline: 0.25rem;
+  }
+
+  [data-dashboard="admin"] .ph-dash-nav-link {
+    padding-inline: 0.125rem;
+    font-size: 0.6875rem;
+  }
+}
+
 .ph-dash-nav-link {
   display: flex;
   min-height: 3.25rem;
@@ -8150,29 +8100,9 @@ body.dark-mode .ph-pet-picker-check {
   border-color: rgb(253 186 116 / var(--tw-border-opacity, 1));
 }
 
-.hover\:bg-gray-50:hover {
-  --tw-bg-opacity: 1;
-  background-color: rgb(249 250 251 / var(--tw-bg-opacity, 1));
-}
-
-.hover\:bg-green-100:hover {
-  --tw-bg-opacity: 1;
-  background-color: rgb(220 252 231 / var(--tw-bg-opacity, 1));
-}
-
 .hover\:bg-orange-50:hover {
   --tw-bg-opacity: 1;
   background-color: rgb(255 247 237 / var(--tw-bg-opacity, 1));
-}
-
-.hover\:bg-orange-600:hover {
-  --tw-bg-opacity: 1;
-  background-color: rgb(234 88 12 / var(--tw-bg-opacity, 1));
-}
-
-.hover\:bg-red-100:hover {
-  --tw-bg-opacity: 1;
-  background-color: rgb(254 226 226 / var(--tw-bg-opacity, 1));
 }
 
 .hover\:bg-slate-200:hover {
@@ -8180,29 +8110,14 @@ body.dark-mode .ph-pet-picker-check {
   background-color: rgb(226 232 240 / var(--tw-bg-opacity, 1));
 }
 
-.hover\:bg-slate-50:hover {
-  --tw-bg-opacity: 1;
-  background-color: rgb(248 250 252 / var(--tw-bg-opacity, 1));
-}
-
 .hover\:text-orange-600:hover {
   --tw-text-opacity: 1;
   color: rgb(234 88 12 / var(--tw-text-opacity, 1));
 }
 
-.focus\:border-orange-400:focus {
-  --tw-border-opacity: 1;
-  border-color: rgb(251 146 60 / var(--tw-border-opacity, 1));
-}
-
 .focus\:border-orange-500:focus {
   --tw-border-opacity: 1;
   border-color: rgb(249 115 22 / var(--tw-border-opacity, 1));
-}
-
-.focus\:outline-none:focus {
-  outline: 2px solid transparent;
-  outline-offset: 2px;
 }
 
 .focus\:ring-2:focus {
@@ -8224,23 +8139,11 @@ body.dark-mode .ph-pet-picker-check {
   .sm\:grid-cols-2 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-
-  .sm\:flex-row {
-    flex-direction: row;
-  }
-
-  .sm\:justify-end {
-    justify-content: flex-end;
-  }
 }
 
 @media (min-width: 768px) {
   .md\:col-span-2 {
     grid-column: span 2 / span 2;
-  }
-
-  .md\:hidden {
-    display: none;
   }
 
   .md\:grid-cols-2 {

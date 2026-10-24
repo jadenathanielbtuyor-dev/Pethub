@@ -95,7 +95,7 @@ describe('Booking page: scripts and API wiring', () => {
     assert.doesNotMatch(server, /payments/i);
     const appointmentRoutes = read(path.join(__dirname, '..', 'routes', 'appointments.js'));
     assert.match(appointmentRoutes, /router\.get\('\/services', listServices\)/);
-    assert.match(appointmentRoutes, /router\.post\('\/create', createAppointment\)/);
+    assert.match(appointmentRoutes, /router\.post\('\/create', (rateLimit\('booking', \{ keyFor: byAuthUser \}\), )?createAppointment\)/);
     assert.match(appointmentRoutes, /router\.get\('\/userAppointments', getUserAppointments\)/);
     assert.match(appointmentRoutes, /router\.post\('\/cancel\/:id', cancelOwnAppointment\)/);
     assert.match(appointmentRoutes, /router\.get\('\/all', getAllAppointments\)/);

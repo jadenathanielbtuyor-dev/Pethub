@@ -21,6 +21,10 @@ function errorHandler(err, req, res, next) {
   if (statusCode >= 500) {
     return apiResponse.error(res, 'Internal Server Error', statusCode);
   }
+  // A missing static file (e.g. a deployment without the frontend folder) must not reveal server paths
+  if (err.code === 'ENOENT') {
+    return apiResponse.error(res, 'Not found', 404);
+  }
 
   return apiResponse.error(res, message, statusCode);
 }

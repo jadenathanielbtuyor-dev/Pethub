@@ -23,9 +23,10 @@ const submitContactRequest = async (req) => {
       return { statusCode: 500, body: { success: false, error: 'Failed to submit contact request' } };
     }
 
+    // The name, email and message are kept once, in contact_messages; the activity log only records that one arrived
     const logPayload = {
       action: 'contact_message',
-      details: `Name: ${cleanName}; Email: ${cleanEmail}; Message: ${cleanMessage}`
+      details: 'Contact message received'
     };
 
     if (hasValue(normalizedUserId)) {

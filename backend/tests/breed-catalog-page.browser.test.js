@@ -78,4 +78,27 @@ describe('Admin breed catalog page in a browser (mocked API)', { skip }, () => {
       assert.deepEqual(tab.errors, []);
     } finally { await tab.close(); }
   });
+
+  // The other admin sections are views of dashboard.html; a bare "#overview" link would leave the admin on this page
+  it('the dashboard navigation leads back to the admin dashboard views', async () => {
+    const tab = await openTab({
+      url: pageUrl('pages/admin/breeds.html'),
+      session: ADMIN,
+      scenario: { routes: { '/admin/breeds': response({ breeds: initialBreeds }) } }
+    });
+    try {
+      assert.ok(await tab.waitFor(`document.querySelectorAll('.ph-dash-nav-link').length === 5`), 'the navigation renders');
+      const links = await tab.evaluate(`Object.fromEntries([...document.querySelectorAll('.ph-dash-nav-link')].map(link => [link.dataset.dashboardSection, link.getAttribute('href')]))`);
+      assert.deepEqual(links, {
+        overview: 'dashboard.html#overview',
+        appointments: 'dashboard.html#appointments',
+        records: 'dashboard.html#records',
+        system: 'dashboard.html#system',
+        breeds: 'breeds.html'
+      });
+      await tab.click('.ph-dash-nav-link[data-dashboard-section="appointments"]');
+      assert.ok(await tab.waitFor(`location.pathname.endsWith('/pages/admin/dashboard.html') && location.hash === '#appointments'`), 'opens the Appointments view');
+      assert.deepEqual(tab.errors, []);
+    } finally { await tab.close(); }
+  });
 });

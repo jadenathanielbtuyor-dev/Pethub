@@ -13,9 +13,20 @@ const PORT = env.port;
 // Railway puts one proxy in front of the app; trusting that single hop makes req.ip the visitor's address (used by the
 // rate limits in middleware/rateLimit.js) while ignoring any extra X-Forwarded-For entries a client adds itself
 app.set('trust proxy', 1);
+// Replies do not advertise the server framework
+app.disable('x-powered-by');
 
 // Middleware
 const allowedOrigins = env.cors.allowedOrigins;
+
+// The local host itself on any port; "localhost" anywhere in the origin also matched sites such as https://localhost.example.com
+function isLocalhostOrigin(origin) {
+  try {
+    return new URL(origin).hostname === 'localhost';
+  } catch (error) {
+    return false;
+  }
+}
 
 const corsOptions = {
   origin: (origin, callback) => {
@@ -26,12 +37,15 @@ const corsOptions = {
     if (
       allowedOrigins.includes(origin) ||
       origin.endsWith('.vercel.app') ||
-      origin.includes('localhost')
+      isLocalhostOrigin(origin)
     ) {
       return callback(null, true);
     }
 
-    return callback(new Error('Not allowed by CORS'));
+    // A refused origin is a 403 for the client, not a server error
+    const error = new Error('Not allowed by CORS');
+    error.status = 403;
+    return callback(error);
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-User-ID'],

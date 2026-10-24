@@ -1,7 +1,9 @@
+const crypto = require('crypto');
 const { VERIFICATION_CODE_TTL_MINUTES } = require('../constants/email');
 
+// Same 6-digit range as before, from the cryptographic generator (Math.random is predictable)
 function generateVerificationCode() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return String(crypto.randomInt(100000, 1000000));
 }
 
 function getExpiryTimestamp() {
