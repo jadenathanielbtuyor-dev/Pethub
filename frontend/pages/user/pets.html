@@ -148,6 +148,16 @@
           </section>
 
         </div>
+
+        <!-- ================= CARE REMINDERS for every pet (js/user/care-reminders.js) ================= -->
+        <section class="ph-dash-panel mt-5" aria-labelledby="petCareRemindersTitle">
+          <div class="ph-dash-panel-head">
+            <h2 id="petCareRemindersTitle" class="ph-dash-panel-title"><i class="ri-heart-pulse-line" aria-hidden="true"></i>Care reminders for your pets</h2>
+          </div>
+          <p class="ph-dash-note">Suggested next visits after services the clinic has completed. They are general care guidance, not a diagnosis; you decide whether to book.</p>
+          <p id="petCareRemindersStatus" class="ph-dash-note" role="status" aria-live="polite"></p>
+          <div id="petCareRemindersList" class="mt-3" data-care-reminders data-care-page="pets" data-care-status="petCareRemindersStatus"><p class="ph-dash-note" role="status">Loading care reminders...</p></div>
+        </section>
       </main>
     </div>
   </div>
@@ -164,6 +174,7 @@
   <script src="../../js/main.js"></script>
   <script src="../../js/shared/dashboard-shell.js"></script>
   <script src="../../js/user/pets.js"></script>
+  <script src="../../js/user/care-reminders.js"></script>
   <script src="../../js/shared/ai-widget.js"></script>
 
 </body>

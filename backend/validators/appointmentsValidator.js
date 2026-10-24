@@ -318,6 +318,7 @@ module.exports = {
   getAppointmentStartTimestamp,
   validateOwnerCancellationRequest,
   getAppointmentTimeRange,
+  getAppointmentDateTimeValidationError,
   validateCreateAppointment,
   validateUserAppointmentsQuery,
   validateUpdateStatusRequest,

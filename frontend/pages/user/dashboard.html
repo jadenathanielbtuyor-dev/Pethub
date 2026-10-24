@@ -105,6 +105,15 @@
               </div>
             </section>
 
+            <!-- ================= CARE REMINDERS: next-visit suggestions after completed services (js/user/care-reminders.js) ================= -->
+            <section class="ph-dash-panel" aria-labelledby="careRemindersTitle">
+              <div class="ph-dash-panel-head">
+                <h2 id="careRemindersTitle" class="ph-dash-panel-title"><i class="ri-heart-pulse-line" aria-hidden="true"></i>Care reminders</h2>
+              </div>
+              <p id="careRemindersStatus" class="ph-dash-note" role="status" aria-live="polite"></p>
+              <div id="careRemindersList" data-care-reminders data-care-status="careRemindersStatus"><p class="ph-dash-note" role="status">Loading care reminders...</p></div>
+            </section>
+
             <!-- ================= SHORTCUTS to the other three sections ================= -->
             <section class="ph-dash-panel" aria-labelledby="shortcutsTitle">
               <div class="ph-dash-panel-head">
@@ -299,6 +308,7 @@
   <script src="../../js/shared/appointment-durations.js"></script>
   <script src="../../js/shared/profile-fields.js"></script>
   <script src="../../js/user/dashboard.js"></script>
+  <script src="../../js/user/care-reminders.js"></script>
   <script src="../../js/shared/ai-widget.js"></script>
 
 </body>

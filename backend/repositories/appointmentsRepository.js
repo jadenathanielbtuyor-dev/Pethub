@@ -1,6 +1,7 @@
 const supabase = require('../config/supabase');
 
-const APPOINTMENT_SELECT = 'id, user_id, pet_id, pet_name, service_type, estimated_duration_minutes, appointment_date, appointment_time, status, handled_by, created_at, cancelled_at, cancelled_by';
+// group_id / group_position: the multi-pet booking an appointment belongs to and its place in it (NULL for single bookings)
+const APPOINTMENT_SELECT = 'id, user_id, pet_id, pet_name, service_type, estimated_duration_minutes, appointment_date, appointment_time, status, handled_by, created_at, cancelled_at, cancelled_by, group_id, group_position';
 
 // Newest first: latest appointment date, then latest time that day, then the most recently booked. Rows missing a
 // value go last (PostgreSQL would otherwise put NULLs first when sorting descending).
@@ -76,6 +77,51 @@ function createIfAvailable(appointment, serviceId) {
     p_appointment_date: appointment.appointment_date,
     p_appointment_time: appointment.appointment_time
   });
+}
+
+// Several pets in one booking, saved completely or not at all (database function, same per-date locks as single
+// bookings). items: [{ pet_id, service_id, service_type, duration_minutes }] in the order the pets will be seen.
+function createGroupIfAvailable({ userId, appointmentDate, startTime, requestKey, items }) {
+  return supabase.rpc('create_appointment_group_if_available', {
+    p_user_id: userId,
+    p_appointment_date: appointmentDate,
+    p_start_time: startTime,
+    p_request_key: requestKey,
+    p_items: items
+  });
+}
+
+function cancelGroupByClinic(groupId, handledBy) {
+  return supabase.rpc('cancel_appointment_group_by_clinic', { p_group_id: groupId, p_handled_by: handledBy });
+}
+
+function rescheduleIfAvailable({ appointmentId, newDate, newTime, handledBy, expectedStatus, expectedDate, expectedTime }) {
+  return supabase.rpc('reschedule_appointment_if_available', {
+    p_appointment_id: appointmentId,
+    p_new_date: newDate,
+    p_new_time: newTime,
+    p_handled_by: handledBy,
+    p_expected_status: expectedStatus,
+    p_expected_date: expectedDate,
+    p_expected_time: expectedTime
+  });
+}
+
+// Every pet appointment of the given bookings, in booking order (one query for any number of bookings)
+function listByGroupIds(groupIds) {
+  return supabase
+    .from('appointments')
+    .select(APPOINTMENT_SELECT)
+    .in('group_id', groupIds)
+    .order('group_position', { ascending: true });
+}
+
+function findGroupById(groupId) {
+  return supabase
+    .from('appointment_groups')
+    .select('id, user_id, appointment_date, start_time, scheduling, created_at')
+    .eq('id', groupId)
+    .maybeSingle();
 }
 
 function findPendingDuplicate(appointment) {
@@ -241,6 +287,11 @@ module.exports = {
   createAppointment,
   createIfAvailable,
   findPendingDuplicate,
+  createGroupIfAvailable,
+  cancelGroupByClinic,
+  rescheduleIfAvailable,
+  listByGroupIds,
+  findGroupById,
   updateStatusIfAvailable,
   listByUserId,
   listByUserIdAndPetId,

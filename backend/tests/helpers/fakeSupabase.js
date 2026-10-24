@@ -50,6 +50,7 @@ class FakeQuery {
     this.filters = [];
     this.orders = [];
     this.limitCount = null;
+    this.offsetCount = 0;
     this.singleMode = null;
     this.payload = null;
   }
@@ -126,6 +127,27 @@ class FakeQuery {
 
   limit(count) {
     this.limitCount = count;
+    return this;
+  }
+
+  // PostgREST range: rows from..to inclusive (0-based), after filters and ordering
+  range(from, to) {
+    this.offsetCount = from;
+    this.limitCount = to - from + 1;
+    return this;
+  }
+
+  // PostgREST or(): "col.op.value,col.op.value" with op eq, ilike or is (null); a row matches when any part matches
+  or(expression) {
+    const parts = String(expression).split(',').map(part => {
+      const [column, operator, ...rest] = part.split('.');
+      const value = rest.join('.');
+      if (operator === 'eq') return stored => sameValue(stored[column], value);
+      if (operator === 'ilike') return stored => likeToRegExp(value.replace(/\*/g, '%')).test(String(stored[column] ?? ''));
+      if (operator === 'is' && value === 'null') return stored => stored[column] === null || stored[column] === undefined;
+      throw new Error(`Fake Supabase: or(${operator}) is not supported`);
+    });
+    this.filters.push({ column: null, values: [], test: null, rowTest: row => parts.some(test => test(row)) });
     return this;
   }
 
@@ -280,6 +302,101 @@ class FakeDatabase {
       }
       return { data: { outcome: 'updated', appointment_id: appointment.id }, error: null, status: 200 };
     }
+    // database/migrations/2026-10-24_multi_pet_booking_and_care_recommendations.sql, same outcomes as the SQL functions
+    const minutesOf = value => {
+      const match = String(value || '').match(/^(\d{1,2}):(\d{2})/);
+      return match ? Number(match[1]) * 60 + Number(match[2]) : NaN;
+    };
+    const clock = total => `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}:00`;
+    const overlapsActive = (date, start, end, excludedId = null) => this.rows.appointments.some(row => {
+      if (excludedId && String(row.id) === String(excludedId)) return false;
+      if (String(row.appointment_date).slice(0, 10) !== String(date).slice(0, 10)) return false;
+      if (!['Pending', 'Approved', 'Completed'].includes(String(row.status))) return false;
+      const duration = Number(row.estimated_duration_minutes);
+      const otherStart = minutesOf(row.appointment_time);
+      if (!Number.isInteger(duration) || duration < 5 || duration > 480 || !Number.isFinite(otherStart)) return false;
+      return start < otherStart + duration && otherStart < end;
+    });
+    if (functionName === 'create_appointment_group_if_available') {
+      const items = Array.isArray(args.p_items) ? args.p_items : [];
+      if (!args.p_user_id || !args.p_appointment_date || !args.p_start_time || !/^[0-9a-f]{64}$/.test(String(args.p_request_key || ''))
+          || items.length < 2 || items.length > 6 || new Set(items.map(item => String(item.pet_id))).size !== items.length
+          || items.some(item => !Number.isInteger(Number(item.duration_minutes)) || item.duration_minutes < 5 || item.duration_minutes > 480)) {
+        return this.error('22023', 'Invalid booking request');
+      }
+      let total = 0;
+      for (const [index, item] of items.entries()) {
+        const service = this.rows.pethub_service_catalog.find(row => String(row.id) === String(item.service_id));
+        if (!service || service.online_booking_enabled !== true || service.duration_minutes !== Number(item.duration_minutes) || service.name !== item.service_type) {
+          return { data: { outcome: 'service_changed', position: index + 1 }, error: null, status: 200 };
+        }
+        const pet = this.rows.pets.find(row => String(row.id) === String(item.pet_id) && String(row.user_id) === String(args.p_user_id));
+        if (!pet) return { data: { outcome: 'pet_not_found', position: index + 1 }, error: null, status: 200 };
+        if (!(service.species || []).includes(pet.species)) return { data: { outcome: 'species_not_offered', position: index + 1 }, error: null, status: 200 };
+        total += service.duration_minutes;
+      }
+      const start = minutesOf(args.p_start_time);
+      if (start + total > 24 * 60) return { data: { outcome: 'past_end_of_day' }, error: null, status: 200 };
+      const existing = this.rows.appointment_groups.find(group => String(group.user_id) === String(args.p_user_id)
+        && group.request_key === args.p_request_key
+        && !this.rows.appointments.some(row => String(row.group_id) === String(group.id) && row.status !== 'Pending'));
+      if (existing) return { data: { outcome: 'existing', group_id: existing.id }, error: null, status: 200 };
+      let slot = start;
+      for (const [index, item] of items.entries()) {
+        if (overlapsActive(args.p_appointment_date, slot, slot + Number(item.duration_minutes))) {
+          return { data: { outcome: 'conflict', position: index + 1 }, error: null, status: 200 };
+        }
+        slot += Number(item.duration_minutes);
+      }
+      const group = this.seed('appointment_groups', {
+        user_id: args.p_user_id, appointment_date: args.p_appointment_date, start_time: clock(start), request_key: args.p_request_key
+      });
+      slot = start;
+      const ids = items.map((item, index) => {
+        const pet = this.rows.pets.find(row => String(row.id) === String(item.pet_id));
+        const row = this.seed('appointments', {
+          user_id: args.p_user_id, pet_id: pet.id, pet_name: pet.name, service_type: item.service_type,
+          estimated_duration_minutes: Number(item.duration_minutes), appointment_date: args.p_appointment_date,
+          appointment_time: clock(slot), status: 'Pending', group_id: group.id, group_position: index + 1
+        });
+        slot += Number(item.duration_minutes);
+        return row.id;
+      });
+      return { data: { outcome: 'created', group_id: group.id, appointment_ids: ids }, error: null, status: 200 };
+    }
+    if (functionName === 'cancel_appointment_group_by_clinic') {
+      if (!args.p_group_id || !args.p_handled_by) return this.error('22023', 'Invalid booking cancellation request');
+      if (!this.rows.appointment_groups.some(group => String(group.id) === String(args.p_group_id))) {
+        return { data: { outcome: 'not_found' }, error: null, status: 200 };
+      }
+      const changed = this.rows.appointments
+        .filter(row => String(row.group_id) === String(args.p_group_id) && ['Pending', 'Approved'].includes(row.status))
+        .sort((first, second) => first.group_position - second.group_position);
+      const at = new Date().toISOString();
+      changed.forEach(row => Object.assign(row, { status: 'Cancelled', handled_by: args.p_handled_by, cancelled_at: at, cancelled_by: args.p_handled_by }));
+      return { data: { outcome: changed.length ? 'cancelled' : 'nothing_to_cancel', appointment_ids: changed.map(row => row.id) }, error: null, status: 200 };
+    }
+    if (functionName === 'reschedule_appointment_if_available') {
+      if (!args.p_appointment_id || !args.p_new_date || !args.p_new_time || !args.p_handled_by
+          || !['Pending', 'Approved'].includes(args.p_expected_status) || !args.p_expected_date || !args.p_expected_time) {
+        return this.error('22023', 'Invalid reschedule request');
+      }
+      const appointment = this.rows.appointments.find(row => String(row.id) === String(args.p_appointment_id));
+      if (!appointment) return { data: { outcome: 'not_found' }, error: null, status: 200 };
+      if (appointment.status !== args.p_expected_status
+          || String(appointment.appointment_date).slice(0, 10) !== String(args.p_expected_date).slice(0, 10)
+          || minutesOf(appointment.appointment_time) !== minutesOf(args.p_expected_time)) {
+        return { data: { outcome: 'stale' }, error: null, status: 200 };
+      }
+      const duration = Number(appointment.estimated_duration_minutes);
+      if (!Number.isInteger(duration) || duration < 5 || duration > 480) return { data: { outcome: 'invalid_duration' }, error: null, status: 200 };
+      const start = minutesOf(args.p_new_time);
+      if (start + duration > 24 * 60) return { data: { outcome: 'past_end_of_day' }, error: null, status: 200 };
+      if (overlapsActive(args.p_new_date, start, start + duration, appointment.id)) return { data: { outcome: 'conflict' }, error: null, status: 200 };
+      const previous = { previous_date: appointment.appointment_date, previous_time: appointment.appointment_time };
+      Object.assign(appointment, { appointment_date: args.p_new_date, appointment_time: clock(start), handled_by: args.p_handled_by });
+      return { data: { outcome: 'updated', appointment_id: appointment.id, ...previous }, error: null, status: 200 };
+    }
     if (functionName !== 'cancel_appointment_for_owner') {
       return this.error('42883', `function ${functionName} does not exist`);
     }
@@ -320,7 +437,8 @@ class FakeDatabase {
   checkUnique(definition, candidateRows, untouchedRows) {
     for (const index of definition.uniqueIndexes || []) {
       const seen = new Set();
-      for (const row of [...untouchedRows, ...candidateRows]) {
+      for (const original of [...untouchedRows, ...candidateRows]) {
+        const row = index.derive ? index.derive(original) : original;
         if (index.where && !index.where(row)) continue;
         const key = index.columns.map(column => index.normalize ? String(row[column]).trim().toLocaleLowerCase('en') : row[column]);
         if (key.some(part => part === null || part === undefined)) continue;
@@ -363,14 +481,14 @@ class FakeDatabase {
     }
 
     const selectedColumns = query.columns === '*' ? [] : query.columns.split(',').map(column => column.trim()).filter(Boolean);
-    const columnError = this.checkColumns(definition, [...selectedColumns, ...query.filters.map(filter => filter.column), ...query.orders.map(order => order.column)], '42703');
+    const columnError = this.checkColumns(definition, [...selectedColumns, ...query.filters.filter(filter => filter.column).map(filter => filter.column), ...query.orders.map(order => order.column)], '42703');
     if (columnError) return columnError;
 
     const uuidError = this.checkUuids(definition, query.filters.flatMap(filter => filter.values.map(value => [filter.column, value])));
     if (uuidError) return uuidError;
 
     const table = this.rows[query.tableName];
-    const matches = row => query.filters.every(filter => filter.test(row[filter.column]));
+    const matches = row => query.filters.every(filter => (filter.rowTest ? filter.rowTest(row) : filter.test(row[filter.column])));
 
     if (query.action === 'insert') {
       const payloadColumns = [...new Set(query.payload.flatMap(row => Object.keys(row)))];
@@ -436,6 +554,7 @@ class FakeDatabase {
       });
     });
     const count = results.length;
+    if (query.offsetCount) results = results.slice(query.offsetCount);
     if (query.limitCount !== null) results = results.slice(0, query.limitCount);
 
     if (query.head) return { data: null, error: null, count: query.countMode ? count : null };
@@ -498,17 +617,36 @@ function createPetHubDatabase({ usersProfileColumns = true } = {}) {
       columns: [
         'id', 'user_id', 'pet_id', 'pet_name', 'service_type', 'estimated_duration_minutes', 'appointment_date',
         'appointment_time', 'status', 'handled_by', 'created_at', 'appointment_reference', 'payment_status',
-        'confirmed_at', 'cancelled_at', 'deposit_required', 'cancelled_by'
+        'confirmed_at', 'cancelled_at', 'deposit_required', 'cancelled_by', 'group_id', 'group_position'
       ],
-      uuidColumns: ['id', 'user_id', 'pet_id', 'handled_by', 'cancelled_by'],
+      uuidColumns: ['id', 'user_id', 'pet_id', 'handled_by', 'cancelled_by', 'group_id'],
       // Database defaults (payment_status and deposit_required are legacy columns the application no longer sets)
       defaults: {
         id: uuid,
         created_at: now,
         status: () => 'Pending',
         payment_status: () => 'Pending',
-        deposit_required: () => false
+        deposit_required: () => false,
+        group_id: () => null,
+        group_position: () => null
       }
+    },
+    appointment_groups: {
+      columns: ['id', 'user_id', 'appointment_date', 'start_time', 'scheduling', 'request_key', 'created_at'],
+      uuidColumns: ['id', 'user_id'],
+      defaults: { id: uuid, created_at: now, scheduling: () => 'sequential' }
+    },
+    care_recommendation_rules: {
+      columns: ['id', 'service_id', 'species', 'min_interval_days', 'max_interval_days', 'guidance_type', 'description', 'explanation', 'is_active', 'version', 'created_by', 'updated_by', 'created_at', 'updated_at'],
+      uuidColumns: ['id', 'service_id', 'created_by', 'updated_by'],
+      defaults: { id: uuid, species: () => null, explanation: () => '', is_active: () => true, version: () => 1, created_at: now, updated_at: now },
+      uniqueIndexes: [{ name: 'care_rules_service_species_key', columns: ['service_id', 'species_key'], derive: row => ({ ...row, species_key: row.species || 'All' }) }]
+    },
+    pet_care_recommendations: {
+      columns: ['id', 'pet_id', 'user_id', 'service_id', 'service_name', 'source_appointment_id', 'rule_id', 'basis', 'guidance_type', 'service_date', 'due_from', 'due_to', 'explanation', 'status', 'set_by', 'created_at', 'updated_at', 'acknowledged_at', 'dismissed_at'],
+      uuidColumns: ['id', 'pet_id', 'user_id', 'service_id', 'source_appointment_id', 'rule_id', 'set_by'],
+      defaults: { id: uuid, status: () => 'active', created_at: now, updated_at: now, service_id: () => null, source_appointment_id: () => null, rule_id: () => null, guidance_type: () => null, due_from: () => null, due_to: () => null, set_by: () => null, acknowledged_at: () => null, dismissed_at: () => null },
+      uniqueIndexes: [{ name: 'pet_care_one_open_per_source', columns: ['source_appointment_id'], where: row => row.source_appointment_id && row.status !== 'superseded' }]
     },
     pethub_service_catalog: {
       columns: ['id', 'service_key', 'name', 'description', 'category', 'species', 'duration_minutes', 'online_booking_enabled', 'display_order', 'version', 'created_by', 'updated_by', 'created_at', 'updated_at'],
@@ -536,8 +674,8 @@ function createPetHubDatabase({ usersProfileColumns = true } = {}) {
       defaults: { id: uuid, created_at: now, used_at: () => null, attempts: () => 0 }
     },
     activity_logs: {
-      columns: ['id', 'actor_id', 'user_id', 'target_table', 'target_id', 'action', 'details', 'created_at'],
-      defaults: { id: uuid, created_at: now }
+      columns: ['id', 'actor_id', 'user_id', 'target_table', 'target_id', 'action', 'details', 'event_type', 'created_at'],
+      defaults: { id: uuid, created_at: now, event_type: () => null }
     },
     medical_records: {
       columns: ['id', 'pet_id', 'appointment_id', 'record_date', 'created_at', 'created_by', 'weight', 'vaccination_status', 'treatment', 'medical_notes'],

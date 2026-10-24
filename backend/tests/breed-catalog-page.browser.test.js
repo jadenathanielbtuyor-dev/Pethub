@@ -16,13 +16,18 @@ describe('Admin breed catalog page in a browser (mocked API)', { skip }, () => {
   before(startBrowser);
   after(stopBrowser);
 
-  it('filters by species, saves a new unverified breed, then shows the fresh server catalog response', async () => {
+  it('asks the server for each page with the current filters, keeps them across pages, and saves a new unverified breed', async () => {
+    const page = (breeds, info = {}) => response({ breeds, page: 1, page_size: 20, total: breeds.length, total_pages: 1, ...info });
     const routes = {
-      // GET, POST, then the fresh GET after the save.
+      // One answer per request, in order: first page, Cat filter, all species, Next page, search, POST, reload
       '/admin/breeds': [
-        response({ breeds: initialBreeds }),
+        page(initialBreeds, { total: 45, total_pages: 3 }),
+        page([initialBreeds[1]], { total: 1 }),
+        page(initialBreeds, { total: 45, total_pages: 3 }),
+        page([initialBreeds[0]], { page: 2, total: 45, total_pages: 3 }),
+        page([initialBreeds[0]], { total: 1 }),
         response({ breed: savedBreed }, 201),
-        response({ breeds: [...initialBreeds, savedBreed] })
+        page([initialBreeds[0], savedBreed], { total: 2 })
       ]
     };
     const tab = await openTab({
@@ -30,15 +35,30 @@ describe('Admin breed catalog page in a browser (mocked API)', { skip }, () => {
       session: ADMIN,
       scenario: { routes }
     });
+    const gets = () => tab.evaluate(`window.__requests.filter(request => request.route === '/admin/breeds' && request.method === 'GET').map(request => Object.fromEntries(new URLSearchParams(request.path.split('?')[1] || '')))`);
     try {
       assert.ok(await tab.waitFor(`document.querySelector('[data-breed-edit="breed-dog"]')`), 'the catalog loads');
-      assert.match(await tab.evaluate(`document.getElementById('breedCatalogList').innerText`), /Aspin/);
-      assert.match(await tab.evaluate(`document.getElementById('breedCatalogList').innerText`), /Bengal/);
+      assert.match(await tab.evaluate(`document.getElementById('breedCatalogList').innerText`), /Aspin[\s\S]*Bengal/);
+      assert.match(await tab.evaluate(`document.getElementById('breedPagination').innerText`), /Page 1 of 3/);
+      assert.match(await tab.evaluate(`document.getElementById('breedCount').textContent`), /Showing 1–2 of 45/);
+      assert.deepEqual((await gets())[0], { page: '1', page_size: '20', species: 'all', status: 'active', sort: 'name_asc' });
 
       await tab.evaluate(`(() => { const filter = document.getElementById('breedSpeciesFilter'); filter.value = 'Cat'; filter.dispatchEvent(new Event('change', { bubbles: true })); })()`);
-      assert.match(await tab.evaluate(`document.getElementById('breedCatalogList').innerText`), /Bengal/);
-      assert.doesNotMatch(await tab.evaluate(`document.getElementById('breedCatalogList').innerText`), /Aspin/);
+      assert.ok(await tab.waitFor(`!/Aspin/.test(document.getElementById('breedCatalogList').innerText)`), 'the server answer for Cat is shown');
+      assert.equal((await gets())[1].species, 'Cat');
+      assert.equal(await tab.evaluate(`document.getElementById('breedPagination').hidden`), false);
+
       await tab.evaluate(`(() => { const filter = document.getElementById('breedSpeciesFilter'); filter.value = 'all'; filter.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+      assert.ok(await tab.waitFor(`/Page 1 of 3/.test(document.getElementById('breedPagination').innerText)`));
+      await tab.evaluate(`document.querySelector('#breedPagination [data-page="2"]').click()`);
+      assert.ok(await tab.waitFor(`/Page 2 of 3/.test(document.getElementById('breedPagination').innerText)`), 'page 2 is shown');
+      assert.deepEqual((await gets())[3], { page: '2', page_size: '20', species: 'all', status: 'active', sort: 'name_asc' });
+      assert.equal(await tab.evaluate(`document.querySelector('#breedPagination [aria-current="page"]').textContent`), '2');
+
+      // Typing waits for a pause, then starts again at page 1 with the search text
+      await tab.evaluate(`(() => { const box = document.getElementById('breedSearch'); box.value = 'asp'; box.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+      assert.ok(await tab.waitFor(`window.__requests.filter(request => request.route === '/admin/breeds').length === 5`, 3000));
+      assert.deepEqual((await gets())[4], { page: '1', page_size: '20', species: 'all', status: 'active', sort: 'name_asc', q: 'asp' });
 
       await tab.evaluate(`(() => {
         document.getElementById('breedSpecies').value = 'Dog';
@@ -50,15 +70,23 @@ describe('Admin breed catalog page in a browser (mocked API)', { skip }, () => {
       const savedEntryVisible = await tab.waitFor(`document.querySelector('[data-breed-edit="breed-new"]')`);
       assert.ok(savedEntryVisible, 'the page reloads the catalog after a successful save');
       assert.match(await tab.evaluate(`document.getElementById('breedCatalogList').innerText`), /Shiba Inu/);
-      assert.match(await tab.evaluate(`document.getElementById('breedCatalogList').innerText`), /unverified/);
       assert.match(await tab.evaluate(`document.getElementById('breedCatalogFeedback').textContent`), /Breed added as Unverified/);
+      assert.equal((await gets())[5].q, 'asp', 'the reload keeps the search');
+      const post = await tab.evaluate(`window.__requests.filter(request => request.route === '/admin/breeds' && request.method === 'POST').map(request => JSON.parse(request.body))`);
+      assert.deepEqual(post, [{ species: 'Dog', name: 'Shiba Inu', source_organization: 'Fédération Cynologique Internationale', source_url: 'https://www.fci.be/en/Nomenclature/Default.aspx' }]);
+      assert.deepEqual(tab.errors, []);
+    } finally { await tab.close(); }
+  });
 
-      const calls = await tab.evaluate(`window.__requests.filter(request => request.route === '/admin/breeds').map(request => ({ method: request.method, body: request.body && JSON.parse(request.body) }))`);
-      assert.deepEqual(calls, [
-        { method: 'GET', body: null },
-        { method: 'POST', body: { species: 'Dog', name: 'Shiba Inu', source_organization: 'Fédération Cynologique Internationale', source_url: 'https://www.fci.be/en/Nomenclature/Default.aspx' } },
-        { method: 'GET', body: null }
-      ]);
+  it('shows an empty result without page navigation', async () => {
+    const tab = await openTab({
+      url: pageUrl('pages/admin/breeds.html'),
+      session: ADMIN,
+      scenario: { routes: { '/admin/breeds': response({ breeds: [], page: 1, page_size: 20, total: 0, total_pages: 1 }) } }
+    });
+    try {
+      assert.ok(await tab.waitFor(`/No catalog entries match/.test(document.getElementById('breedCatalogList').innerText)`));
+      assert.equal(await tab.evaluate(`document.getElementById('breedPagination').hidden`), true);
       assert.deepEqual(tab.errors, []);
     } finally { await tab.close(); }
   });

@@ -41,7 +41,7 @@ const FETCH_STUB = `(() => {
     const requestPath = url.replace(/^https?:\\/\\/[^/]+/, '');
     const route = requestPath.split('?')[0];
     const method = (init.method || 'GET').toUpperCase();
-    window.__requests.push({ method, route, body: init.body || null });
+    window.__requests.push({ method, route, path: requestPath, body: init.body || null });
     const entry = (scenario.routes || {})[requestPath] || (scenario.routes || {})[route];
     const answer = (Array.isArray(entry) ? (entry.length > 1 ? entry.shift() : entry[0]) : entry) || { status: 404, body: { error: 'not stubbed ' + route } };
     return new Promise(resolve => setTimeout(() => resolve(new Response(JSON.stringify(answer.body), { status: answer.status || 200, headers: { 'Content-Type': 'application/json' } })), answer.delay || 30));

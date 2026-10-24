@@ -1,6 +1,7 @@
 const breedCatalogRepository = require('../repositories/breedCatalogRepository');
 const { logAdminActivity } = require('../utils/activityLogger');
-const { validateBreedCatalogListQuery, validateBreedCatalogCreate, validateBreedCatalogUpdate } = require('../validators/breedCatalogValidator');
+const { validateBreedCatalogListQuery, validateBreedCatalogPageQuery, validateBreedCatalogCreate, validateBreedCatalogUpdate } = require('../validators/breedCatalogValidator');
+const { fetchPage } = require('../utils/pagination');
 
 const CATALOG_UNAVAILABLE = { statusCode: 503, body: { success: false, error: 'The breed catalog is not available until its database update is applied.' } };
 const DUPLICATE_BREED = { statusCode: 409, body: { success: false, error: 'A breed with this name already exists for that species.' } };
@@ -9,12 +10,15 @@ function normalizedName(value) {
   return String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en');
 }
 
+// GET /admin/breeds?page=&page_size=&species=&status=&q=&sort= : one page of the catalog, filtered and sorted in the
+// database, with the total and page count for the page navigation
 async function getBreedCatalog(req) {
-  const validation = validateBreedCatalogListQuery(req.query);
+  const validation = validateBreedCatalogPageQuery(req.query);
   if (validation.error) return validation.error;
-  const { data, error } = await breedCatalogRepository.list({ species: validation.species, activeOnly: false });
-  if (error) return CATALOG_UNAVAILABLE;
-  return { statusCode: 200, body: { success: true, breeds: data || [] } };
+  const { filters, page, pageSize } = validation;
+  const result = await fetchPage(range => breedCatalogRepository.listPage(filters, range), page, pageSize);
+  if (result.error) return CATALOG_UNAVAILABLE;
+  return { statusCode: 200, body: { success: true, breeds: result.rows, ...result.info, filters } };
 }
 
 async function listOwnerBreeds(req) {

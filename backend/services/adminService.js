@@ -33,6 +33,7 @@ const medicalRecordsRepository = require('../repositories/medicalRecordsReposito
 const activityLogsRepository = require('../repositories/activityLogsRepository');
 const emailLogsRepository = require('../repositories/emailLogsRepository');
 const appointmentNotificationsService = require('./appointmentNotificationsService');
+const careRecommendationService = require('./careRecommendationService');
 const { APPOINTMENT_STATUS_CHANGED_MESSAGE } = require('../constants/appointments');
 const { countServicesForAnalytics, isCheckupService, normalizeSpecies, isServiceBookable } = require('../utils/serviceCatalog');
 const serviceCatalogRepository = require('../repositories/serviceCatalogRepository');
@@ -1239,7 +1240,13 @@ const updateAppointmentStatus = async (req) => {
       newStatus: normalizedStatus
     });
 
-    return { statusCode: 200, body: { success: true, appointment: data[0] } };
+    // A completed visit records the pet's next-care suggestion (services/careRecommendationService.js); a problem there
+    // is logged and never changes the completed status
+    const careRecommendation = normalizedStatus === 'Completed'
+      ? (await careRecommendationService.recordForCompletedAppointment(data[0])).status
+      : null;
+
+    return { statusCode: 200, body: { success: true, appointment: data[0], ...(careRecommendation ? { care_recommendation: careRecommendation } : {}) } };
   } catch (error) {
     console.error('Update appointment status error:', error);
     return { statusCode: 500, body: { error: 'Server error' } };

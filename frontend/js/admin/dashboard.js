@@ -1694,6 +1694,8 @@ function switchSystemTab(tab, { focus = false, render = true } = {}) {
     if (currentSystemTab === 'activity') renderSystemLogs();
     if (currentSystemTab === 'services') renderServiceCatalog();
   }
+  // The care reminder rules and service activity (js/admin/catalog-tools.js) load the first time the tab is shown
+  if (currentSystemTab === 'services') window.PetHubCatalogTools?.loadServicesTabExtras();
 }
 
 function debounce(fn, delay = 200) {
@@ -2592,7 +2594,8 @@ function getCancellationNoteHtml(appointment) {
 const APPOINTMENT_EMAIL_LABELS = {
   appointment_approved: 'Approval email',
   appointment_cancelled_by_clinic: 'Cancellation email',
-  appointment_cancelled_by_owner: 'Cancellation confirmation'
+  appointment_cancelled_by_owner: 'Cancellation confirmation',
+  appointment_rescheduled: 'Reschedule email'
 };
 
 // Appointment emails that could not be delivered (email_logs), each with a way to send it again
@@ -2600,7 +2603,7 @@ function getEmailDeliveryNoteHtml(appointment) {
   return asArray(appointment?.emails)
     .filter(email => email.status === 'Failed' && email.log_id)
     .map(email => `
-      <p class="mt-1"><span class="ph-badge ph-badge-warning" title="${escapeHtml(email.error || 'The email service did not accept it.')}">${escapeHtml(APPOINTMENT_EMAIL_LABELS[email.type] || 'Email')} not delivered</span></p>
+      <p class="mt-1"><span class="ph-badge ph-badge-warning" title="${escapeHtml(email.error || 'The email service did not accept it.')}">${escapeHtml(APPOINTMENT_EMAIL_LABELS[String(email.type).split(':')[0]] || 'Email')} not delivered</span></p>
       <button type="button" class="ph-text-button mt-1" data-email-retry="${escapeHtml(String(email.log_id))}">Resend email</button>`)
     .join('');
 }
@@ -2883,7 +2886,12 @@ function renderAdminPetDetail(pet) {
         ? getAppointmentHistoryTableHtml(appointments, { columns: otherAccountAppointments.length ? ['owner'] : [] })
         : getAdminEmptyBlock('No appointments yet', 'Appointments booked for this pet appear here with their status.')}</div>
     </section>
+    <section id="adminPetCareSection" class="ph-admin-history" aria-labelledby="adminPetCareTitle" data-pet-id="${escapeHtml(String(pet.id))}">
+      <h3 id="adminPetCareTitle" class="ph-dash-card-title">Care reminders</h3>
+      <div id="adminPetCareList" class="mt-3"><p class="ph-dash-note" role="status">Loading care reminders...</p></div>
+    </section>
   `;
+  if (typeof loadAdminPetCareReminders === 'function') loadAdminPetCareReminders(pet);
 }
 
 /**
@@ -2911,17 +2919,18 @@ function displayAppointmentsTable(appointments) {
     return;
   }
 
-  appointmentsTable.innerHTML = appointments.map(apt => {
+  const rowHtml = apt => {
     const handledBy = getHandledByLabel(apt);
     const status = getAppointmentStatus(apt.status);
     const owner = getUserById(apt.user_id);
     const ownerLabel = escapeHtml(getAppointmentOwnerLabel(apt));
+    const groupBadge = typeof getGroupMemberBadgeHtml === 'function' ? getGroupMemberBadgeHtml(apt) : '';
 
     return `
-    <tr>
+    <tr${apt.group_id ? ' class="ph-group-member"' : ''}>
       <td>${escapeHtml(getAppointmentReference(apt))}</td>
       <td>
-        <strong>${getAppointmentPetCellHtml(apt)}</strong>
+        <strong>${getAppointmentPetCellHtml(apt)}</strong>${groupBadge}
         <p class="ph-dash-muted">${owner ? `<a class="ph-dash-link" href="${getOwnerHref(owner.id)}">${ownerLabel}</a>` : ownerLabel}</p>
       </td>
       <td>
@@ -2936,7 +2945,11 @@ function displayAppointmentsTable(appointments) {
       <td><div class="admin-medical-record-action-cell">${renderAppointmentActions(status, apt)}</div></td>
     </tr>
   `;
-  }).join('');
+  };
+  // Pets booked together are shown together under one booking row (js/admin/booking-tools.js)
+  appointmentsTable.innerHTML = typeof renderGroupedAppointmentRows === 'function'
+    ? renderGroupedAppointmentRows(appointments, rowHtml)
+    : appointments.map(rowHtml).join('');
 }
 
 function getHandledByLabel(appointment) {
@@ -3086,11 +3099,15 @@ function renderAppointmentActions(status, appointment) {
   const started = Number.isFinite(startMs) && startMs <= Date.now();
   const notStarted = Number.isFinite(startMs) && startMs > Date.now();
 
+  // Moving an appointment to another time (one pet only, also inside a multi-pet booking), before it starts
+  const reschedule = started ? '' : `<button type="button" data-appointment-reschedule="${id}" class="${getAdminActionButtonClass('neutral')}">Reschedule</button>`;
+
   if (status === 'Pending') {
     return `
       <div class="flex flex-wrap gap-2">
         ${started ? '' : action('Approved', 'Approve', 'success')}
         ${action('Cancelled', 'Cancel', 'danger')}
+        ${reschedule}
       </div>
       ${started ? '<p class="ph-dash-note mt-1">Its start time has passed, so it can no longer be approved.</p>' : ''}
     `;
@@ -3101,6 +3118,7 @@ function renderAppointmentActions(status, appointment) {
       <div class="flex flex-wrap gap-2">
         ${notStarted ? '' : action('Completed', 'Complete', 'success')}
         ${action('Cancelled', 'Cancel', 'danger')}
+        ${reschedule}
       </div>
       ${notStarted ? '<p class="ph-dash-note mt-1">Can be marked Completed after it starts.</p>' : ''}
     `;
@@ -4054,6 +4072,7 @@ function getServiceAvailabilityRowHtml(service) {
         <p class="service-availability-meta">${escapeHtml(service.category_label || service.category || '')} · ${escapeHtml(formatServiceSpecies(service.species))} · ${escapeHtml(formatServiceDuration(service.duration_minutes))}</p>
         ${service.description ? `<p class="service-availability-detail">${escapeHtml(service.description)}</p>` : ''}
         <p id="serviceAvailabilityDetail-${id}" class="service-availability-detail">${escapeHtml(state.detail)}</p>
+        ${Number.isInteger(service.appointment_count) ? `<p class="service-availability-detail">${service.appointment_count === 0 ? 'No appointments use this service yet.' : `${service.appointment_count} appointment${service.appointment_count === 1 ? ' uses' : 's use'} this service; turning it off or editing it never changes them.`}</p>` : ''}
       </div>
       <div class="service-availability-control">
         <span class="ph-status ${state.available ? 'ph-status-completed' : 'ph-status-other'} px-2.5 py-1 text-xs">${state.label}</span>
@@ -4105,7 +4124,24 @@ function storeUpdatedService(service, data) {
   const updated = { ...service, ...data.service, version: data.version, updated_at: data.updated_at };
   adminDashboardData.serviceCatalog = asArray(adminDashboardData.serviceCatalog).map(entry => (String(entry.id) === String(service.id) ? updated : entry));
   refreshServiceAvailabilityRow(updated);
+  window.PetHubCatalogTools?.refreshActivity();
   return updated;
+}
+
+// The settings a new service starts from in the "Add a service" dialog (online booking off until it is set up)
+function getNewServiceDraft() {
+  const orders = asArray(adminDashboardData.serviceCatalog).map(service => Number(service.display_order) || 0);
+  return {
+    id: '',
+    name: '',
+    description: '',
+    category: 'grooming',
+    species: [],
+    duration_minutes: null,
+    display_order: Math.min(99, Math.max(0, ...orders) + 1),
+    online_booking_enabled: false,
+    has_appointments: false
+  };
 }
 
 // PUT /admin/services/:id with every setting (the server needs the full set) and expected_version
@@ -4268,13 +4304,16 @@ function openServiceDialog(service, { mode = 'edit', returnFocus = null } = {}) 
   dialog.dataset.mode = mode;
   dialog.returnFocusTo = returnFocus;
 
-  document.getElementById('serviceSetupTitle').textContent = mode === 'activate' ? `Set up ${service.name} for online booking` : `Edit ${service.name}`;
-  document.getElementById('serviceSetupIntro').textContent = mode === 'activate'
-    ? `Before customers can book ${service.name}, enter ${describeMissingSettings(missing)}. Use the clinic's confirmed values only.`
-    : service.online_booking_enabled
-      ? 'Changes apply to new bookings. Online booking stays on.'
-      : 'Changes are saved; online booking stays off until you turn it on.';
-  document.getElementById('serviceSetupSubmit').textContent = mode === 'activate' ? 'Save and turn on' : 'Save changes';
+  const creating = mode === 'create';
+  document.getElementById('serviceSetupTitle').textContent = creating ? 'Add a service' : mode === 'activate' ? `Set up ${service.name} for online booking` : `Edit ${service.name}`;
+  document.getElementById('serviceSetupIntro').textContent = creating
+    ? 'A new service starts with online booking off. Turn it on with its switch once its duration and species are confirmed by the clinic.'
+    : mode === 'activate'
+      ? `Before customers can book ${service.name}, enter ${describeMissingSettings(missing)}. Use the clinic's confirmed values only.`
+      : service.online_booking_enabled
+        ? 'Changes apply to new bookings. Online booking stays on.'
+        : 'Changes are saved; online booking stays off until you turn it on.';
+  document.getElementById('serviceSetupSubmit').textContent = creating ? 'Add service' : mode === 'activate' ? 'Save and turn on' : 'Save changes';
 
   form.elements.name.value = service.name || '';
   // A booked service keeps its name: its appointments store it (the server refuses a rename too)
@@ -4296,7 +4335,7 @@ function openServiceDialog(service, { mode = 'edit', returnFocus = null } = {}) 
   });
   setServiceDialogError('');
   dialog.showModal();
-  const firstMissing = mode === 'activate' ? form.querySelector('.ph-field-missing input') : form.elements.description;
+  const firstMissing = mode === 'activate' ? form.querySelector('.ph-field-missing input') : creating ? form.elements.name : form.elements.description;
   (firstMissing || form.elements.name).focus();
 }
 
@@ -4327,10 +4366,50 @@ function validateServiceDialog(settings, turningOn) {
   return null;
 }
 
+// POST /admin/services: the new service is added to the list (off for online booking until it is set up and switched on)
+async function createServiceFromDialog(form, dialog) {
+  const settings = readServiceDialog(form);
+  const problem = validateServiceDialog(settings, false);
+  if (problem) {
+    setServiceDialogError(problem.message, problem.field);
+    return;
+  }
+  setServiceDialogError('');
+  setFormSubmitting(form, true, 'Adding...', 'Add service');
+  try {
+    const response = await fetchWithRetry(() => fetch(`${window.API_BASE_URL}/admin/services${getAdminUserIdQuery()}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...settings, online_booking_enabled: false })
+    }));
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.success !== true) {
+      setServiceDialogError(data.error || `Could not add this service (${response.status}).`, data.field || '');
+      return;
+    }
+    const created = { ...data.service, version: data.version, updated_at: data.updated_at, has_appointments: false, appointment_count: 0 };
+    adminDashboardData.serviceCatalog = [...asArray(adminDashboardData.serviceCatalog), created]
+      .sort((first, second) => (Number(first.display_order) - Number(second.display_order)) || String(first.name).localeCompare(String(second.name)));
+    renderServiceCatalog();
+    window.PetHubCatalogTools?.refreshActivity();
+    dialog.returnFocusTo = document.querySelector(`[data-service-toggle="${CSS.escape(String(created.id))}"]`) || dialog.returnFocusTo;
+    dialog.close();
+    showAdminStatus('success', `${created.name} was added. Online booking for it is off until you turn it on.`);
+  } catch (error) {
+    setServiceDialogError(error.message || 'Could not add this service.');
+  } finally {
+    setFormSubmitting(form, false, 'Adding...', 'Add service');
+  }
+}
+
 async function saveServiceDialog(event) {
   event.preventDefault();
   const form = event.currentTarget;
   const dialog = document.getElementById('serviceSetupDialog');
+  if (dialog?.dataset.mode === 'create') {
+    if (!isFormSubmitting(form)) await createServiceFromDialog(form, dialog);
+    return;
+  }
   const service = findCatalogService(dialog?.dataset.serviceId);
   if (!service || isFormSubmitting(form)) return;
   const activating = dialog.dataset.mode === 'activate';

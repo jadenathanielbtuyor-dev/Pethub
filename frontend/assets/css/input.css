@@ -6181,3 +6181,245 @@ body.dark-mode .ph-field-missing.ph-species-set {
 body.dark-mode .ph-missing-note {
   color: #fcd34d;
 }
+
+/* ==================== 2026-10-24 additions: pages, grouped bookings, care reminders, multi-pet booking ==================== */
+.ph-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ph-page-numbers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.ph-page-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  justify-content: center;
+  padding: 0.25rem 0.625rem;
+  border: 1px solid #fed7aa;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: #9a3412;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.ph-page-button:hover:not(:disabled) {
+  background: #fff7ed;
+}
+
+.ph-page-button.is-current {
+  border-color: #ea580c;
+  background: #ea580c;
+  color: #fff;
+}
+
+.ph-page-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ph-page-gap {
+  padding: 0 0.25rem;
+  color: #6b7280;
+}
+
+.ph-page-status {
+  margin-left: auto;
+  color: #4b5563;
+  font-size: 0.875rem;
+}
+
+.ph-group-row td {
+  border-top: 2px solid #fdba74;
+  background: #fff7ed;
+}
+
+.ph-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+
+.ph-group-member td:first-child {
+  border-left: 4px solid #fdba74;
+}
+
+.ph-activity-row {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.ph-activity-row:last-child {
+  border-bottom: 0;
+}
+
+.ph-care-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.ph-care-card {
+  padding: 0.875rem 1rem;
+  border: 1px solid #fed7aa;
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
+.ph-care-card.is-review {
+  border-style: dashed;
+}
+
+.ph-care-due {
+  color: #9a3412;
+  font-weight: 700;
+}
+
+.ph-care-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.625rem;
+}
+
+.ph-booking-mode {
+  display: inline-flex;
+  padding: 0.25rem;
+  border: 1px solid #fed7aa;
+  border-radius: 0.75rem;
+  background: #fff7ed;
+}
+
+.ph-booking-mode button {
+  padding: 0.375rem 0.875rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #9a3412;
+}
+
+.ph-booking-mode button[aria-pressed="true"] {
+  background: #ea580c;
+  color: #fff;
+}
+
+.ph-group-pet {
+  padding: 0.875rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+}
+
+.ph-group-pet.has-error {
+  border-color: #dc2626;
+  background: #fef2f2;
+}
+
+.ph-group-pet-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+}
+
+.ph-pet-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.625rem;
+  cursor: pointer;
+}
+
+.ph-pet-choice:has(input:checked) {
+  border-color: #ea580c;
+  background: #fff7ed;
+}
+
+body.dark-mode .ph-page-button {
+  border-color: #4b5563;
+  background: #111827;
+  color: #fdba74;
+}
+
+body.dark-mode .ph-page-button:hover:not(:disabled) {
+  background: #1f2937;
+}
+
+body.dark-mode .ph-page-button.is-current {
+  border-color: #fb923c;
+  background: #c2410c;
+  color: #fff;
+}
+
+body.dark-mode .ph-page-status,
+body.dark-mode .ph-page-gap {
+  color: #d1d5db;
+}
+
+body.dark-mode .ph-group-row td {
+  border-top-color: #9a3412;
+  background: #1f2937;
+}
+
+body.dark-mode .ph-group-member td:first-child {
+  border-left-color: #9a3412;
+}
+
+body.dark-mode .ph-activity-row {
+  border-bottom-color: #374151;
+}
+
+body.dark-mode .ph-care-card,
+body.dark-mode .ph-group-pet,
+body.dark-mode .ph-pet-choice {
+  border-color: #374151;
+  background: #111827;
+  color: #f3f4f6;
+}
+
+body.dark-mode .ph-care-due {
+  color: #fdba74;
+}
+
+body.dark-mode .ph-group-pet.has-error {
+  border-color: #f87171;
+  background: #450a0a;
+}
+
+body.dark-mode .ph-pet-choice:has(input:checked) {
+  border-color: #fb923c;
+  background: #431407;
+}
+
+body.dark-mode .ph-booking-mode {
+  border-color: #4b5563;
+  background: #111827;
+}
+
+body.dark-mode .ph-booking-mode button {
+  color: #fdba74;
+}
+
+body.dark-mode .ph-booking-mode button[aria-pressed="true"] {
+  background: #c2410c;
+  color: #fff;
+}
+
+/* The booking row spans the whole (scrolling) table: keep its text and button within the visible width */
+.ph-group-head-stack {
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 48rem;
+}

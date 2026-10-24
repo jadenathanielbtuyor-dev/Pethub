@@ -24,7 +24,8 @@ async function logUserActivity(userId, action, details = '') {
   }
 }
 
-async function logAdminActivity(adminId, targetTable, targetId, action) {
+// eventType: a machine-readable type (activity_logs.event_type, e.g. constants/serviceActivity.js); details: what changed
+async function logAdminActivity(adminId, targetTable, targetId, action, { eventType = null, details = null } = {}) {
   if (!hasValue(adminId) || !hasValue(targetTable) || !hasValue(targetId) || !hasValue(action)) {
     logger.warn('activity.admin_log_skipped', { action, targetTable, targetId });
     return;
@@ -36,7 +37,9 @@ async function logAdminActivity(adminId, targetTable, targetId, action) {
       user_id: String(adminId).trim(),
       target_table: String(targetTable).trim(),
       target_id: String(targetId).trim(),
-      action: String(action).trim()
+      action: String(action).trim(),
+      ...(eventType ? { event_type: eventType } : {}),
+      ...(details ? { details: String(details).slice(0, 1000) } : {})
     });
 
     if (error) {

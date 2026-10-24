@@ -1,5 +1,6 @@
 const { trimValue, hasValue } = require('./commonValidator');
 const { BREED_NAME_MAX_LENGTH } = require('../constants/breedCatalog');
+const { parsePageQuery, sanitizeSearchText } = require('../utils/pagination');
 
 const VALID_SPECIES = ['Dog', 'Cat'];
 
@@ -16,6 +17,27 @@ function validateBreedCatalogListQuery(query = {}) {
   const species = hasValue(query.species) ? normalizeSpecies(query.species) : '';
   if (hasValue(query.species) && !species) return { error: { statusCode: 400, body: { error: 'Species must be Dog or Cat.', field: 'species' } } };
   return { species };
+}
+
+const BREED_PAGE_SIZE = 20;
+const BREED_MAX_PAGE_SIZE = 50;
+const BREED_STATUSES = ['active', 'inactive', 'all'];
+const BREED_SORT_KEYS = ['name_asc', 'name_desc', 'updated_desc', 'species_name'];
+
+// Admin Breed Catalog list: species (Dog | Cat | all), selection status, search text, sort and page
+function validateBreedCatalogPageQuery(query = {}) {
+  const speciesValue = trimValue(query.species);
+  const species = speciesValue && speciesValue.toLowerCase() !== 'all' ? normalizeSpecies(speciesValue) : '';
+  if (speciesValue && speciesValue.toLowerCase() !== 'all' && !species) {
+    return { error: { statusCode: 400, body: { success: false, error: 'Species must be Dog, Cat or all.', field: 'species' } } };
+  }
+  // Without a status the whole catalog is listed (the API's behaviour before pages existed); the page asks for one
+  const status = trimValue(query.status) || 'all';
+  if (!BREED_STATUSES.includes(status)) return { error: { statusCode: 400, body: { success: false, error: 'Status must be active, inactive or all.', field: 'status' } } };
+  const sort = trimValue(query.sort) || 'name_asc';
+  if (!BREED_SORT_KEYS.includes(sort)) return { error: { statusCode: 400, body: { success: false, error: 'Choose a valid sort order.', field: 'sort' } } };
+  const { page, pageSize } = parsePageQuery(query, { defaultSize: BREED_PAGE_SIZE, maxSize: BREED_MAX_PAGE_SIZE });
+  return { filters: { species, status, search: sanitizeSearchText(query.q), sort }, page, pageSize };
 }
 
 function validateBreedCatalogCreate(body = {}) {
@@ -67,6 +89,7 @@ module.exports = {
   normalizeSpecies,
   normalizeBreedName,
   validateBreedCatalogListQuery,
+  validateBreedCatalogPageQuery,
   validateBreedCatalogCreate,
   validateBreedCatalogUpdate
 };

@@ -44,14 +44,16 @@
         </section>
 
         <section class="ph-dash-panel" aria-labelledby="breedListTitle">
-          <div class="ph-dash-panel-head"><h2 id="breedListTitle" class="ph-dash-panel-title">Catalog entries</h2></div>
-          <div class="ph-dash-filters ph-dash-filters-3">
+          <div class="ph-dash-panel-head"><h2 id="breedListTitle" class="ph-dash-panel-title" tabindex="-1">Catalog entries</h2></div>
+          <div class="ph-dash-filters ph-dash-filters-4">
             <div class="ph-field"><label for="breedSearch" class="ph-label">Search</label><input id="breedSearch" type="search" class="ph-input" placeholder="Search name or source"></div>
             <div class="ph-field"><label for="breedSpeciesFilter" class="ph-label">Species</label><select id="breedSpeciesFilter" class="ph-input"><option value="all">Dogs and cats</option><option value="Dog">Dog</option><option value="Cat">Cat</option></select></div>
             <div class="ph-field"><label for="breedStatusFilter" class="ph-label">Selection status</label><select id="breedStatusFilter" class="ph-input"><option value="active">Enabled</option><option value="inactive">Disabled</option><option value="all">All</option></select></div>
+            <div class="ph-field"><label for="breedSortOrder" class="ph-label">Sort by</label><select id="breedSortOrder" class="ph-input"><option value="name_asc">Name (A–Z)</option><option value="name_desc">Name (Z–A)</option><option value="updated_desc">Recently updated</option><option value="species_name">Species, then name</option></select></div>
           </div>
           <p id="breedCount" class="ph-dash-note" role="status" aria-live="polite"></p>
           <div id="breedCatalogList" class="ph-breed-catalog-list" aria-live="polite"><p role="status">Loading breed catalog...</p></div>
+          <div id="breedPagination" class="mt-4" hidden></div>
         </section>
       </main>
     </div>
@@ -62,6 +64,7 @@
   <script src="../../js/core/storage.js"></script>
   <script src="../../js/main.js"></script>
   <script src="../../js/shared/dashboard-shell.js"></script>
+  <script src="../../js/shared/pagination.js"></script>
   <script src="../../js/admin/breeds.js"></script>
 </body>
 </html>

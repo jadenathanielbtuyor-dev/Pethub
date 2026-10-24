@@ -1,5 +1,12 @@
+// Admin Breed Catalog: one page of entries at a time from GET /admin/breeds (search, species, status and sort are
+// applied by the server), with page navigation (js/shared/pagination.js). The current view is kept in the address bar,
+// so a refresh shows the same page and filters.
+const BREED_PAGE_SIZE = 20;
+const breedQuery = { page: 1, species: 'all', status: 'active', q: '', sort: 'name_asc' };
 let breedCatalogEntries = [];
 let breedCatalogSaving = false;
+let breedLoadController = null;
+let breedSearchTimer = null;
 
 document.addEventListener('DOMContentLoaded', initializeBreedCatalog);
 
@@ -9,27 +16,100 @@ async function initializeBreedCatalog() {
     if (isLoggedIn() && user) redirectToDashboardForRole(user.role); else redirectToLogin();
     return;
   }
+  readBreedQueryFromUrl();
   document.getElementById('breedCreateForm')?.addEventListener('submit', createBreedFromForm);
   document.getElementById('breedEditForm')?.addEventListener('submit', saveBreedName);
   document.getElementById('breedEditCancel')?.addEventListener('click', closeBreedEdit);
-  document.getElementById('breedSearch')?.addEventListener('input', renderBreedCatalog);
-  document.getElementById('breedSpeciesFilter')?.addEventListener('change', renderBreedCatalog);
-  document.getElementById('breedStatusFilter')?.addEventListener('change', renderBreedCatalog);
+  document.getElementById('breedSearch')?.addEventListener('input', () => {
+    clearTimeout(breedSearchTimer);
+    // Wait for a pause in typing, so each keystroke does not send a request
+    breedSearchTimer = setTimeout(() => changeBreedFilters({ q: document.getElementById('breedSearch').value.trim() }), 300);
+  });
+  document.getElementById('breedSpeciesFilter')?.addEventListener('change', event => changeBreedFilters({ species: event.target.value }));
+  document.getElementById('breedStatusFilter')?.addEventListener('change', event => changeBreedFilters({ status: event.target.value }));
+  document.getElementById('breedSortOrder')?.addEventListener('change', event => changeBreedFilters({ sort: event.target.value }));
   document.getElementById('breedCatalogList')?.addEventListener('click', handleBreedAction);
   await loadBreedCatalog();
 }
 
-async function loadBreedCatalog() {
-  const container = document.getElementById('breedCatalogList');
-  if (container) container.innerHTML = '<p role="status">Loading breed catalog...</p>';
+function readBreedQueryFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const page = Number.parseInt(params.get('page') || '1', 10);
+  breedQuery.page = Number.isInteger(page) && page > 0 ? page : 1;
+  if (['all', 'Dog', 'Cat'].includes(params.get('species'))) breedQuery.species = params.get('species');
+  if (['active', 'inactive', 'all'].includes(params.get('status'))) breedQuery.status = params.get('status');
+  if (['name_asc', 'name_desc', 'updated_desc', 'species_name'].includes(params.get('sort'))) breedQuery.sort = params.get('sort');
+  breedQuery.q = String(params.get('q') || '').slice(0, 60);
+  const fields = { breedSearch: breedQuery.q, breedSpeciesFilter: breedQuery.species, breedStatusFilter: breedQuery.status, breedSortOrder: breedQuery.sort };
+  Object.entries(fields).forEach(([id, value]) => {
+    const element = document.getElementById(id);
+    if (element) element.value = value;
+  });
+}
+
+function writeBreedQueryToUrl() {
+  const params = new URLSearchParams();
+  if (breedQuery.page > 1) params.set('page', String(breedQuery.page));
+  if (breedQuery.species !== 'all') params.set('species', breedQuery.species);
+  if (breedQuery.status !== 'active') params.set('status', breedQuery.status);
+  if (breedQuery.sort !== 'name_asc') params.set('sort', breedQuery.sort);
+  if (breedQuery.q) params.set('q', breedQuery.q);
+  const query = params.toString();
   try {
-    const response = await fetch(`${window.API_BASE_URL}/admin/breeds`);
+    window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+  } catch (error) {
+    // The address could not be updated (e.g. a file:// page); the view still works
+  }
+}
+
+// A filter, search or sort change starts again at page 1
+function changeBreedFilters(changes) {
+  Object.assign(breedQuery, changes, { page: 1 });
+  loadBreedCatalog();
+}
+
+function goToBreedPage(page) {
+  breedQuery.page = page;
+  loadBreedCatalog({ focusList: true });
+}
+
+async function loadBreedCatalog({ focusList = false } = {}) {
+  const container = document.getElementById('breedCatalogList');
+  const count = document.getElementById('breedCount');
+  if (breedLoadController) breedLoadController.abort();
+  const controller = new AbortController();
+  breedLoadController = controller;
+  if (container) container.setAttribute('aria-busy', 'true');
+  if (container && !breedCatalogEntries.length) container.innerHTML = '<p role="status">Loading breed catalog...</p>';
+  if (count) count.textContent = 'Loading...';
+
+  const params = new URLSearchParams({
+    page: String(breedQuery.page),
+    page_size: String(BREED_PAGE_SIZE),
+    species: breedQuery.species,
+    status: breedQuery.status,
+    sort: breedQuery.sort
+  });
+  if (breedQuery.q) params.set('q', breedQuery.q);
+  try {
+    const response = await fetch(`${window.API_BASE_URL}/admin/breeds?${params.toString()}`, { signal: controller.signal });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || data.success === false) throw new Error(data.error || `Could not load catalog (${response.status}).`);
+    if (controller !== breedLoadController) return;
     breedCatalogEntries = Array.isArray(data.breeds) ? data.breeds : [];
-    renderBreedCatalog();
+    // The server moves a page past the end (after entries were disabled or filtered out) to the last page
+    breedQuery.page = Number(data.page) || 1;
+    writeBreedQueryToUrl();
+    renderBreedCatalog(data);
+    if (focusList) document.getElementById('breedListTitle')?.focus();
   } catch (error) {
+    if (error.name === 'AbortError' || controller !== breedLoadController) return;
+    breedCatalogEntries = [];
+    if (count) count.textContent = '';
     if (container) container.innerHTML = `<div class="ph-dash-error" role="alert"><p class="ph-dash-error-title">Breed catalog unavailable</p><p class="ph-dash-error-text">${escapeHtml(error.message)}</p></div>`;
+    window.PetHubPagination?.render(document.getElementById('breedPagination'), { total: 0 }, goToBreedPage);
+  } finally {
+    if (controller === breedLoadController && container) container.removeAttribute('aria-busy');
   }
 }
 
@@ -44,25 +124,21 @@ function getSafeSourceUrl(value) {
   }
 }
 
-function renderBreedCatalog() {
+function renderBreedCatalog(pageInfo = {}) {
   const container = document.getElementById('breedCatalogList');
   const count = document.getElementById('breedCount');
   if (!container) return;
-  const query = String(document.getElementById('breedSearch')?.value || '').trim().toLowerCase();
-  const species = document.getElementById('breedSpeciesFilter')?.value || 'all';
-  const status = document.getElementById('breedStatusFilter')?.value || 'active';
-  const entries = breedCatalogEntries.filter(entry => {
-    const matchesSpecies = species === 'all' || entry.species === species;
-    const matchesStatus = status === 'all' || Boolean(entry.is_active) === (status === 'active');
-    const matchesText = !query || `${entry.name} ${entry.source_organization || ''} ${entry.recognition_status || ''}`.toLowerCase().includes(query);
-    return matchesSpecies && matchesStatus && matchesText;
-  });
-  if (count) count.textContent = `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}`;
-  if (!entries.length) {
+  const total = Number(pageInfo.total) || 0;
+  const first = total ? (breedQuery.page - 1) * BREED_PAGE_SIZE + 1 : 0;
+  const last = first ? first + breedCatalogEntries.length - 1 : 0;
+  if (count) count.textContent = total ? `Showing ${first}–${last} of ${total} ${total === 1 ? 'entry' : 'entries'}` : '0 entries';
+  window.PetHubPagination?.render(document.getElementById('breedPagination'), pageInfo, goToBreedPage, { label: 'Breed catalog pages' });
+
+  if (!breedCatalogEntries.length) {
     container.innerHTML = '<div class="ph-dash-empty"><p class="ph-dash-empty-title">No catalog entries match</p><p class="ph-dash-empty-text">Try another search or filter.</p></div>';
     return;
   }
-  container.innerHTML = entries.map(entry => {
+  container.innerHTML = breedCatalogEntries.map(entry => {
     const source = entry.source_organization
       ? `<span>${escapeHtml(entry.source_organization)}${entry.source_reviewed_at ? ` · reviewed ${escapeHtml(entry.source_reviewed_at)}` : ''}</span>`
       : '<span>No source recorded</span>';
@@ -155,6 +231,7 @@ async function updateBreed(id, changes, successMessage) {
     if (!response.ok || data.success === false) throw new Error(data.error || 'Could not update this breed.');
     closeBreedEdit();
     showBreedFeedback(successMessage, 'success');
+    // The same page and filters again; the server moves to the last page if this one is now past the end
     await loadBreedCatalog();
   } catch (error) {
     showBreedFeedback(error.message, 'error');

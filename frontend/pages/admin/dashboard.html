@@ -527,8 +527,11 @@
 
             <!-- Services & booking: the catalog as the server lists it, with each service's online booking status -->
             <div id="systemPanelServices" role="tabpanel" aria-labelledby="systemTabServices" hidden>
-              <p id="bookingStatusSummary" class="ph-dash-panel-text mb-2"></p>
-              <p class="ph-dash-note mb-4">Turn a service on to open it for online booking. If its duration or species hasn't been set yet, PetHub asks for them first. Enter only clinic-confirmed details.</p>
+              <div class="flex flex-wrap items-start justify-between gap-3 mb-2">
+                <p id="bookingStatusSummary" class="ph-dash-panel-text"></p>
+                <button id="addServiceButton" type="button" class="ph-btn ph-btn-primary ph-btn-sm"><i class="ri-add-line" aria-hidden="true"></i>Add a service</button>
+              </div>
+              <p class="ph-dash-note mb-4">Turn a service on to open it for online booking. If its duration or species hasn't been set yet, PetHub asks for them first. Enter only clinic-confirmed details. Services are saved in the database and appear on the booking page at once; a service is never deleted, only turned off, so its appointments stay intact.</p>
               <p id="serviceCatalogFeedback" class="mb-4" role="status" aria-live="polite"></p>
               <div id="servicesCatalogContainer">
                 <div class="dashboard-loading-state" role="status" aria-live="polite">
@@ -539,6 +542,37 @@
                   </div>
                 </div>
               </div>
+
+              <section class="mt-8" aria-labelledby="careRulesTitle">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 id="careRulesTitle" class="ph-dash-card-title">Care reminder rules</h3>
+                    <p class="ph-dash-note">When an appointment is marked Completed, owners see when the next visit for that service may be due, following these rules. A service without a rule shows "ask the clinic" and no date. Reminders are general care guidance, never a diagnosis, and nothing is booked automatically.</p>
+                  </div>
+                  <button id="addCareRuleButton" type="button" class="ph-btn ph-btn-secondary ph-btn-sm"><i class="ri-add-line" aria-hidden="true"></i>Add a rule</button>
+                </div>
+                <div id="careRulesContainer" class="mt-3"><p class="ph-dash-note" role="status">Care reminder rules load when this tab opens.</p></div>
+                <details class="mt-3">
+                  <summary class="ph-dash-link">PetHub's starting guidance (reference only, not applied until you save a rule)</summary>
+                  <div id="careGuidanceReference"></div>
+                </details>
+              </section>
+
+              <section class="mt-8" aria-labelledby="serviceActivityTitle">
+                <h3 id="serviceActivityTitle" class="ph-dash-card-title" tabindex="-1">Service activity</h3>
+                <p class="ph-dash-note">Who added, changed, turned on or off each service, and when (clinic time). Newest first.</p>
+                <form id="serviceActivityFilters" class="ph-dash-filters ph-dash-filters-4 mt-3" novalidate>
+                  <div class="ph-field"><label for="serviceActivityService" class="ph-label">Service</label><select id="serviceActivityService" class="ph-input"><option value="">All services</option></select></div>
+                  <div class="ph-field"><label for="serviceActivityType" class="ph-label">Activity</label><select id="serviceActivityType" class="ph-input"><option value="">All activity</option></select></div>
+                  <div class="ph-field"><label for="serviceActivityAdmin" class="ph-label">Administrator</label><select id="serviceActivityAdmin" class="ph-input"><option value="">All administrators</option></select></div>
+                  <div class="ph-field"><label for="serviceActivityFrom" class="ph-label">From</label><input id="serviceActivityFrom" type="date" class="ph-input"></div>
+                  <div class="ph-field"><label for="serviceActivityTo" class="ph-label">To</label><input id="serviceActivityTo" type="date" class="ph-input"></div>
+                  <div class="flex items-end gap-2"><button type="submit" class="ph-btn ph-btn-primary ph-btn-sm">Apply filters</button><button id="serviceActivityReset" type="button" class="ph-btn ph-btn-ghost ph-btn-sm">Clear</button></div>
+                </form>
+                <p id="serviceActivitySummary" class="ph-dash-note mt-2" role="status" aria-live="polite"></p>
+                <div id="serviceActivityList" class="mt-2"></div>
+                <div id="serviceActivityPagination" class="mt-3" hidden></div>
+              </section>
             </div>
           </div>
         </section>
@@ -560,7 +594,10 @@
   <script src="../../js/shared/dashboard-shell.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js" integrity="sha384-FcQlsUOd0TJjROrBxhJdUhXTUgNJQxTMcxZe6nHbaEfFL1zjQ+bq/uRoBQxb0KMo" crossorigin="anonymous"></script>
   <script src="../../js/shared/appointment-durations.js"></script>
+  <script src="../../js/shared/pagination.js"></script>
   <script src="../../js/admin/dashboard.js"></script>
+  <script src="../../js/admin/booking-tools.js"></script>
+  <script src="../../js/admin/catalog-tools.js"></script>
   <script src="../../js/shared/ai-widget.js"></script>
 
 </body>

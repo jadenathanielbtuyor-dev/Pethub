@@ -152,6 +152,7 @@ module.exports = {
   getAppointmentReference,
   formatClinicTimestamp,
   formatAppointmentDate,
+  formatAppointmentTime,
   getAppointmentDetails,
   getClinicHelp,
   helpText,

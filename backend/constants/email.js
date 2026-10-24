@@ -7,6 +7,8 @@ const PASSWORD_RESET_MAX_ATTEMPTS = 3;
 const PASSWORD_RESET_EMAIL_SUBJECT = 'PetHub Password Reset Code';
 const APPOINTMENT_APPROVED_EMAIL_SUBJECT = 'PetHub — Appointment Approved';
 const APPOINTMENT_CANCELLED_EMAIL_SUBJECT = 'PetHub — Appointment Cancelled';
+// The clinic moved an appointment to a new time
+const APPOINTMENT_RESCHEDULED_EMAIL_SUBJECT = 'PetHub — Appointment Rescheduled';
 // The confirmation an owner receives after cancelling their own appointment
 const APPOINTMENT_OWNER_CANCELLED_EMAIL_SUBJECT = 'Your PetHub Appointment Has Been Cancelled';
 // The clinic's answer to a contact message
@@ -26,6 +28,7 @@ module.exports = {
   PASSWORD_RESET_EMAIL_SUBJECT,
   APPOINTMENT_APPROVED_EMAIL_SUBJECT,
   APPOINTMENT_CANCELLED_EMAIL_SUBJECT,
+  APPOINTMENT_RESCHEDULED_EMAIL_SUBJECT,
   APPOINTMENT_OWNER_CANCELLED_EMAIL_SUBJECT,
   CONTACT_REPLY_EMAIL_SUBJECT,
   APPOINTMENTS_PAGE_PATH,

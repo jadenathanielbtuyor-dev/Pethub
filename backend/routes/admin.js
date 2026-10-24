@@ -9,6 +9,8 @@ const asyncHandler = require('../middleware/asyncHandler');
 const { requireAuth } = require('../middleware/requireAuth');
 const breedCatalogController = require('../controllers/breedCatalogController');
 const serviceCatalogController = require('../controllers/serviceCatalogController');
+const groupBookingController = require('../controllers/groupBookingController');
+const careRecommendationsController = require('../controllers/careRecommendationsController');
 
 const router = express.Router();
 
@@ -44,7 +46,23 @@ router.use(requireAuth);
 router.use(validateAdminAccess);
 
 router.get('/services', serviceCatalogController.listAdminServices);
+router.post('/services', serviceCatalogController.createService);
+// Registered before /services/:id so "activity" is never read as a service id
+router.get('/services/activity', serviceCatalogController.listServiceActivity);
 router.put('/services/:id', serviceCatalogController.updateService);
+
+// Multi-pet bookings and rescheduling: a whole booking, or one pet's appointment
+router.post('/appointment-groups/:id/cancel', groupBookingController.cancelAppointmentGroup);
+router.put('/appointments/:id/schedule', groupBookingController.rescheduleAppointment);
+
+// Care reminders: the clinic's rules, one pet's suggestions, setting a pet's next date, and recording a suggestion for
+// a completed appointment that has none
+router.get('/care-rules', careRecommendationsController.listRules);
+router.post('/care-rules', careRecommendationsController.createRule);
+router.put('/care-rules/:id', careRecommendationsController.updateRule);
+router.get('/pets/:id/care-recommendations', careRecommendationsController.listPetRecommendationsForAdmin);
+router.post('/care-recommendations/:id/override', careRecommendationsController.overrideRecommendation);
+router.post('/appointments/:id/care-recommendation', careRecommendationsController.generateForAppointment);
 
 /**
  * GET /admin/dashboard/stats

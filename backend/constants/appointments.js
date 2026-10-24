@@ -14,6 +14,10 @@ const APPOINTMENT_CANCELLATION_CUTOFF_MESSAGE = 'Appointments can only be cancel
 // Pending requests also reserve their requested slot until the clinic approves or cancels them.
 const OCCUPIED_APPOINTMENT_STATUSES = new Set(['pending', 'approved', 'completed']);
 const VALID_APPOINTMENT_STATUSES = Object.freeze(['Pending', 'Approved', 'Completed', 'Cancelled']);
+// Multi-pet bookings: 2 to 6 pets per booking, seen one after another (the clinic schedule allows one appointment at a
+// time). The limit of 6 is a system limit for one booking form, not a clinic policy.
+const GROUP_BOOKING_LIMITS = Object.freeze({ minPets: 2, maxPets: 6 });
+const GROUP_SCHEDULING_NOTE = 'Your pets are seen one after another, in the order listed, starting at the time you chose.';
 
 module.exports = {
   INVALID_APPOINTMENT_DATE_MESSAGE,
@@ -27,5 +31,7 @@ module.exports = {
   APPOINTMENT_CANCELLATION_CUTOFF_HOURS,
   APPOINTMENT_CANCELLATION_CUTOFF_MESSAGE,
   OCCUPIED_APPOINTMENT_STATUSES,
-  VALID_APPOINTMENT_STATUSES
+  VALID_APPOINTMENT_STATUSES,
+  GROUP_BOOKING_LIMITS,
+  GROUP_SCHEDULING_NOTE
 };

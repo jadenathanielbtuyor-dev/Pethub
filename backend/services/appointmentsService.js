@@ -478,5 +478,7 @@ module.exports = {
   getUserAppointments,
   cancelOwnAppointment,
   getAllAppointments,
-  attachHandledByNames
+  attachHandledByNames,
+  getScheduleConflict,
+  mapAppointmentForOwner
 };

@@ -53,6 +53,18 @@ In the Admin Dashboard, switching on a service that has no confirmed duration or
 
 Cancelling (owner, at least 2 hours before the Asia/Manila start, or administrator) keeps the appointment row and records when (`appointments.cancelled_at`) and by whom (`appointments.cancelled_by`). Every status change is also written to `appointment_status_history` by a database trigger. The owner's confirmation email ("Your PetHub Appointment Has Been Cancelled") is sent before the response, so the owner is told whether it went out; a failed email never undoes the cancellation.
 
+Administrators add services with `POST /admin/services` (a new service starts with online booking off unless a duration and species are given) and switch them on or off; a service that has appointments is never deleted. Every add, change, activation and deactivation is written to `activity_logs` with an `event_type` (`constants/serviceActivity.js`) and shown, newest first and one page at a time, by `GET /admin/services/activity?page=&page_size=&service_id=&type=&admin_id=&from=&to=`. Entries saved before `event_type` existed are listed as "Settings changed (details were not recorded then)".
+
+## Multi-pet Bookings, Rescheduling and Care Reminders
+
+These need `database/migrations/2026-10-24_multi_pet_booking_and_care_recommendations.sql` (applied 2026-10-24, see `database/migrations/APPLIED.md`).
+
+- `POST /appointments/group` books 2 to 6 of the owner's own pets at once. The booking is one `appointment_groups` row and one `appointments` row per pet (`group_id`, `group_position`), placed one after another from the chosen start because the clinic serves one appointment at a time. `create_appointment_group_if_available` saves all of them or none; a repeat of the same request (same `request_key`) is stored once.
+- Each pet's appointment is approved, completed or cancelled on its own as before. `POST /admin/appointment-groups/:id/cancel` cancels every still-open appointment of a booking (`cancel_appointment_group_by_clinic`), recorded on each pet's appointment and in its status history; the owner gets one email naming all the pets.
+- `PUT /admin/appointments/:id/schedule` moves one Pending or Approved appointment to a free time (`reschedule_appointment_if_available`, same per-date locks). The request carries what the admin's screen showed (`expected_*`), so a change made meanwhile by another admin is refused with 409. The owner is emailed the new time.
+- Care reminders are suggestions only and never book anything. They are created when an appointment is marked Completed and its service has an active rule in `care_recommendation_rules` (`/admin/care-rules`, per service and optionally per species, an interval range in days and an explanation). Without a rule nothing is suggested; no dates are invented. Owners see them on the dashboard and My Pets (`GET /pets/care-recommendations`) and can acknowledge or dismiss them; an administrator can set a pet's next date with a reason (`POST /admin/care-recommendations/:id/override`), which replaces the earlier suggestion. The reference table in `constants/careRecommendations.js` is shown to administrators as starting guidance and is not applied by itself.
+- The breed catalog is paged in the database: `GET /admin/breeds?page=&page_size=&species=&status=&q=&sort=` (`utils/pagination.js`).
+
 ## Contact Messages, Emails and Clinic Details
 
 `POST /contact` requires a signed-in account: the sender's name and email are copied from the account, never taken from the request. A repeat of the same subject and text within 10 minutes is stored once. Customers see their messages and the clinic's reply with `GET /contact/mine`. Administrators list messages, mark them read and reply once (`POST /admin/dashboard/contact-messages/:id/reply`); the reply is stored first and then emailed to the account's address.
@@ -94,14 +106,7 @@ SELECT id, age FROM public.pets WHERE age IS NULL OR age < 1 OR age > 25;
 
 ## Database Migrations
 
-Migration files in `database/migrations/` are prepared for review and run by hand in the Supabase SQL Editor; nothing applies them automatically and the project has no migration ledger (`supabase_migrations.schema_migrations` does not exist). Each file says in its header whether it has been applied.
-
-Verified read-only against the live project on 2026-10-23 (details and evidence: `docs/live-database-reconciliation-2026-10-23.md`): the deployed Railway backend is ahead of the database. Run, in this order and each only after approval:
-
-1. `2026-10-23_reconcile_live_schema.sql`: one transaction that adds the user profile columns, the one-open-reset-code index, the breed catalog and owner weight tables, `medical_records.appointment_id`, the service catalog and the three appointment functions. It stops without changing anything if the database is not in the verified state. It replaces running the 2026-10-20 profile, 2026-10-22 and 2026-10-23 service-catalog files separately.
-2. `2026-10-20_rls_least_privilege.sql`: row level security on the 14 older tables (the backend already uses the service role key).
-
-`2026-10-17_password_resets_attempts_and_rls.sql` and `2026-10-17_paymongo_deposits.sql` are partially applied and must not be run again.
+Migration files in `database/migrations/` are prepared for review and run as one transaction each; nothing applies them automatically and the live project has no `supabase_migrations.schema_migrations` table. `database/migrations/APPLIED.md` is the ledger: which files were applied, when, how and with what evidence, and which must never be run (again). Each file's header describes its state when it was prepared; where it differs, the ledger is current.
 
 ## Folder Roles
 

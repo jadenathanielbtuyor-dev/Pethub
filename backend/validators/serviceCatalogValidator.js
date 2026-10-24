@@ -21,18 +21,8 @@ function parseInteger(value, { min, max, nullable = false } = {}) {
   return { value: number };
 }
 
-function validateServiceUpdateRequest(params = {}, body = {}, adminUserId = '') {
-  const serviceId = trimValue(params.id);
-  if (!UUID_PATTERN.test(serviceId)) {
-    return { error: { statusCode: 404, body: { success: false, error: 'Service not found.' } } };
-  }
-  if (!trimValue(adminUserId)) {
-    return { error: { statusCode: 401, body: { success: false, error: 'Sign in to manage services.' } } };
-  }
-
-  const unknownField = Object.keys(body || {}).find(field => !ALLOWED_FIELDS.has(field));
-  if (unknownField) return validationError('This service setting cannot be changed.', unknownField);
-
+// The settings shared by adding and editing a service. Returns { changes } or { error }.
+function validateServiceFields(body = {}) {
   const name = trimValue(body.name);
   if (!name || name.length > 100) return validationError('Enter a service name of 1 to 100 characters.', 'name');
 
@@ -64,9 +54,6 @@ function validateServiceUpdateRequest(params = {}, body = {}, adminUserId = '') 
   }
   const displayOrder = parseInteger(body.display_order, { min: 1, max: 99 });
   if (displayOrder.invalid) return validationError('Display order must be a whole number from 1 to 99.', 'display_order');
-  const expectedVersion = parseInteger(body.expected_version, { min: 1, max: Number.MAX_SAFE_INTEGER });
-  if (expectedVersion.invalid) return validationError('Reload this service before saving its configuration.', 'expected_version');
-
   if (body.online_booking_enabled && duration.value === null) {
     return validationError('Set a clinic-confirmed duration before enabling online booking.', 'duration_minutes');
   }
@@ -75,9 +62,6 @@ function validateServiceUpdateRequest(params = {}, body = {}, adminUserId = '') 
   }
 
   return {
-    serviceId,
-    adminUserId: String(adminUserId).trim(),
-    expectedVersion: expectedVersion.value,
     changes: {
       name,
       description,
@@ -85,12 +69,59 @@ function validateServiceUpdateRequest(params = {}, body = {}, adminUserId = '') 
       species: [...body.species],
       duration_minutes: duration.value,
       online_booking_enabled: body.online_booking_enabled,
-      display_order: displayOrder.value,
-      updated_by: String(adminUserId).trim()
+      display_order: displayOrder.value
     }
   };
 }
 
+function validateServiceUpdateRequest(params = {}, body = {}, adminUserId = '') {
+  const serviceId = trimValue(params.id);
+  if (!UUID_PATTERN.test(serviceId)) {
+    return { error: { statusCode: 404, body: { success: false, error: 'Service not found.' } } };
+  }
+  if (!trimValue(adminUserId)) {
+    return { error: { statusCode: 401, body: { success: false, error: 'Sign in to manage services.' } } };
+  }
+
+  const unknownField = Object.keys(body || {}).find(field => !ALLOWED_FIELDS.has(field));
+  if (unknownField) return validationError('This service setting cannot be changed.', unknownField);
+
+  const fields = validateServiceFields(body);
+  if (fields.error) return fields;
+  const expectedVersion = parseInteger(body.expected_version, { min: 1, max: Number.MAX_SAFE_INTEGER });
+  if (expectedVersion.invalid) return validationError('Reload this service before saving its configuration.', 'expected_version');
+
+  return {
+    serviceId,
+    adminUserId: String(adminUserId).trim(),
+    expectedVersion: expectedVersion.value,
+    changes: { ...fields.changes, updated_by: String(adminUserId).trim() }
+  };
+}
+
+// POST /admin/services: the same settings as an edit, without a version (a new service starts at version 1)
+function validateServiceCreateRequest(body = {}, adminUserId = '') {
+  if (!trimValue(adminUserId)) {
+    return { error: { statusCode: 401, body: { success: false, error: 'Sign in to manage services.' } } };
+  }
+  const unknownField = Object.keys(body || {}).find(field => !ALLOWED_FIELDS.has(field) || field === 'expected_version');
+  if (unknownField) return validationError('This service setting cannot be set.', unknownField);
+  const fields = validateServiceFields(body);
+  if (fields.error) return fields;
+  const actor = String(adminUserId).trim();
+  return { adminUserId: actor, service: { ...fields.changes, created_by: actor, updated_by: actor } };
+}
+
+// A URL-safe key for a new service from its name ("Dental Cleaning" -> "dental-cleaning")
+function buildServiceKey(name) {
+  const key = String(name || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60).replace(/-+$/g, '');
+  return key || 'service';
+}
+
 module.exports = {
-  validateServiceUpdateRequest
+  validateServiceFields,
+  validateServiceUpdateRequest,
+  validateServiceCreateRequest,
+  buildServiceKey
 };

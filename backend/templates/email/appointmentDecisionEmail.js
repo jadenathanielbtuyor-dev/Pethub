@@ -1,18 +1,29 @@
 const {
   APPOINTMENT_APPROVED_EMAIL_SUBJECT,
   APPOINTMENT_CANCELLED_EMAIL_SUBJECT,
+  APPOINTMENT_RESCHEDULED_EMAIL_SUBJECT,
   APPOINTMENT_OWNER_CANCELLED_EMAIL_SUBJECT
 } = require('../../constants/email');
 const {
   getAppointmentDetails,
   buildAppointmentEmail,
   formatClinicTimestamp,
+  formatAppointmentDate,
+  formatAppointmentTime,
   getClinicHelp
 } = require('./appointmentEmailParts');
 
+// For an appointment that is one pet of a multi-pet booking: names every pet of that booking with its service and time,
+// and says that each pet's appointment is handled separately. groupPets: the booking's appointments, in order.
+function groupParagraphs(appointment, groupPets = []) {
+  if (!appointment?.group_id || !Array.isArray(groupPets) || groupPets.length < 2) return [];
+  const list = groupPets.map(pet => `${pet.pet_name || 'Pet'} (${pet.service_type || 'service'}, ${formatAppointmentTime(pet.appointment_time, pet.estimated_duration_minutes)}, ${pet.status || 'status not recorded'})`).join('; ');
+  return [`This appointment is one part of a booking for ${groupPets.length} pets: ${list}. The clinic updates each pet's appointment separately, so this email is about ${appointment.pet_name || 'this pet'} only.`];
+}
+
 // decision: 'approved' | 'cancelled'. previousStatus tells a cancelled request (Pending) from a cancelled booking (Approved).
 // clinic / contactPageUrl: the clinic's contact details for the "Need help?" block (appointmentEmailParts.getClinicHelp).
-function buildAppointmentDecisionEmail({ name, appointment, decision, previousStatus, appointmentsUrl = '', clinic = {}, contactPageUrl = '' }) {
+function buildAppointmentDecisionEmail({ name, appointment, decision, previousStatus, appointmentsUrl = '', clinic = {}, contactPageUrl = '', groupPets = [] }) {
   const help = getClinicHelp(clinic, contactPageUrl);
   if (decision === 'approved') {
     return buildAppointmentEmail({
@@ -25,6 +36,7 @@ function buildAppointmentDecisionEmail({ name, appointment, decision, previousSt
         ['Appointment status', 'Approved']
       ],
       paragraphs: [
+        ...groupParagraphs(appointment, groupPets),
         'Please arrive a few minutes early. If you need to change this appointment, contact the clinic.',
         'You can cancel it yourself in My Appointments until 2 hours before it starts.'
       ],
@@ -44,9 +56,33 @@ function buildAppointmentDecisionEmail({ name, appointment, decision, previousSt
       ...getAppointmentDetails(appointment),
       ['Appointment status', 'Cancelled']
     ],
-    paragraphs: ['If you have questions about this, contact the clinic. You can request another time from My Appointments in PetHub.'],
+    paragraphs: [
+      ...groupParagraphs(appointment, groupPets),
+      'If you have questions about this, contact the clinic. You can request another time from My Appointments in PetHub.'
+    ],
     appointmentsUrl,
     help
+  });
+}
+
+// Sent when the clinic moves an appointment to a new time (PUT /admin/appointments/:id/schedule)
+function buildAppointmentRescheduledEmail({ name, appointment, previousDate, previousTime, appointmentsUrl = '', clinic = {}, contactPageUrl = '', groupPets = [] }) {
+  return buildAppointmentEmail({
+    subject: APPOINTMENT_RESCHEDULED_EMAIL_SUBJECT,
+    heading: 'Appointment Rescheduled',
+    name,
+    intro: 'The clinic moved your appointment to a new time. The new details are below.',
+    details: [
+      ...getAppointmentDetails(appointment),
+      ...(previousDate ? [['Previously', `${formatAppointmentDate(previousDate)}, ${formatAppointmentTime(previousTime, appointment?.estimated_duration_minutes)}`]] : []),
+      ['Appointment status', String(appointment?.status || 'Not recorded')]
+    ],
+    paragraphs: [
+      ...groupParagraphs(appointment, groupPets),
+      'If the new time does not suit you, contact the clinic. You can cancel it yourself in My Appointments until 2 hours before it starts.'
+    ],
+    appointmentsUrl,
+    help: getClinicHelp(clinic, contactPageUrl)
   });
 }
 
@@ -79,5 +115,6 @@ function buildOwnerCancellationEmail({ name, appointment, appointmentsUrl = '', 
 
 module.exports = {
   buildAppointmentDecisionEmail,
+  buildAppointmentRescheduledEmail,
   buildOwnerCancellationEmail
 };

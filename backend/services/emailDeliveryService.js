@@ -13,6 +13,8 @@ const EMAIL_TYPES = Object.freeze({
   appointmentApproved: 'appointment_approved',
   appointmentCancelledByClinic: 'appointment_cancelled_by_clinic',
   appointmentCancelledByOwner: 'appointment_cancelled_by_owner',
+  // Followed by ":<new date>T<new time>", so each move to a new time gets its own email while a retried request does not
+  appointmentRescheduled: 'appointment_rescheduled',
   contactReply: 'contact_reply'
 });
 

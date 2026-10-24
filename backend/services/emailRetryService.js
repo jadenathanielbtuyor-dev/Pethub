@@ -14,7 +14,9 @@ const APPOINTMENT_EMAIL_TYPES = new Set([
 ]);
 
 function buildForRetry(log) {
-  if (APPOINTMENT_EMAIL_TYPES.has(log.email_type)) return buildAppointmentEmailForRetry(log);
+  if (APPOINTMENT_EMAIL_TYPES.has(log.email_type) || String(log.email_type).startsWith(`${EMAIL_TYPES.appointmentRescheduled}:`)) {
+    return buildAppointmentEmailForRetry(log);
+  }
   if (log.email_type === EMAIL_TYPES.contactReply) return buildReplyEmailForRetry(log);
   return null;
 }
@@ -43,7 +45,7 @@ const retryEmail = async (req) => {
 
     const targetTable = existing.appointment_id ? 'appointments' : 'contact_messages';
     const targetId = existing.appointment_id || existing.contact_message_id;
-    if (targetId) await logAdminActivity(req.authUserId, targetTable, targetId, `Resent the ${existing.email_type.replace(/_/g, ' ')} email`);
+    if (targetId) await logAdminActivity(req.authUserId, targetTable, targetId, `Resent the ${existing.email_type.split(':')[0].replace(/_/g, ' ')} email`);
 
     return result.status === 'sent'
       ? { statusCode: 200, body: { success: true, email_status: 'sent', message: 'Email sent.' } }

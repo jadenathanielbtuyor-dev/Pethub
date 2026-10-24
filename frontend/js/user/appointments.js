@@ -531,6 +531,8 @@ async function loadServiceCatalog() {
   renderServiceOptions();
   applyRequestedService();
   updateBookingClosedNotice();
+  // The multi-pet booking form (js/user/group-booking.js) uses the same catalog instead of loading it again
+  document.dispatchEvent(new CustomEvent("pethub:booking-data"));
 }
 
 // When the list loaded and no service can be booked online right now, the "temporarily unavailable" notice replaces
@@ -1010,6 +1012,7 @@ async function loadAppointmentPets(userId) {
     renderAppointmentPetOptions();
     applyRequestedPet();
     updateAppointmentPetBookingState();
+    document.dispatchEvent(new CustomEvent("pethub:booking-data"));
     return currentUserPets;
   } catch (error) {
     console.error("Error loading appointment pets:", error);
@@ -1205,10 +1208,22 @@ function getAppointmentCardHtml(apt, isUpcoming) {
         ${handledBy && status !== "Cancelled" ? fact("Handled by", handledBy) : ""}
         ${status === "Cancelled" ? fact("Cancelled", getCancellationLabel(apt)) : ""}
       </dl>
+      ${getGroupBookingNoteHtml(apt)}
       <p class="ph-dash-next"><i class="ri-arrow-right-circle-line" aria-hidden="true"></i><span>${escapeHtml(getAppointmentNextStep(status, isUpcoming))}</span></p>
       ${cancellation.canCancel ? `<div class="ph-dash-card-actions"><button type="button" class="ph-btn ph-btn-secondary ph-btn-sm" data-appointment-cancel="${escapeHtml(apt.id)}"><i class="ri-close-circle-line" aria-hidden="true"></i>Cancel appointment</button><span class="ph-dash-note">Cancel by ${escapeHtml(formatClinicDateTime(cancellation.deadlineMs))} (${CLINIC_TIME_ZONE})</span></div>` : `<p class="ph-dash-note" role="status">${escapeHtml(cancellation.reason)}</p>`}
     </article>
   `;
+}
+
+// For one pet of a multi-pet booking: the other pets booked with it (each has its own card, status and cancel button)
+function getGroupBookingNoteHtml(appointment) {
+  if (!appointment.group_id) return "";
+  const members = loadedAppointments
+    .filter(item => item.group_id === appointment.group_id)
+    .sort((first, second) => (Number(first.group_position) || 0) - (Number(second.group_position) || 0));
+  const others = members.filter(item => item.id !== appointment.id).map(item => `${item.pet_name} (${item.service_type})`);
+  if (!others.length) return "";
+  return `<p class="ph-dash-note mt-2"><span class="ph-badge">Pet ${escapeHtml(String(appointment.group_position || "?"))} of ${members.length} in one booking</span> Booked together with ${escapeHtml(others.join(", "))}. Each pet's appointment is approved, cancelled or completed separately.</p>`;
 }
 
 // Who cancelled and when (cancelled_by_owner and cancelled_at come from the server; older rows may have neither)

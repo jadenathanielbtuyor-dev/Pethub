@@ -26,6 +26,20 @@ function findByName(name) {
     .maybeSingle();
 }
 
+function create(service) {
+  return supabase
+    .from('pethub_service_catalog')
+    .insert([service])
+    .select(SERVICE_SELECT);
+}
+
+function listNamesByIds(ids) {
+  return supabase
+    .from('pethub_service_catalog')
+    .select('id, name')
+    .in('id', ids);
+}
+
 function updateById(id, expectedVersion, changes) {
   return supabase
     .from('pethub_service_catalog')
@@ -44,5 +58,7 @@ module.exports = {
   listAll,
   findById,
   findByName,
+  create,
+  listNamesByIds,
   updateById
 };

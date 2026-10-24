@@ -80,7 +80,9 @@ describe('Administrator breed catalog', () => {
     assert.equal(t.db.find('pets', row => row.id === pet.id).breed, 'Retained Terrier');
     const ownerChoices = await t.api('GET', '/pets/breeds?species=Dog', { token: owner.token });
     assert.ok(!ownerChoices.body.breeds.some(entry => entry.id === added.body.breed.id));
-    const adminList = await t.api('GET', '/admin/breeds?species=Dog', { token: admin.token });
+    const adminList = await t.api('GET', '/admin/breeds?species=Dog&q=Updated%20Terrier', { token: admin.token });
     assert.equal(adminList.body.breeds.find(entry => entry.id === added.body.breed.id).is_active, false);
+    const enabledOnly = await t.api('GET', '/admin/breeds?species=Dog&status=active&q=Updated%20Terrier', { token: admin.token });
+    assert.equal(enabledOnly.body.total, 0, 'a disabled breed is not listed as enabled');
   });
 });
